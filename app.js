@@ -1,7 +1,7 @@
 import { GAMES, SONGS, MUSIC_PAGES, DONATE, SOCIALS, CLAIM_HELP, BGM } from './config.js';
 import { PRIZES, REWARDS, REAL_PRIZES_LIVE } from './prizes.js';
 import { COVERS, playTrailer } from './art.js';
-import { buildRoom } from './room.js';
+import { buildRoom, ROOM_LAYOUT } from './room.js';
 
 const $ = s => document.querySelector(s);
 const view = $('#view'), panel = $('#panel'), pbody = $('#pbody');
@@ -46,12 +46,13 @@ const stations = room ? room.stations : Object.fromEntries([...GAMES.map(g => [g
 if (!room) { $('#hint').textContent = 'YOUR BROWSER CANNOT SHOW THE 3D ROOM. USE THE MAP BUTTON.'; $('#stick').hidden = true; }
 
 // ---------------- movement + controls ----------------
-const P = { x: 0, z: 780, yaw: 0, pitch: 0, eye: 300 }, keys = {}, joy = { x: 0, y: 0 };
+const P = { x: 0, z: ROOM_LAYOUT.entryZ, yaw: 0, pitch: 0, eye: 300 }, keys = {}, joy = { x: 0, y: 0 };
 let goal = null, near = null, walkT = 0;
-const BZ = 150, BR = 215, ZMIN = -380, ZMAX = 790; // Big Box position + walkable depth
+const { halfWidth, backDepth, frontDepth, bigBoxZ: BZ, bigBoxClearance: BR } = ROOM_LAYOUT;
+const XMAX = halfWidth - 110, ZMIN = -backDepth + 320, ZMAX = frontDepth - 110;
 const angDiff = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b));
 function collide() {
-  P.x = Math.max(-690, Math.min(690, P.x)); P.z = Math.max(ZMIN, Math.min(ZMAX, P.z));
+  P.x = Math.max(-XMAX, Math.min(XMAX, P.x)); P.z = Math.max(ZMIN, Math.min(ZMAX, P.z));
   const dx = P.x, dz = P.z - BZ;
   if (Math.abs(dx) < BR && Math.abs(dz) < BR) { if (Math.abs(dx) > Math.abs(dz)) P.x = Math.sign(dx || 1) * BR; else P.z = Math.sign(dz || 1) * BR + BZ; }
 }
@@ -77,7 +78,7 @@ function goTo(id) {
   closePanel(); $('#hint').style.opacity = 0;
   if (!room) return s.open();
   const d = (s.depth || 0) + Math.max(190, Math.min(410, Math.max((s.w / 2) / Math.tan(room.hfov() / 2) * 1.15, (s.max[1] / 2) / Math.tan(room.vfov() / 2))));
-  const to = { x: Math.max(-690, Math.min(690, s.x + Math.sin(s.T.th) * d)), z: Math.max(ZMIN, Math.min(ZMAX, s.z + Math.cos(s.T.th) * d)) };
+  const to = { x: Math.max(-XMAX, Math.min(XMAX, s.x + Math.sin(s.T.th) * d)), z: Math.max(ZMIN, Math.min(ZMAX, s.z + Math.cos(s.T.th) * d)) };
   collide(); goal = { path: route(to), yaw: -s.T.th, id, t: 0 };
 }
 let last = performance.now();
