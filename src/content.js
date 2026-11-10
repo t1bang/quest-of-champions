@@ -7,7 +7,7 @@ export const ROOMS = [
     name: "Main floor",
     sub: "The headliners",
     x: 0,
-    z: 1.5,
+    z: -1.5,
     color: "#f2bd5b",
   },
   {
@@ -23,7 +23,7 @@ export const ROOMS = [
     name: "Music lounge",
     sub: "Pick a record. Take a seat.",
     x: -18,
-    z: 3,
+    z: 0,
     color: "#e48cc7",
   },
   {
@@ -123,6 +123,8 @@ export function validateContent(value) {
     if (
       [
         "bigbox",
+        "lobby-music",
+        "lobby-prizes",
         "jukebox",
         "closet",
         "prizes",
@@ -221,10 +223,10 @@ export const escapeHtml = (v) =>
 export function cabinetPosition(g) {
   const row = Math.floor(g.slot / 4),
     col = g.slot % 4;
-  const z = -12 + row * 5.4;
+  const z = [-12, 1, 7][row];
   return {
     x:
-      [-6, -2, 2, 6][col] +
+      (g.room === "main" ? [-4.65, -1.55, 1.55, 4.65] : [-6, -2, 2, 6])[col] +
       (g.room === "lounge" ? -18 : g.room === "gallery" ? 18 : 0),
     z:
       g.room === "lab" ? -26 + row * 4 : g.room === "main" ? z : -8 + row * 5.4,

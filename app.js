@@ -9,6 +9,7 @@ import {
 } from "./config.js";
 import { PRIZES, REWARDS, REAL_PRIZES_LIVE } from "./prizes.js";
 import { COVERS, playTrailer } from "./art.js";
+import { angleDelta, damp, stickVector, stepMotion } from "./src/motion.js";
 import { buildRoom } from "./room.js";
 import { loadContent } from "./src/backend.js";
 import { ROOMS, escapeHtml as esc } from "./src/content.js";
@@ -132,6 +133,7 @@ const handlers = {
 };
 let room = null;
 try {
+  $("#genter").textContent = "BUILDING YOUR ARCADE…";
   room = await buildRoom(view, GAMES, PRIZES, handlers, layout.content.wall);
 } catch (error) {
   console.error("Room initialization failed", error);
@@ -168,21 +170,34 @@ if (!room) {
 }
 
 // ---------------- movement + controls ----------------
-const P = { x: 0, z: 1.5, yaw: 0, pitch: 0, eye: 1.72 },
+const P = { x: 0, z: -1.5, yaw: 0, pitch: -0.035, eye: 2.05 },
+  look = { yaw: 0, pitch: -0.035 },
+  velocity = { x: 0, z: 0 },
+  reducedMotion = matchMedia("(prefers-reduced-motion:reduce)"),
   keys = {},
   joy = { x: 0, y: 0 };
+let drag = null,
+  stickPointer = null,
+  travelTimer = null;
 let goal = null,
   near = null,
-  walkT = 0,
   last = performance.now(),
   lastButtons = [],
   focusReturn = null;
-const angDiff = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b));
+const angDiff = angleDelta;
 const canMove = () =>
-  $("#gate").hidden && panel.hidden && $("#gf").hidden && !document.hidden;
+  $("#gate").hidden &&
+  panel.hidden &&
+  $("#gf").hidden &&
+  !document.hidden &&
+  !document.body.classList.contains("traveling");
 function clearInput() {
   for (const k of Object.keys(keys)) delete keys[k];
-  joy.x = joy.y = 0;
+  joy.x = joy.y = velocity.x = velocity.z = 0;
+  drag = null;
+  stickPointer = null;
+  look.yaw = P.yaw;
+  look.pitch = P.pitch;
   if ($("#stick i")) $("#stick i").style.transform = "";
 }
 function goTo(id) {
@@ -194,6 +209,7 @@ function goTo(id) {
   const path = room.route(P, s.arrival);
   if (!path.length) return toast("Use the map to visit this room first.");
   goal = { path, id, yaw: s.yaw || 0, t: 0 };
+  room.setDestination(s.arrival);
   $("#hint").style.opacity = 0;
 }
 function visitRoom(id) {
@@ -202,11 +218,19 @@ function visitRoom(id) {
   closePanel();
   clearInput();
   goal = null;
-  P.x = r.x;
-  P.z = r.z;
-  P.yaw = 0;
-  P.pitch = 0;
-  toast(r.name.toUpperCase());
+  clearTimeout(travelTimer);
+  document.body.classList.add("traveling");
+  travelTimer = setTimeout(
+    () => {
+      P.x = r.x;
+      P.z = r.z;
+      P.yaw = look.yaw = 0;
+      P.pitch = look.pitch = -0.035;
+      document.body.classList.remove("traveling");
+      toast(r.name.toUpperCase());
+    },
+    reducedMotion.matches ? 0 : 160,
+  );
 }
 function frame(now) {
   const dt = Math.min(0.04, (now - last) / 1000);
@@ -226,69 +250,79 @@ function frame(now) {
     if (pad?.buttons[13]?.pressed) f -= 1;
     if (pad?.buttons[14]?.pressed) st -= 1;
     if (pad?.buttons[15]?.pressed) st += 1;
-    if (keys.arrowleft) P.yaw -= dt * 1.8;
-    if (keys.arrowright) P.yaw += dt * 1.8;
-    P.yaw += dead(pad?.axes[2]) * dt * 1.8;
-    P.pitch = Math.max(
-      -0.65,
-      Math.min(0.65, P.pitch - dead(pad?.axes[3]) * dt * 1.3),
+    if (keys.arrowleft) look.yaw -= dt * 1.5;
+    if (keys.arrowright) look.yaw += dt * 1.5;
+    look.yaw += dead(pad?.axes[2]) * dt * 1.5;
+    look.pitch = Math.max(
+      -0.55,
+      Math.min(0.5, look.pitch - dead(pad?.axes[3]) * dt),
     );
-    if (f || st) goal = null;
-    let moving = false;
+    if (f || st) {
+      goal = null;
+      room?.setDestination(null);
+    }
     if (goal && room) {
       const w = goal.path[0],
         dx = w.x - P.x,
         dz = w.z - P.z,
         d = Math.hypot(dx, dz),
-        step = 4.5 * dt;
+        step = Math.min(3.6, 1.5 + goal.t * 5) * dt;
       if (d > 0.12) {
         room.move(
           P,
           (dx / Math.max(d, step)) * step,
           (dz / Math.max(d, step)) * step,
         );
-        moving = true;
-        const want = goal.path.length > 4 ? Math.atan2(dx, -dz) : goal.yaw;
-        P.yaw += angDiff(want, P.yaw) * Math.min(1, dt * 6);
-        P.pitch *= 1 - Math.min(1, dt * 5);
+        const ahead = goal.path[Math.min(4, goal.path.length - 1)];
+        look.yaw =
+          goal.path.length > 4
+            ? Math.atan2(ahead.x - P.x, -(ahead.z - P.z))
+            : goal.yaw;
+        look.pitch = -0.015;
       } else goal.path.shift();
       goal.t += dt;
       if (!goal.path.length) {
         const id = goal.id;
-        P.yaw = goal.yaw;
+        look.yaw = goal.yaw;
         goal = null;
         stations[id].open();
       } else if (goal.t > 35) {
         goal = null;
         toast("Walk closer or choose a room on the map.");
       }
-    } else if ((f || st) && room) {
+    } else if (room) {
       const scale = Math.max(1, Math.hypot(f, st)),
-        speed = (keys.shift ? 5 : 3.2) * dt;
+        speed = keys.shift ? 4.5 : 2.8;
       f /= scale;
       st /= scale;
-      room.move(
-        P,
+      stepMotion(
+        velocity,
         (Math.sin(P.yaw) * f + Math.cos(P.yaw) * st) * speed,
         (-Math.cos(P.yaw) * f + Math.sin(P.yaw) * st) * speed,
+        dt,
       );
-      moving = true;
+      room.move(P, velocity.x * dt, velocity.z * dt);
     }
-    if (moving) walkT += dt * 10;
-    P.eye =
-      1.72 +
-      (moving && !matchMedia("(prefers-reduced-motion:reduce)").matches
-        ? Math.sin(walkT) * 0.018
-        : 0);
+    P.yaw += angDiff(look.yaw, P.yaw) * (1 - Math.exp(-14 * dt));
+    P.pitch = damp(P.pitch, look.pitch, 14, dt);
+    // No forced head bob: the floor stays stable on phones and long visits.
+    P.eye = 2.05;
     if (btn[0] && !lastButtons[0] && near) near.open();
     if (btn[3] && !lastButtons[3]) openMap();
   } else if (btn[1] && !lastButtons[1] && !panel.hidden) closePanel();
   lastButtons = btn;
   if (room && !window.__skip && !document.hidden && $("#gf").hidden) {
+    if (!goal) room.setDestination(null);
     room.render(P, now / 1000);
     const zone = room.getZone(P);
     $("#zone-name").textContent = ROOMS.find((r) => r.id === zone).name;
     view.dataset.zone = zone;
+    if (import.meta.env.DEV && now % 300 < 50) {
+      view.dataset.position = `${P.x.toFixed(2)},${P.z.toFixed(2)}`;
+      view.dataset.camera = `${P.yaw.toFixed(3)},${P.pitch.toFixed(3)}`;
+      view.dataset.drawCalls = room.renderer.info.render.calls;
+      view.dataset.triangles = room.renderer.info.render.triangles;
+    }
   }
   let best = null,
     bd = Infinity;
@@ -302,6 +336,7 @@ function frame(now) {
       }
     }
   near = best;
+  document.body.classList.toggle("exploring", active);
   $("#act").hidden = !near || !active;
   if (near) $("#act").textContent = near.label;
   requestAnimationFrame(frame);
@@ -333,6 +368,7 @@ addEventListener("keydown", (e) => {
   )
     e.preventDefault();
   if (e.repeat) return;
+  if (e.target.closest("button,a") && ["enter", " "].includes(k)) return;
   if (activeElementIsGame()) return;
   if (k === "escape") {
     closePanel();
@@ -353,9 +389,9 @@ addEventListener("keyup", (e) => {
 });
 addEventListener("blur", clearInput);
 document.addEventListener("visibilitychange", clearInput);
-let drag = null;
 view.addEventListener("pointerdown", (e) => {
-  if (!canMove()) return;
+  if (!canMove() || drag || (e.pointerType === "mouse" && e.button !== 0))
+    return;
   drag = {
     id: e.pointerId,
     x: e.clientX,
@@ -366,10 +402,19 @@ view.addEventListener("pointerdown", (e) => {
   view.setPointerCapture(e.pointerId);
 });
 view.addEventListener("pointermove", (e) => {
-  if (!canMove() || !drag || drag.id !== e.pointerId) return;
+  if (!canMove()) return;
+  if (!drag) {
+    if (e.pointerType === "mouse")
+      view.style.cursor = room?.pick(e.clientX, e.clientY) ? "pointer" : "grab";
+    return;
+  }
+  if (drag.id !== e.pointerId) return;
   const k = 2.6 / Math.max(innerWidth, 500);
-  P.yaw -= (e.clientX - drag.x) * k;
-  P.pitch = Math.max(-0.65, Math.min(0.65, P.pitch - (e.clientY - drag.y) * k));
+  look.yaw -= (e.clientX - drag.x) * k;
+  look.pitch = Math.max(
+    -0.55,
+    Math.min(0.5, look.pitch - (e.clientY - drag.y) * k),
+  );
   drag.x = e.clientX;
   drag.y = e.clientY;
   if (Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) > 8) {
@@ -378,6 +423,7 @@ view.addEventListener("pointermove", (e) => {
   }
 });
 view.addEventListener("pointerup", (e) => {
+  if (!drag || drag.id !== e.pointerId) return;
   if (
     drag &&
     drag.id === e.pointerId &&
@@ -389,9 +435,10 @@ view.addEventListener("pointerup", (e) => {
   }
   drag = null;
 });
-view.addEventListener("pointercancel", () => {
-  drag = null;
-});
+for (const type of ["pointercancel", "lostpointercapture"])
+  view.addEventListener(type, (e) => {
+    if (drag?.id === e.pointerId) drag = null;
+  });
 const stick = $("#stick"),
   knob = stick.firstElementChild;
 function stickMove(e) {
@@ -402,20 +449,31 @@ function stickMove(e) {
   const m = Math.max(1, Math.hypot(x, y));
   x /= m;
   y /= m;
-  joy.x = x;
-  joy.y = y;
+  const input = stickVector(x, y);
+  joy.x = input.x;
+  joy.y = input.y;
   knob.style.transform = `translate(${x * 27}px,${y * 27}px)`;
   $("#hint").style.opacity = 0;
 }
 stick.addEventListener("pointerdown", (e) => {
+  if (!canMove() || stickPointer !== null) return;
+  e.preventDefault();
+  stickPointer = e.pointerId;
   stick.setPointerCapture(e.pointerId);
   stickMove(e);
 });
 stick.addEventListener("pointermove", (e) => {
-  if (stick.hasPointerCapture(e.pointerId)) stickMove(e);
+  if (stickPointer === e.pointerId) stickMove(e);
 });
-stick.addEventListener("pointerup", clearInput);
-stick.addEventListener("pointercancel", clearInput);
+for (const type of ["pointerup", "pointercancel", "lostpointercapture"])
+  stick.addEventListener(type, (e) => {
+    if (stickPointer !== e.pointerId) return;
+    stickPointer = null;
+    joy.x = joy.y = 0;
+    knob.style.transform = "";
+  });
+$("#quick-games").onclick = () => openBigBox();
+$("#home").onclick = () => visitRoom("main");
 $("#act").onclick = () => near && near.open();
 view.addEventListener("room-error", (e) => toast(e.detail));
 addEventListener("pagehide", (e) => {
@@ -779,16 +837,19 @@ function openCredits() {
   );
 }
 function openMap() {
+  const controlHelp =
+    matchMedia("(pointer:coarse)").matches || innerWidth < 700
+      ? "Thumbstick to move · drag to look · tap a cabinet. Use GAMES for quick access."
+      : "WASD / arrows to move · drag to look · E to interact · M for map. Xbox / PS5: sticks to move and look, A / ✕ to select, Y / △ for map.";
   show(
     `<span class="eyebrow">YOUR NIGHT AT BIG BANG</span><h2>Find your next stop.</h2><p>Explore on foot, or jump to a room.</p><div class="room-grid">${ROOMS.map((r) => `<button class="room-card" data-room="${r.id}" style="--room:${r.color}"><span>${r.name}</span><small>${r.sub}</small><b>VISIT ROOM ↗</b></button>`).join("")}</div><h3>WALK UP TO A CABINET</h3><div class="grid">${Object.values(
       stations,
     )
+      .filter((s) => !s.id.startsWith("lobby-"))
       .map(
         (s) => `<button class="btn" data-go="${s.id}">${esc(s.label)}</button>`,
       )
-      .join(
-        "",
-      )}</div><p class="dim">WASD / arrows to move · drag to look · E to interact · M for map. Xbox / PS5: sticks to move and look, A / ✕ to select, Y / △ for map.</p>`,
+      .join("")}</div><p class="dim">${controlHelp}</p>`,
   );
   pbody.onclick = (e) => {
     const b = e.target.closest("[data-go]"),

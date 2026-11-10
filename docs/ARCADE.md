@@ -37,11 +37,23 @@ Redis/Blob-backed deployments retain the existing storage path if those credenti
 
 ## Controls and browser behavior
 
+The November 10 visual pass uses the supplied boutique arcade concepts as its reference: walnut slats, brass edging, a dark stone floor, warm pendant lights, mint framing, closer headliner cabinets and an arched jukebox. It is a real-time interpretation, not a pixel-identical image reproduction. The low game table keeps the cabinet screens visible. The lobby preview and full prize gallery both use the published prize collection.
+
+Camera turns and movement ease independently of frame rate. Thumbstick input has a radial deadzone and separate pointer ownership from drag-to-look. Opening a menu, changing rooms or losing focus clears held movement. The map and persistent Games button provide alternatives to walking; room arrivals avoid furniture. Picking checks intervening walls and uses a short target for the low table so it cannot intercept cabinet taps above it.
+
+Desktop uses softened floor reflections; phones omit the extra reflection pass. Static meshes are batched, while jukebox equalizers and cabinet lights remain animated. Reduced-motion preferences disable ornamental motion and room fades. Development-only canvas diagnostics are excluded from production builds.
+
 WASD / arrows, drag to look, E / Enter to interact, M for map, Shift to move faster. Phone uses a thumbstick and drag-to-look. Standard-mapped Xbox and PS5 pads use the two sticks, A/cross to interact, B/circle to close menus, and Y/triangle for map. Bluetooth versus wired transport is not reliably available to the browser. Actual hardware pairing is performed in device settings.
 
 Rapier handles movement and collision. A* routes around walls and cabinets; the map can jump to a room. Input pauses under menus, the entrance and games. The arcade stops rendering while a game iframe is open or the tab is hidden. Game messages must originate from the active game frame and match its expected origin. Music begins after the entry gesture to comply with browser autoplay rules.
 
 There is no multiplayer avatar room or redemption/shipping workflow in this release. The existing games retain their own online capabilities. Gorilla City and GAMEBBOY remain visibly in development until their playable addresses are provided through the editor.
+
+### Visual-pass validation
+
+Seven automated checks cover content validation, real Rapier collisions and routes through every room, all 12 slots on each game floor, clear room entry points, camera angle wrapping, frame-rate-independent easing and thumbstick deadzone/release. Production build and production dependency audit pass (zero reported vulnerabilities). The existing large Rapier bundle still produces Vite's size advisory.
+
+Browser checks covered desktop movement and stopping at furniture, cabinet auto-walk, all four room visits, T1 game launch and exit, phone joystick release and drag-to-look, portrait menus down to 320 CSS pixels, and compact landscape controls. No horizontal overflow was observed. Browser console had no warnings or errors during these checks. Simultaneous two-finger input and physical Xbox/PS5 controllers still require real-device testing; neither is claimed as verified by browser emulation.
 
 ## Source safety
 
