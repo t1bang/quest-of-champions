@@ -14,9 +14,9 @@ export const GAMES = [
     cab: 'assets/cabs/versus',           // cabinet art wrap: -marquee, -screen, -side, -panel, -base, -coin
     art: 'assets/cabs/versus-cabinet.jpg',
     shots: ['assets/cabs/versus-screen.jpg', 'assets/cabs/versus-cabinet.jpg'] },
-  { id: 'guerilla', title: 'Guerilla City', genre: 'Open World', color: '#35e06f', trim: '#16a08e',
+  { id: 'guerilla', title: 'Gorilla City 2032', genre: 'Open World', color: '#35e06f', trim: '#16a08e',
     blurb: 'The whole city is yours. Go anywhere, run everything.',
-    play: '', trailer: '',
+    play: 'https://gorillacity.bigbangarcade.com/', trailer: '',
     cab: 'assets/cabs/gorilla',
     art: 'assets/cabs/gorilla-cabinet.jpg',
     shots: ['assets/cabs/gorilla-screen.jpg', 'assets/cabs/gorilla-cabinet.jpg'] },
