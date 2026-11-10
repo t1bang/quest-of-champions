@@ -83,3 +83,27 @@ test("motion cannot cross the kiosk or walls and every room has a navigable rout
     nav.dispose();
   }
 });
+
+test("a fully populated Lab keeps every cabinet reachable", async () => {
+  const games = Array.from({ length: 12 }, (_, slot) => ({
+    room: "lab",
+    slot,
+  }));
+  const nav = await createNavigation(
+    games.map((g) => ({ ...cabinetPosition(g), w: 2.25, d: 1.9 })),
+  );
+  try {
+    for (const game of games) {
+      const p = cabinetPosition(game),
+        target = { x: p.x, z: p.z + 2 };
+      const path = nav.route({ x: 0, z: 1.5 }, target);
+      assert.ok(
+        path.length > 0,
+        `Lab slot ${game.slot + 1} has an approach path`,
+      );
+      assert.ok(path.every((p) => nav.free(p.x, p.z)));
+    }
+  } finally {
+    nav.dispose();
+  }
+});

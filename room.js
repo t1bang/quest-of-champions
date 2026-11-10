@@ -418,6 +418,7 @@ export async function buildRoom(canvas, games, prizes, handlers, wall) {
     station(g.id, "SELECT " + g.title, p.x, p.z, 2.3, 1.9, () =>
       handlers.game(g),
     );
+    if (g.room === "lab") stations[g.id].arrival.z = p.z + 2;
     label(
       env,
       g.genre.toUpperCase(),
