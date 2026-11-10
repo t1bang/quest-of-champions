@@ -47,9 +47,12 @@ export const VAULT = [
 // Sign in with Google / Facebook (Supabase Auth). Turn the providers on in the Supabase project first.
 export const SOCIAL_AUTH = { url: 'https://fspcfzxtohaaeoudrack.supabase.co', key: 'sb_publishable_GoAREk7bfAgNZbKY7DsHrw_X6JSb3Jd' };
 
-// Background music for the room. Temporary arcade loop until the real
-// arcade version of Spongebob Ready is ready; then point this at that file.
-export const BGM = 'assets/audio/arcade-loop.mp3';
+// Background music for the room: Hyrule.
+export const BGM = 'assets/audio/hyrule.mp3';
+
+// Jukebox playlist: paste the YouTube / YouTube Music playlist link here and the jukebox
+// plays the real songs in a built-in player.
+export const JUKEBOX_PLAYLIST = '';
 
 // Jukebox. "link" opens the song on a streaming site.
 // Add "file" (an MP3 address) and the song plays inside the arcade instead.

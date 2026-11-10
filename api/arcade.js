@@ -1,7 +1,7 @@
 // Big Bang Arcade online database: players, tokens, closet, leaderboards, comments.
 // Storage: configured Upstash Redis or Vercel Blob; otherwise the T1Bang Supabase arcade.
 import { createHash, randomBytes } from 'node:crypto';
-import { PRIZES, REWARDS, REAL_PRIZES_LIVE } from '../prizes.js';
+import { PRIZES, REWARDS, REAL_PRIZES_LIVE, BAR } from '../prizes.js';
 
 const SB_URL = "https://fspcfzxtohaaeoudrack.supabase.co";
 const SB_KEY = "sb_publishable_GoAREk7bfAgNZbKY7DsHrw_X6JSb3Jd";
@@ -55,7 +55,7 @@ async function set(key, val) {
 const fail = (status, message) => Object.assign(new Error(message), { status });
 const hash = s => createHash('sha256').update(String(s)).digest('hex');
 const cleanName = s => String(s || '').replace(/[^A-Za-z0-9 _-]/g, '').trim().slice(0, 16);
-const pub = p => ({ name: p.name, tokens: p.tokens, earned: p.earned, closet: p.closet, claims: p.claims, badge: p.badge });
+const pub = p => ({ name: p.name, tokens: p.tokens, earned: p.earned, closet: p.closet, claims: p.claims, badge: p.badge, avatar: p.avatar || null, beers: p.beers || 0 });
 const today = () => new Date().toISOString().slice(0, 10);
 const badgeIcon = p => (PRIZES.find(x => x.id === p.badge) || {}).icon || '';
 
@@ -133,6 +133,23 @@ const actions = {
     p.social = provider;
     await set('player/' + b.pid, p);
     return { player: pub(p), gained };
+  },
+  // Bar: a beer costs BEER tokens; a tip is 1-20 tokens.
+  async spend(b) {
+    const p = await auth(b), cost = b.what === 'beer' ? BAR.beer : b.what === 'tip' ? Math.max(1, Math.min(20, Math.floor(Number(b.amount) || 0))) : 0;
+    if (!cost) throw fail(400, 'Unknown order');
+    if (p.tokens < cost) throw fail(400, 'Not enough tokens yet');
+    p.tokens -= cost; if (b.what === 'beer') p.beers = (p.beers || 0) + 1;
+    const bar = (await get('bar')) || { beers: 0, tips: 0 };
+    if (b.what === 'beer') bar.beers++; else bar.tips += cost;
+    await set('bar', bar); await set('player/' + b.pid, p);
+    return { player: pub(p) };
+  },
+  async avatar(b) {
+    const p = await auth(b), a = b.av || {}, n = (v, max) => Math.max(0, Math.min(max, Math.floor(Number(v) || 0)));
+    p.avatar = { skin: n(a.skin, 4), hair: n(a.hair, 4), hc: n(a.hc, 5), shirt: n(a.shirt, 7), shades: n(a.shades, 1) };
+    await set('player/' + b.pid, p);
+    return { player: pub(p) };
   },
   async buy(b) {
     const p = await auth(b), prize = PRIZES.find(x => x.id === b.id);
