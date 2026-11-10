@@ -136,11 +136,19 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = []) {
     for (const [sx, flip] of [[-125, false], [125, true]]) for (const part of PARTS) for (let k = 1; k < part.length - 1; k++) tri(side, T, P3(sx, part[0]), P3(sx, part[k]), P3(sx, part[k + 1]), uvS(part[0], flip), uvS(part[k], flip), uvS(part[k + 1], flip));
     const span = (m, lo, hi, x0 = -113, x1 = 113) => quad(m, T, [x0, hi[1], hi[0]], [x1, hi[1], hi[0]], [x1, lo[1], lo[0]], [x0, lo[1], lo[0]]);
     for (let k = 0; k < OUT.length - 1; k++) { span(trim, OUT[k], OUT[k + 1], -125, -113); span(trim, OUT[k], OUT[k + 1], 113, 125); }
-    span(dark, OUT[0], OUT[1]); span(base, [151, 4], [151, 62]); span(coin, [151, 80], [151, 192], -58, 58);
+    if (g.frontArt) {
+      span(mat(imgTex(g.frontArt, 512, 512), { emis: .55, spec: .5 }), OUT[0], OUT[1]);
+      span(coin, [152, 10], [152, 68], -31, 31);
+      box(trim, T, -113, 113, 1, 7, 150, 156);
+    } else { span(dark, OUT[0], OUT[1]); span(base, [151, 4], [151, 62]); span(coin, [151, 80], [151, 192], -58, 58); }
     span(dark, OUT[1], OUT[2]); span(trim, OUT[2], OUT[3]); span(panel, OUT[3], OUT[4]); span(dark, OUT[4], OUT[5]);
     span(screen, [124, 274], [99.5, 391], -97, 97);
     span(dark, OUT[5], OUT[6]); span(marq, OUT[6], OUT[7]); span(dark, OUT[7], OUT[8]); span(dark, OUT[8], OUT[9]);
     for (const jx of [-80, 33]) { box(solid('#16161c', 0, 1), T, jx - 3, jx + 3, 250, 280, 160, 166); sphere(solid(c ? trimC : '#ff2a3c', 0.35, 1), T, jx, 287, 163, 11); }
+    if (g.frontArt) for (const ox of [-57, 56]) for (let k = 0; k < 6; k++) {
+      const bx = ox + k % 3 * 18, bz = 153 + Math.floor(k / 3) * 25, by = 262 - (bz - 125) * .3;
+      sphere(solid(k < 3 ? '#ffcf24' : '#ef2638', .5, .9), T, bx, by + 4, bz, 7);
+    }
     glow(g.color, T, 0, 330, 135, 420, 330); glow(g.color, T, 0, 438, 160, 420, 150);
     if (soon) { quad(neon('COMING SOON', '#ffffff', 512, 128), T, [-96, 390, 102], [96, 390, 102], [96, 344, 111.5], [-96, 344, 111.5]); add(g.id, 'COMING SOON: ' + g.title.toUpperCase(), T, 250, 205, 470, () => handlers.soon(g)); return; }
     quad(neon(g.genre.toUpperCase(), g.color), T, [-150, 550, 5], [150, 550, 5], [150, 488, 5], [-150, 488, 5]);
@@ -148,10 +156,11 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = []) {
     light(T, [0, 290, 270], g.color, 1.15);
     add(g.id, 'PLAY ' + g.title.toUpperCase(), T, 250, 205, 470, () => handlers.game(g));
   }
-  GAMES.forEach((g, i) => cabinet(g, { x: [-600, -320, 320, 600][i], z: -698, th: 0 }));
-  SOON.forEach((g, i) => cabinet(g, { x: i % 2 ? CW - 2 : 2 - CW, z: i < 2 ? -930 : -1260, th: i % 2 ? -Math.PI / 2 : Math.PI / 2 }, true));
+  const hallPosition = i => ({ x: i % 2 ? CW - 2 : 2 - CW, z: i < 2 ? -930 : -1260, th: i % 2 ? -Math.PI / 2 : Math.PI / 2 });
+  GAMES.forEach((g, i) => cabinet(g, g.hallSlot == null ? { x: [-600, -320, 320, 600][i], z: -698, th: 0 } : hallPosition(g.hallSlot)));
+  SOON.forEach((g, i) => cabinet(g, hallPosition(g.hallSlot ?? i), true));
   // hallway banner + vault door
-  { const B = { x: 0, z: -HD, th: 0 }, bn = neon('COMING SOON', '#ff4fd8', 1024, 128);
+  { const B = { x: 0, z: -HD, th: 0 }, bn = neon('BLANKMAN  ←  NOW PLAYING', '#ffcf24', 1024, 128);
     quad(bn, B, [-DW, 545, 2], [DW, 545, 2], [DW, 470, 2], [-DW, 470, 2]); glow('#ff4fd8', B, 0, 508, 8, 420, 170);
     const V = { x: 0, z: CZ + 2, th: 0 };
     const vt = tex(512, 512, (x, w) => { x.clearRect(0, 0, w, w); const g2 = x.createRadialGradient(256, 256, 30, 256, 256, 250); g2.addColorStop(0, '#dfe6f2'); g2.addColorStop(.6, '#8d97ab'); g2.addColorStop(1, '#3d4456'); x.fillStyle = '#20242f'; x.beginPath(); x.arc(256, 256, 254, 0, 7); x.fill(); x.fillStyle = g2; x.beginPath(); x.arc(256, 256, 226, 0, 7); x.fill();
@@ -167,7 +176,7 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = []) {
   const bbT = tex(512, 512, (x, w, h) => {
     x.fillStyle = '#0b0b12'; x.fillRect(0, 0, w, h); x.strokeStyle = '#ffc93a'; x.lineWidth = 14; x.strokeRect(7, 7, w - 14, h - 14);
     fitText(x, 'BIG BANG BOX', w / 2, 60, 60, w - 50, '#ffc93a');
-    GAMES.forEach((g, i) => { const X = 40 + (i % 2) * 222, Y = 108 + (i >> 1) * 176; x.fillStyle = g.color; x.fillRect(X - 4, Y - 4, 218, 164); x.fillStyle = '#000'; x.fillRect(X, Y, 210, 156); drawFit(x, img(g.art), X, Y, 210, 156, true); });
+    GAMES.forEach((g, i) => { const rows = Math.ceil(GAMES.length / 2), ch = Math.floor(350 / rows), X = 40 + (i % 2) * 222, Y = 104 + (i >> 1) * ch; x.fillStyle = g.color; x.fillRect(X - 4, Y - 4, 218, ch - 9); x.fillStyle = '#000'; x.fillRect(X, Y, 210, ch - 17); drawFit(x, img(g.art), X, Y, 210, ch - 42, true); fitText(x, g.title.toUpperCase(), X + 105, Y + ch - 28, 16, 200, g.color); });
     text(x, 'SELECT YOUR GAME', w / 2, 480, `17px ${PIX}`, '#fff');
   });
   GAMES.forEach(g => img(g.art, bbT.redraw));
@@ -216,7 +225,7 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = []) {
   T = F(0);
   quad(neon('BIG BANG ARCADE', '#ff2a3c', 1024, 128), T, [-330, 520, 4], [330, 520, 4], [330, 436, 4], [-330, 436, 4]); glow('#ff2a3c', T, 0, 478, 10, 860, 220);
   GAMES.filter(g => g.poster).forEach((g, i) => {
-    const P = { x: -798, z: 55, th: Math.PI / 2 }, pm = mat(withImg(g.poster, 1024, 512, (x, w, h, e) => { x.fillStyle = '#000'; x.fillRect(0, 0, w, h); drawFit(x, e, 0, 0, w, h, true); }), { emis: 0.8, spec: 0.3 });
+    const P = { x: -798, z: 55 + i * 275, th: Math.PI / 2 }, pm = mat(withImg(g.poster, 1024, 512, (x, w, h, e) => { x.fillStyle = '#000'; x.fillRect(0, 0, w, h); drawFit(x, e, 0, 0, w, h, true); }), { emis: 0.8, spec: 0.3 });
     const hw = 105, y0 = 190, hh = hw * 0.5625;
     box(solid(g.color, 1, 0), P, -hw - 6, hw + 6, y0 - 6, y0 + hh * 2 + 6, 0, 6); quad(pm, P, [-hw, y0 + hh * 2, 8], [hw, y0 + hh * 2, 8], [hw, y0, 8], [-hw, y0, 8]);
   });

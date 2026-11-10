@@ -25,6 +25,11 @@ export const GAMES = [
     play: 'https://gamer-boyz.vercel.app', trailer: '',
     art: 'assets/gamerboyz-cover.jpg',
     shots: ['assets/gamerboyz-cover.jpg'] },
+  { id: 'blankman', title: 'Blankman: The Game', genre: 'Beat ’em up', color: '#ffcf24', trim: '#ef2638', hallSlot: 2,
+    blurb: 'A homemade hero. Eight comic-book stages, mob battles, gadgets, and a wild Blankmobile rail run. Keyboard, touch, and controller ready.',
+    play: 'games/blankman/', trailer: '', cab: 'assets/cabs/blankman', frontArt: 'assets/cabs/blankman-front.jpg',
+    art: 'assets/cabs/blankman-side.jpg',
+    shots: ['assets/cabs/blankman-screen.jpg', 'assets/cabs/blankman-play.jpg', 'assets/cabs/blankman-cabinet.jpg'] },
 ];
 
 // Coming-soon games in the hallway. "file" = the song that plays when a player walks up
@@ -32,8 +37,7 @@ export const GAMES = [
 export const SOON = [
   { id: 'cruizin', title: 'Cruizin IA', color: '#ff7a1a', song: 'Send It', file: '', art: '' },
   { id: 'bslam', title: 'Basketball Slam', color: '#ffd23e', song: 'Slam', file: '', art: '' },
-  { id: 'blankman', title: 'Blankman', color: '#b06cff', song: '', file: '', art: '' },
-  { id: 'toptier', title: 'Top Tier Wrestling', color: '#ff2a3c', song: 'Everything Top Tier, Everything Critical', file: '', art: '' },
+  { hallSlot: 3, id: 'toptier', title: 'Top Tier Wrestling', color: '#ff2a3c', song: 'Everything Top Tier, Everything Critical', file: '', art: '' },
 ];
 
 // Big Bang Vault videos. Paste each YouTube link; until then the button opens a YouTube search.

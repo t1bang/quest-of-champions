@@ -1,0 +1,16 @@
+{
+  "base": "http://127.0.0.1:4178",
+  "checks": [
+    "Entrance features Blankman and five games",
+    "Map retains original games, future cabinets, vault and lounge",
+    "Now Playing walks through the hallway and opens the reserved cabinet",
+    "Embedded game loads, moves, and jumps with keyboard",
+    "Blankmobile stage runs within the arcade cabinet",
+    "Outfit changes remain functional in the arcade",
+    "Exit returns to arcade; Big Bang Box contains all five playable games",
+    "Mobile touch launch fits portrait screen with accessible Exit",
+    "No browser errors or missing local assets"
+  ],
+  "errors": [],
+  "missing": []
+}

@@ -114,6 +114,8 @@ function goTo(id) {
 let last = performance.now();
 function frame(now) {
   const dt = Math.min(0.1, (now - last) / 1000); last = now;
+  const inputBlocked = !$('#gf').hidden || !$('#panel').hidden || !$('#gate').hidden;
+  if (inputBlocked) { for (const k of Object.keys(keys)) delete keys[k]; joy.x = joy.y = 0; }
   const f = (keys.w || keys.arrowup ? 1 : 0) - (keys.s || keys.arrowdown ? 1 : 0) - joy.y, st = (keys.d ? 1 : 0) - (keys.a ? 1 : 0) + joy.x;
   if (keys.arrowleft) P.yaw -= dt * 1.8; if (keys.arrowright) P.yaw += dt * 1.8;
   if (f || st) { goal = null; sitting = false; }
@@ -143,7 +145,7 @@ function frame(now) {
 }
 requestAnimationFrame(frame);
 
-addEventListener('keydown', e => { if (e.target.tagName === 'INPUT') return; keys[e.key.toLowerCase()] = 1; if ((e.key === 'Enter' || e.key.toLowerCase() === 'e') && near && panel.hidden && $('#gate').hidden) near.open(); if (e.key === 'Escape') closePanel(); });
+addEventListener('keydown', e => { if (e.target.tagName === 'INPUT' || !$('#gf').hidden) return; keys[e.key.toLowerCase()] = 1; if ((e.key === 'Enter' || e.key.toLowerCase() === 'e') && near && panel.hidden && $('#gate').hidden) near.open(); if (e.key === 'Escape') closePanel(); });
 addEventListener('keyup', e => { keys[e.key.toLowerCase()] = 0; });
 let drag = null;
 view.addEventListener('pointerdown', e => { drag = { id: e.pointerId, x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, moved: false }; view.setPointerCapture(e.pointerId); });
@@ -204,7 +206,7 @@ function openGame(g) {
     if (!g.play) return toast('PLAYABLE BUILD COMING SOON');
     earn('play', g.id); closePanel();
     const gf = $('#gf'); gf.hidden = false; gf.dataset.game = g.id; gf.querySelector('b').textContent = g.title.toUpperCase();
-    gf.querySelector('a').href = g.play; gf.querySelector('iframe').src = g.play; pauseBgm(true);
+    gf.querySelector('a').href = g.play; const frame = gf.querySelector('iframe'); frame.title = g.title; frame.onload = () => frame.focus(); frame.src = g.play; pauseBgm(true);
     clearInterval(playTimer); playTimer = setInterval(() => { if (!gf.hidden && !document.hidden) earn('minute', g.id); }, 60000);
   };
   api('board', null, '&game=' + g.id).then(r => { const o = $('#grank'); if (o) o.innerHTML = rows(r.rows, ''); }).catch(() => { const o = $('#grank'); if (o) o.innerHTML = '<li class="dim">Leaderboard is offline.</li>'; });
@@ -225,7 +227,9 @@ $('#gf button').onclick = () => { const gf = $('#gf'); clearInterval(playTimer);
 // Games report scores with: parent.postMessage({ bba: 'score', score: 1234 }, '*')
 // and events with: parent.postMessage({ bba: 'level' }, '*')  or  { bba: 'fatality' }
 addEventListener('message', e => {
-  const gf = $('#gf'), d = e.data; if (gf.hidden || !d) return;
+  const gf = $('#gf'), d = e.data, frame = gf.querySelector('iframe');
+  if (gf.hidden || !d || e.source !== frame.contentWindow || e.origin !== new URL(frame.src, location.href).origin || (d.game && d.game !== gf.dataset.game)) return;
+  if (d.bba === 'score' && (!Number.isFinite(d.score) || d.score < 0 || d.score > 1e9)) return;
   if (d.bba === 'score') earn('score', gf.dataset.game, d.score);
   if (d.bba === 'level' || d.bba === 'fatality') earn(d.bba, gf.dataset.game);
 });
@@ -486,3 +490,5 @@ $('#genter').onclick = enter; gname.addEventListener('keydown', e => { if (e.key
 if (auth.pid) { gname.hidden = true; api('me', {}).then(r => { setMe(r.player); earn('daily'); }).catch(() => { auth = {}; gname.hidden = false; }); }
 setMe(null);
 socialReturn();
+
+$('#featured').onclick = () => goTo('blankman');
