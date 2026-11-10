@@ -1,259 +1,818 @@
-// Big Bang Arcade — real-time 3D room (WebGL, no libraries).
-// Lit 3D cabinets, coloured point lights, glossy reflective floor, neon glow.
-const VS = `attribute vec3 aP;attribute vec3 aN;attribute vec2 aU;uniform mat4 uVP;uniform mat4 uM;varying vec3 vP;varying vec3 vN;varying vec2 vU;
-void main(){vec4 w=uM*vec4(aP,1.);vP=w.xyz;vN=mat3(uM)*aN;vU=aU;gl_Position=uVP*w;}`;
-const FS = `precision highp float;varying vec3 vP;varying vec3 vN;varying vec2 vU;uniform sampler2D uT;uniform vec3 uEye;uniform vec3 uLP[12];uniform vec3 uLC[12];
-uniform vec3 uTint;uniform float uEmis;uniform float uSpec;uniform float uAlpha;uniform float uMirror;
-void main(){if(uMirror>0.5&&vP.y<0.)discard;vec4 t=texture2D(uT,vU);if(t.a<0.04)discard;vec3 n=normalize(vN);vec3 v=normalize(uEye-vP);if(dot(n,v)<0.)n=-n;
-vec3 lit=vec3(.2,.17,.27);vec3 sp=vec3(0.);
-for(int i=0;i<12;i++){vec3 d=uLP[i]-vP;float r2=dot(d,d);vec3 l=d*inversesqrt(r2);float a=1./(1.+r2/160000.);lit+=uLC[i]*max(dot(n,l),0.)*a;sp+=uLC[i]*pow(max(dot(n,normalize(l+v)),0.),48.)*a;}
-vec3 c=t.rgb*uTint*mix(lit,vec3(1.),uEmis)+sp*uSpec;float f=smoothstep(700.,2300.,length(uEye-vP))*.55;c=mix(c,vec3(.05,.02,.09),f*(1.-uEmis*.7));
-gl_FragColor=vec4(c,t.a*uAlpha);}`;
+import * as T from "three";
+import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { Reflector } from "three/addons/objects/Reflector.js";
+import { WALLS, FLOOR_AREAS } from "./src/navigation.js";
+import { ROOMS, cabinetPosition } from "./src/content.js";
 
-const mul = (a, b) => { const o = new Float32Array(16); for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) o[c * 4 + r] = a[r] * b[c * 4] + a[4 + r] * b[c * 4 + 1] + a[8 + r] * b[c * 4 + 2] + a[12 + r] * b[c * 4 + 3]; return o; };
-const ident = () => new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
-const rotY = a => { const c = Math.cos(a), s = Math.sin(a); return new Float32Array([c, 0, -s, 0, 0, 1, 0, 0, s, 0, c, 0, 0, 0, 0, 1]); };
-const rotX = a => { const c = Math.cos(a), s = Math.sin(a); return new Float32Array([1, 0, 0, 0, 0, c, s, 0, 0, -s, c, 0, 0, 0, 0, 1]); };
-const trans = (x, y, z) => { const m = ident(); m[12] = x; m[13] = y; m[14] = z; return m; };
-const persp = (fov, asp, n, f) => { const t = 1 / Math.tan(fov / 2); return new Float32Array([t / asp, 0, 0, 0, 0, t, 0, 0, 0, 0, (f + n) / (n - f), -1, 0, 0, 2 * f * n / (n - f), 0]); };
-
-export function buildRoom(canvas, GAMES, PRIZES, handlers) {
-  const gl = canvas.getContext('webgl', { antialias: true, alpha: false, powerPreference: 'high-performance' });
-  if (!gl) return null;
-  const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(s)); return s; };
-  const prog = gl.createProgram(); gl.attachShader(prog, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FS)); gl.linkProgram(prog); gl.useProgram(prog);
-  const U = {}; for (const n of ['uVP', 'uM', 'uT', 'uEye', 'uLP', 'uLC', 'uTint', 'uEmis', 'uSpec', 'uAlpha', 'uMirror']) U[n] = gl.getUniformLocation(prog, n);
-  const A = ['aP', 'aN', 'aU'].map(n => gl.getAttribLocation(prog, n));
-
-  // ---------- textures (drawn on 2D canvases) ----------
-  const BIG = "Bungee,Impact,'Arial Black',sans-serif", PIX = "'Press Start 2P',monospace";
-  function tex(w, h, draw, repeat) {
-    const c = document.createElement('canvas'); c.width = w; c.height = h; const x = c.getContext('2d'), t = gl.createTexture();
-    const up = () => {
-      draw(x, w, h); gl.bindTexture(gl.TEXTURE_2D, t); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, c); gl.generateMipmap(gl.TEXTURE_2D);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
-      const wr = repeat ? gl.REPEAT : gl.CLAMP_TO_EDGE; gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, wr); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, wr);
-    };
-    up(); t.redraw = up; return t;
+export async function buildRoom(canvas, games, prizes, handlers, wall) {
+  const mobile = matchMedia("(pointer:coarse)").matches || innerWidth < 700;
+  let renderer;
+  try {
+    renderer = new T.WebGLRenderer({
+      canvas,
+      antialias: !mobile,
+      powerPreference: "high-performance",
+    });
+  } catch {
+    return null;
   }
-  const white = tex(4, 4, x => { x.fillStyle = '#fff'; x.fillRect(0, 0, 4, 4); });
-  const glowT = tex(128, 128, (x, w) => { const g = x.createRadialGradient(w / 2, w / 2, 0, w / 2, w / 2, w / 2); g.addColorStop(0, 'rgba(255,255,255,.55)'); g.addColorStop(.5, 'rgba(255,255,255,.14)'); g.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = g; x.fillRect(0, 0, w, w); });
-  const rgb = h => [parseInt(h.slice(1, 3), 16) / 255, parseInt(h.slice(3, 5), 16) / 255, parseInt(h.slice(5, 7), 16) / 255];
-  const mats = [];
-  const mat = (t, o = {}) => { const m = { t, blend: !!o.blend, v: [], tint: o.tint ? rgb(o.tint) : [1, 1, 1], emis: o.emis || 0, spec: o.spec == null ? 0.25 : o.spec, glow: !!o.glow, floor: !!o.floor, dyn: o.dyn || null }; mats.push(m); return m; };
-  const solids = {}; const solid = (c, emis = 0, spec) => solids[c + emis] || (solids[c + emis] = mat(white, { tint: c, emis, spec }));
-  const glows = {}; const glowM = c => glows[c] || (glows[c] = mat(glowT, { tint: c, emis: 1, glow: true }));
-  const text = (x, s, cx, y, font, fill, stroke) => { x.font = font; x.textAlign = 'center'; x.textBaseline = 'middle'; if (stroke) { x.lineWidth = 8; x.strokeStyle = stroke; x.lineJoin = 'round'; x.strokeText(s, cx, y); } x.fillStyle = fill; x.fillText(s, cx, y); };
-  const fitText = (x, s, cx, y, size, maxW, fill, stroke, fam = BIG) => { let f = size; do { x.font = `${f}px ${fam}`; f -= 2; } while (x.measureText(s).width > maxW && f > 8); text(x, s, cx, y, x.font, fill, stroke); };
-  const neon = (s, color, w = 512, h = 128) => mat(tex(w, h, (x) => { x.clearRect(0, 0, w, h); x.shadowColor = color; x.shadowBlur = 22; fitText(x, s, w / 2, h / 2, h * 0.62, w - 40, '#fff', color); x.shadowBlur = 0; fitText(x, s, w / 2, h / 2, h * 0.62, w - 40, '#fff'); }), { emis: 1, spec: 0, blend: true });
-  const images = {};
-  const img = (src, cb) => { let e = images[src]; if (!e) { e = images[src] = { im: new Image(), ok: false, cbs: [] }; e.im.onload = () => { e.ok = true; e.cbs.forEach(f => f()); }; e.im.src = src; } if (cb) e.ok ? cb() : e.cbs.push(cb); return e; };
-  const drawFit = (x, e, dx, dy, dw, dh, cover) => { if (!e.ok) return; const iw = e.im.naturalWidth || 300, ih = e.im.naturalHeight || 400, s = (cover ? Math.max : Math.min)(dw / iw, dh / ih), w = iw * s, h = ih * s; x.save(); x.beginPath(); x.rect(dx, dy, dw, dh); x.clip(); x.drawImage(e.im, dx + (dw - w) / 2, dy + (dh - h) / 2, w, h); x.restore(); };
-  const withImg = (src, w, h, draw, repeat) => { const e = img(src), t = tex(w, h, (x, W, H) => draw(x, W, H, e), repeat); img(src, t.redraw); return t; };
-
-  // ---------- geometry ----------
-  const tf = (T, p) => { const c = Math.cos(T.th || 0), s = Math.sin(T.th || 0); return [T.x + p[0] * c + p[2] * s, p[1], T.z - p[0] * s + p[2] * c]; };
-  function quad(m, T, a, b, c, d, uv = [0, 0, 1, 1]) { // a=top-left b=top-right c=bottom-right d=bottom-left
-    const [A_, B_, C_, D_] = [a, b, c, d].map(p => tf(T, p));
-    const e1 = [B_[0] - A_[0], B_[1] - A_[1], B_[2] - A_[2]], e2 = [D_[0] - A_[0], D_[1] - A_[1], D_[2] - A_[2]];
-    const n = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]], l = Math.hypot(...n) || 1;
-    const put = (p, u, v) => m.v.push(p[0], p[1], p[2], n[0] / l, n[1] / l, n[2] / l, u, v);
-    const [u0, v0, u1, v1] = uv;
-    put(A_, u0, v0); put(B_, u1, v0); put(C_, u1, v1); put(A_, u0, v0); put(C_, u1, v1); put(D_, u0, v1);
-  }
-  function box(m, T, x0, x1, y0, y1, z0, z1, f = {}) {
-    quad(f.front || m, T, [x0, y1, z1], [x1, y1, z1], [x1, y0, z1], [x0, y0, z1]);
-    quad(f.back || m, T, [x1, y1, z0], [x0, y1, z0], [x0, y0, z0], [x1, y0, z0]);
-    quad(f.left || m, T, [x0, y1, z0], [x0, y1, z1], [x0, y0, z1], [x0, y0, z0]);
-    quad(f.right || m, T, [x1, y1, z1], [x1, y1, z0], [x1, y0, z0], [x1, y0, z1]);
-    quad(f.top || m, T, [x0, y1, z0], [x1, y1, z0], [x1, y1, z1], [x0, y1, z1]);
-  }
-  const glow = (c, T, cx, cy, z, w, h) => quad(glowM(c), T, [cx - w / 2, cy + h / 2, z], [cx + w / 2, cy + h / 2, z], [cx + w / 2, cy - h / 2, z], [cx - w / 2, cy - h / 2, z]);
-  const lights = []; const light = (T, p, c, k = 1) => { if (lights.length < 12) lights.push({ p: tf(T, p), c: rgb(c).map(v => v * k) }); };
-
-  // ---------- room shell ----------
-  const O = { x: 0, z: 0 }, HW = 800, HD = 700, ZF = 900, CH = 560;
-  const floorT = tex(512, 512, (x, w) => {
-    x.fillStyle = '#0d0716'; x.fillRect(0, 0, w, w);
-    for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) { x.fillStyle = (i + j) % 2 ? '#1b1030' : '#120a22'; x.fillRect(i * 128 + 3, j * 128 + 3, 122, 122); }
-    x.strokeStyle = 'rgba(255,42,60,.55)'; x.lineWidth = 3; for (let i = 0; i <= 4; i++) { x.beginPath(); x.moveTo(i * 128, 0); x.lineTo(i * 128, w); x.moveTo(0, i * 128); x.lineTo(w, i * 128); x.stroke(); }
-    [['#ffc93a', 64, 64], ['#3ea8ff', 320, 192], ['#35e06f', 192, 448], ['#ff4fd8', 448, 320]].forEach(([c, a, b]) => { x.fillStyle = c; x.beginPath(); x.moveTo(a, b - 16); x.lineTo(a + 16, b); x.lineTo(a, b + 16); x.lineTo(a - 16, b); x.fill(); });
-  }, true);
-  const wallT = tex(512, 512, (x, w) => {
-    const g = x.createLinearGradient(0, 0, 0, w); g.addColorStop(0, '#241038'); g.addColorStop(.6, '#3a1a5a'); g.addColorStop(1, '#150a24'); x.fillStyle = g; x.fillRect(0, 0, w, w);
-    x.fillStyle = 'rgba(0,0,0,.35)'; for (let i = 0; i < 4; i++) x.fillRect(i * 128, 0, 6, w);
-    x.fillStyle = 'rgba(255,255,255,.05)'; for (let i = 0; i < 4; i++) x.fillRect(i * 128 + 6, 0, 3, w);
-    x.fillStyle = '#ff2a3c'; x.fillRect(0, 26, w, 10); x.fillStyle = '#ffc93a'; x.fillRect(0, 44, w, 4); x.fillStyle = '#07040c'; x.fillRect(0, w - 40, w, 40); x.fillStyle = '#ff2a3c'; x.fillRect(0, w - 44, w, 4);
-  }, true);
-  const ceilT = tex(256, 256, (x, w) => { x.fillStyle = '#0a0612'; x.fillRect(0, 0, w, w); x.strokeStyle = '#1d1230'; x.lineWidth = 4; x.strokeRect(2, 2, w - 4, w - 4); x.fillStyle = '#fff3d6'; x.fillRect(48, 104, 160, 48); }, true);
-  const floorM = mat(floorT, { floor: true, spec: 0.5 }), wallM = mat(wallT, { spec: 0.1 }), ceilM = mat(ceilT, { emis: 0.55, spec: 0 });
-  quad(floorM, O, [-HW, 0, -HD], [HW, 0, -HD], [HW, 0, ZF], [-HW, 0, ZF], [0, 0, 8, 8]);
-  quad(ceilM, O, [-HW, CH, ZF], [HW, CH, ZF], [HW, CH, -HD], [-HW, CH, -HD], [0, 0, 4, 4]);
-  quad(wallM, O, [-HW, CH, -HD], [HW, CH, -HD], [HW, 0, -HD], [-HW, 0, -HD], [0, 0, 4, 1]);
-  quad(wallM, O, [HW, CH, ZF], [-HW, CH, ZF], [-HW, 0, ZF], [HW, 0, ZF], [0, 0, 4, 1]);
-  quad(wallM, O, [-HW, CH, ZF], [-HW, CH, -HD], [-HW, 0, -HD], [-HW, 0, ZF], [0, 0, 4, 1]);
-  quad(wallM, O, [HW, CH, -HD], [HW, CH, ZF], [HW, 0, ZF], [HW, 0, -HD], [0, 0, 4, 1]);
-  light(O, [0, 500, 520], '#ffffff', 0.55);
-
-  const stations = {};
-  const add = (id, label, T, w, depth, h, open) => { const p = tf(T, [0, 0, depth / 2]), r = Math.max(w, depth) / 2 + 10; stations[id] = { id, label, x: T.x, z: T.z, w, depth, T, open, min: [p[0] - r, 0, p[2] - r], max: [p[0] + r, h, p[2] + r] }; };
-  const dark = solid('#12121c', 0, 0.5), metal = solid('#2a2a38', 0, 0.8);
-
-  // ---------- game cabinets (classic upright shape; art wraps come from config `cab`) ----------
-  function tri(m, T, a, b, c, ua, ub, uc) {
-    const [A_, B_, C_] = [a, b, c].map(p => tf(T, p)), e1 = [B_[0] - A_[0], B_[1] - A_[1], B_[2] - A_[2]], e2 = [C_[0] - A_[0], C_[1] - A_[1], C_[2] - A_[2]];
-    const n = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]], l = Math.hypot(...n) || 1;
-    [[A_, ua], [B_, ub], [C_, uc]].forEach(([p, u]) => m.v.push(p[0], p[1], p[2], n[0] / l, n[1] / l, n[2] / l, u[0], u[1]));
-  }
-  function sphere(m, T, cx, cy, cz, rad) {
-    const pt = (i, j) => { const th = i / 6 * Math.PI, ph = j / 10 * Math.PI * 2; return [cx + rad * Math.sin(th) * Math.cos(ph), cy + rad * Math.cos(th), cz + rad * Math.sin(th) * Math.sin(ph)]; };
-    for (let i = 0; i < 6; i++) for (let j = 0; j < 10; j++) quad(m, T, pt(i, j), pt(i, j + 1), pt(i + 1, j + 1), pt(i + 1, j));
-  }
-  const imgTex = (src, w, h) => withImg(src, w, h, (x, W, H, e) => { x.fillStyle = '#0c0c14'; x.fillRect(0, 0, W, H); if (e.ok) x.drawImage(e.im, 0, 0, W, H); });
-  // side-view outline, [z, y] from the floor up the front to the top-back
-  const OUT = [[150, 0], [150, 205], [205, 225], [205, 238], [125, 262], [95, 400], [150, 405], [150, 470], [20, 470], [0, 445]];
-  const PARTS = [[[0, 0], [150, 0], [150, 205], [0, 205]], [[0, 205], [150, 205], [205, 225], [205, 238], [125, 262], [0, 262]], [[0, 262], [125, 262], [95, 400], [0, 400]], [[0, 400], [95, 400], [150, 405], [150, 470], [20, 470], [0, 445]]];
-  const coinT = imgTex('assets/cabs/versus-coin.jpg', 256, 256);
-  GAMES.forEach((g, i) => {
-    const T = { x: -540 + i * 360, z: -698, th: 0 }, c = g.cab, trimC = g.trim || g.color;
-    const scr = imgTex(c ? c + '-screen.jpg' : g.art, 512, 512);
-    const screen = mat(c ? scr : withImg(g.art, 512, 512, (x, w, h, e) => { x.fillStyle = '#000'; x.fillRect(0, 0, w, h); if (e.ok) { x.save(); x.scale(1, h / (w * 0.75)); x.globalAlpha = .35; drawFit(x, e, 0, 0, w, w * .75, true); x.globalAlpha = 1; x.fillStyle = 'rgba(0,0,0,.45)'; x.fillRect(0, 0, w, w * .75); drawFit(x, e, 0, 0, w, w * .75, false); x.restore(); } }), { emis: 1, spec: 0.7 });
-    const marq = mat(c ? imgTex(c + '-marquee.jpg', 512, 128) : tex(512, 128, (x, w, h) => { const gr = x.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#1a0b2b'); gr.addColorStop(1, g.color); x.fillStyle = gr; x.fillRect(0, 0, w, h); fitText(x, g.title.toUpperCase(), w / 2, h / 2 + 4, 66, w - 36, '#ffc93a', '#000'); }), { emis: 1, spec: 0 });
-    const side = mat(c ? imgTex(c + '-side.jpg', 256, 512) : withImg(g.art, 256, 512, (x, w, h, e) => { const gr = x.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#1a0b2b'); gr.addColorStop(1, g.color); x.fillStyle = gr; x.fillRect(0, 0, w, h); x.globalAlpha = .9; drawFit(x, e, 14, 150, w - 28, 230, true); x.globalAlpha = 1; x.strokeStyle = '#000'; x.lineWidth = 6; x.strokeRect(14, 150, w - 28, 230); x.save(); x.translate(w / 2, 86); x.rotate(-0.12); fitText(x, g.title.toUpperCase(), 0, 0, 44, w - 30, '#ffc93a', '#000'); x.restore(); text(x, 'T1', w / 2, 448, `80px ${BIG}`, '#fff', '#000'); }), { emis: 0.55, spec: 0.4 });
-    const panel = mat(c ? imgTex(c + '-panel.jpg', 512, 128) : tex(512, 128, (x, w, h) => { const gr = x.createLinearGradient(0, 0, w, 0); gr.addColorStop(0, '#1a0b2b'); gr.addColorStop(.5, g.color); gr.addColorStop(1, '#1a0b2b'); x.fillStyle = gr; x.fillRect(0, 0, w, h); x.fillStyle = 'rgba(0,0,0,.45)'; x.fillRect(0, 0, w, h); for (const ox of [150, 390]) for (let k = 0; k < 6; k++) { x.fillStyle = '#000'; x.beginPath(); x.arc(ox + (k % 3) * 34, 44 + (k / 3 | 0) * 34, 15, 0, 7); x.fill(); x.fillStyle = k < 3 ? '#ffc93a' : g.color; x.beginPath(); x.arc(ox + (k % 3) * 34, 42 + (k / 3 | 0) * 34, 12, 0, 7); x.fill(); } text(x, 'P1 START      P2 START', w / 2, 112, `10px ${PIX}`, '#fff'); }), { emis: 0.6, spec: 0.5 });
-    const base = mat(c ? imgTex(c + '-base.jpg', 512, 128) : tex(512, 128, (x, w, h) => { x.fillStyle = '#0c0c14'; x.fillRect(0, 0, w, h); x.fillStyle = g.color; x.fillRect(0, 0, w, 6); for (let k = 0; k < 16; k++) { const bh = 20 + (k * 37 % 5) * 9; x.globalAlpha = .55; x.fillRect(k * 32 + 2, 62 - bh, 28, bh); } x.globalAlpha = 1; x.fillStyle = '#000'; x.fillRect(0, 62, w, 66); text(x, '——  BIG BANG ARCADE  ——', w / 2, 96, `17px ${PIX}`, '#ffc93a'); }), { emis: 0.6, spec: 0.3 });
-    const coin = mat(c ? imgTex(c + '-coin.jpg', 256, 256) : coinT, { emis: 0.45, spec: 0.6 }), trim = solid(trimC, 0.5, 0.9);
-    const P3 = (x, p) => [x, p[1], p[0]], uvS = (p, flip) => [flip ? 1 - p[0] / 205 : p[0] / 205, 1 - p[1] / 470];
-    for (const [sx, flip] of [[-125, false], [125, true]]) for (const part of PARTS) for (let k = 1; k < part.length - 1; k++) tri(side, T, P3(sx, part[0]), P3(sx, part[k]), P3(sx, part[k + 1]), uvS(part[0], flip), uvS(part[k], flip), uvS(part[k + 1], flip));
-    const span = (m, lo, hi, x0 = -113, x1 = 113) => quad(m, T, [x0, hi[1], hi[0]], [x1, hi[1], hi[0]], [x1, lo[1], lo[0]], [x0, lo[1], lo[0]]);
-    for (let k = 0; k < OUT.length - 1; k++) { span(trim, OUT[k], OUT[k + 1], -125, -113); span(trim, OUT[k], OUT[k + 1], 113, 125); }
-    span(dark, OUT[0], OUT[1]); span(base, [151, 4], [151, 62]); span(coin, [151, 80], [151, 192], -58, 58);
-    span(dark, OUT[1], OUT[2]); span(trim, OUT[2], OUT[3]); span(panel, OUT[3], OUT[4]); span(dark, OUT[4], OUT[5]);
-    span(screen, [124, 274], [99.5, 391], -97, 97);
-    span(dark, OUT[5], OUT[6]); span(marq, OUT[6], OUT[7]); span(dark, OUT[7], OUT[8]); span(dark, OUT[8], OUT[9]);
-    for (const jx of [-80, 33]) { box(solid('#16161c', 0, 1), T, jx - 3, jx + 3, 250, 280, 160, 166); sphere(solid(c ? trimC : '#ff2a3c', 0.35, 1), T, jx, 287, 163, 11); }
-    glow(g.color, T, 0, 330, 135, 420, 330); glow(g.color, T, 0, 438, 160, 420, 150);
-    quad(neon(g.genre.toUpperCase(), g.color), T, [-150, 550, 5], [150, 550, 5], [150, 488, 5], [-150, 488, 5]);
-    glow(g.color, T, 0, 518, 12, 460, 150);
-    light(T, [0, 290, 270], g.color, 1.15);
-    add(g.id, 'PLAY ' + g.title.toUpperCase(), T, 250, 205, 470, () => handlers.game(g));
-  });
-
-  // ---------- Big Box ----------
-  const BB = { x: 0, z: 150, th: 0 };
-  const bbT = tex(512, 512, (x, w, h) => {
-    x.fillStyle = '#0b0b12'; x.fillRect(0, 0, w, h); x.strokeStyle = '#ffc93a'; x.lineWidth = 14; x.strokeRect(7, 7, w - 14, h - 14);
-    text(x, 'BIG BOX', w / 2, 62, `64px ${BIG}`, '#ffc93a');
-    GAMES.forEach((g, i) => { const X = 40 + (i % 2) * 222, Y = 108 + (i >> 1) * 176; x.fillStyle = g.color; x.fillRect(X - 4, Y - 4, 218, 164); x.fillStyle = '#000'; x.fillRect(X, Y, 210, 156); drawFit(x, img(g.art), X, Y, 210, 156, true); });
-    text(x, 'SELECT YOUR GAME', w / 2, 480, `17px ${PIX}`, '#fff');
-  });
-  GAMES.forEach(g => img(g.art, bbT.redraw));
-  const bbM = mat(bbT, { emis: 0.9, spec: 0.4 });
-  box(solid('#1a1a24', 0, 0.8), BB, -130, 130, 0, 290, -130, 130, { front: bbM, back: bbM, left: bbM, right: bbM });
-  for (const [ex, ez] of [[-130, -130], [130, -130], [-130, 130], [130, 130]]) box(solid('#ffc93a', 1, 0), BB, ex - 6, ex + 6, 0, 296, ez - 6, ez + 6);
-  light(BB, [0, 330, 260], '#ffc93a', 0.9);
-  const spinM = mat(tex(512, 128, (x, w, h) => { x.fillStyle = '#ffc93a'; x.fillRect(0, 0, w, h); text(x, '★ BIG BOX ★', w / 2, h / 2 + 4, `58px ${BIG}`, '#0b0612'); }), { emis: 1, spec: 0, dyn: 'spin' });
-  { const S = { x: 0, z: 0 }; box(spinM, S, -80, 80, -24, 24, -80, 80); }
-  stations.bigbox = { id: 'bigbox', label: 'OPEN THE BIG BOX', x: 0, z: 280, w: 260, depth: 0, T: { x: 0, z: 280, th: 0 }, open: handlers.bigbox, min: [-140, 0, 10], max: [140, 300, 290] };
-
-  // ---------- other stations ----------
-  const panel = (w, h, color, draw) => mat(tex(512, 512, (x, W, H) => { x.fillStyle = '#0c0c14'; x.fillRect(0, 0, W, H); x.strokeStyle = color; x.lineWidth = 16; x.strokeRect(8, 8, W - 16, H - 16); draw(x, W, H); }), { emis: 0.85, spec: 0.3 });
-  const emoji = (x, s, cx, cy, size) => text(x, s, cx, cy, `${size}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`, '#fff');
-  const L = z => ({ x: -798, z, th: Math.PI / 2 }), R = z => ({ x: 798, z, th: -Math.PI / 2 }), F = x => ({ x, z: ZF - 2, th: Math.PI });
-
-  let T = L(-230);
-  box(solid('#1a0a1c', 0, 0.6), T, -125, 125, 0, 400, 0, 110, { front: panel(250, 400, '#ff4fd8', (x, W) => { x.fillStyle = '#ff4fd8'; x.beginPath(); x.arc(W / 2, 190, 150, Math.PI, 0); x.fill(); x.fillStyle = '#0c0c14'; x.beginPath(); x.arc(W / 2, 190, 118, Math.PI, 0); x.fill(); emoji(x, '🎵', W / 2, 140, 96); text(x, 'JUKEBOX', W / 2, 270, `66px ${BIG}`, '#ff4fd8'); for (let i = 0; i < 8; i++) { x.fillStyle = i % 2 ? '#ffc93a' : '#3ea8ff'; x.fillRect(70 + i * 48, 330, 36, 90); } text(x, 'BIG BANG MUSIC', W / 2, 462, `16px ${PIX}`, '#fff'); }) });
-  for (const sx of [-131, 131]) box(solid('#ff4fd8', 1, 0), T, sx - 6, sx + 6, 0, 400, 100, 116);
-  glow('#ff4fd8', T, 0, 220, 130, 480, 520); light(T, [0, 260, 240], '#ff4fd8'); add('jukebox', 'OPEN THE JUKEBOX', T, 260, 110, 400, handlers.jukebox);
-
-  T = L(330);
-  box(solid('#0e1a2c', 0, 0.5), T, -135, 135, 0, 440, 0, 30, { front: panel(270, 440, '#3ea8ff', (x, W) => { x.fillStyle = '#16304f'; x.fillRect(60, 60, 392, 392); x.fillStyle = '#0c0c14'; x.fillRect(250, 60, 6, 392); emoji(x, '👕', 160, 200, 90); emoji(x, '🧢', 350, 200, 90); text(x, 'MY CLOSET', W / 2, 330, `58px ${BIG}`, '#3ea8ff'); text(x, 'YOUR PRIZES LIVE HERE', W / 2, 400, `14px ${PIX}`, '#fff'); x.fillStyle = '#ffc93a'; x.beginPath(); x.arc(232, 256, 9, 0, 7); x.arc(274, 256, 9, 0, 7); x.fill(); }) });
-  glow('#3ea8ff', T, 0, 230, 50, 460, 540); light(T, [0, 260, 220], '#3ea8ff', 0.8); add('closet', 'OPEN MY CLOSET', T, 270, 60, 440, handlers.closet);
-
-  T = R(-200);
-  box(solid('#1c1608', 0, 0.4), T, -290, 290, 50, 480, 0, 18);
-  for (const sy of [150, 290]) box(solid('#ffc93a', 0.35, 1), T, -280, 280, sy - 10, sy, 18, 100);
-  PRIZES.filter(p => !p.real).slice(0, 10).forEach((p, i) => { const em = mat(tex(128, 128, (x, w) => { x.clearRect(0, 0, w, w); emoji(x, p.icon, 64, 70, 96); }), { emis: 1, spec: 0, blend: true }), cx = -224 + (i % 5) * 112, y = i < 5 ? 290 : 150; quad(em, T, [cx - 46, y + 96, 60], [cx + 46, y + 96, 60], [cx + 46, y + 4, 60], [cx - 46, y + 4, 60]); });
-  quad(neon('PRIZE WALL', '#ffc93a'), T, [-190, 478, 22], [190, 478, 22], [190, 396, 22], [-190, 396, 22]);
-  glow('#ffc93a', T, 0, 440, 40, 560, 200); light(T, [0, 300, 260], '#ffc93a', 1.1); add('prizes', 'SHOP THE PRIZE WALL', T, 560, 100, 480, handlers.prizes);
-
-  T = R(400);
-  box(metal, T, -160, 160, 110, 450, 0, 30, { front: panel(320, 340, '#35e06f', (x, W) => { emoji(x, '🏆', W / 2, 96, 84); text(x, 'HIGH SCORES', W / 2, 190, `52px ${BIG}`, '#35e06f'); ['1ST', '2ND', '3RD', '4TH'].forEach((s, i) => { text(x, `${s}  ......  ?`, W / 2, 262 + i * 46, `20px ${PIX}`, i ? '#fff' : '#ffc93a'); }); text(x, 'WHO RUNS THE ARCADE?', W / 2, 462, `14px ${PIX}`, '#35e06f'); }) });
-  glow('#35e06f', T, 0, 280, 50, 520, 480); light(T, [0, 280, 220], '#35e06f', 0.8); add('scores', 'SEE THE LEADERBOARD', T, 320, 60, 450, handlers.scores);
-
-  T = F(-360);
-  box(solid('#2a0a10', 0, 0.5), T, -140, 140, 0, 390, 0, 90, { front: panel(280, 390, '#ff2a3c', (x, W) => { emoji(x, '❤️', W / 2, 150, 130); text(x, 'DONATE', W / 2, 300, `76px ${BIG}`, '#ff2a3c'); text(x, 'KEEP THE ARCADE OPEN', W / 2, 380, `15px ${PIX}`, '#fff'); text(x, 'CASH APP · APPLE PAY', W / 2, 428, `12px ${PIX}`, '#ffc93a'); text(x, 'PAYPAL · VENMO', W / 2, 456, `12px ${PIX}`, '#ffc93a'); }) });
-  glow('#ff2a3c', T, 0, 220, 110, 480, 500); light(T, [0, 260, 240], '#ff2a3c', 0.8); add('donate', 'DONATE', T, 280, 90, 390, handlers.donate);
-
-  T = F(360);
-  box(solid('#e8e8f0', 0, 0.8), T, -160, 160, 50, 450, 0, 14, { front: panel(320, 400, '#ffffff', (x, W) => { emoji(x, '⭐', W / 2, 84, 70); text(x, 'CREATED BY', W / 2, 160, `20px ${PIX}`, '#fff'); text(x, 'CHUCK CRAWLEY', W / 2, 224, `46px ${BIG}`, '#ffc93a'); text(x, '&', W / 2, 274, `34px ${BIG}`, '#fff'); text(x, 'TONE DA BOSS', W / 2, 326, `50px ${BIG}`, '#ffc93a'); text(x, 'T1 ENTERTAINMENT', W / 2, 400, `16px ${PIX}`, '#ff2a3c'); text(x, 'FOLLOW US', W / 2, 452, `14px ${PIX}`, '#fff'); }) });
-  glow('#ffffff', T, 0, 250, 30, 440, 480); light(T, [0, 260, 220], '#ffffff', 0.5); add('credits', 'CREDITS + SOCIALS', T, 320, 40, 450, handlers.credits);
-
-  // ---------- neon + posters ----------
-  T = F(0);
-  quad(neon('BIG BANG ARCADE', '#ff2a3c', 1024, 128), T, [-330, 520, 4], [330, 520, 4], [330, 436, 4], [-330, 436, 4]); glow('#ff2a3c', T, 0, 478, 10, 860, 220);
-  GAMES.filter(g => g.poster).forEach((g, i) => {
-    const P = i ? { x: -798, z: 55, th: Math.PI / 2 } : F(0), pm = mat(withImg(g.poster, 1024, 512, (x, w, h, e) => { x.fillStyle = '#000'; x.fillRect(0, 0, w, h); drawFit(x, e, 0, 0, w, h, true); }), { emis: 0.8, spec: 0.3 });
-    const hw = i ? 105 : 180, y0 = 190, hh = hw * 0.5625;
-    box(solid(g.color, 1, 0), P, -hw - 6, hw + 6, y0 - 6, y0 + hh * 2 + 6, 0, 6); quad(pm, P, [-hw, y0 + hh * 2, 8], [hw, y0 + hh * 2, 8], [hw, y0, 8], [-hw, y0, 8]);
-  });
-
-  // ---------- upload ----------
-  const buf = gl.createBuffer(); let total = 0; for (const m of mats) { m.start = total; m.n = m.v.length / 8; total += m.n; }
-  const data = new Float32Array(total * 8); for (const m of mats) { data.set(m.v, m.start * 8); m.v = null; }
-  gl.bindBuffer(gl.ARRAY_BUFFER, buf); gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
-  [[0, 3, 0], [1, 3, 12], [2, 2, 24]].forEach(([i, n, o]) => { gl.enableVertexAttribArray(A[i]); gl.vertexAttribPointer(A[i], n, gl.FLOAT, false, 32, o); });
-  gl.uniform3fv(U.uLP, new Float32Array(12 * 3).map((_, i) => (lights[i / 3 | 0] || { p: [0, 0, 0] }).p[i % 3]));
-  gl.uniform3fv(U.uLC, new Float32Array(12 * 3).map((_, i) => (lights[i / 3 | 0] || { c: [0, 0, 0] }).c[i % 3]));
-  gl.uniform1i(U.uT, 0); gl.enable(gl.DEPTH_TEST); gl.clearColor(0.03, 0.015, 0.06, 1);
-  const I = ident();
-  let fov = 1, asp = 1;
-  function resize() {
-    const d = Math.min(devicePixelRatio || 1, innerWidth < 800 ? 1.5 : 2), w = Math.round(innerWidth * d), h = Math.round(innerHeight * d);
-    if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
-    gl.viewport(0, 0, w, h); asp = w / h; fov = asp > 1 ? 1.05 : 1.3;
-  }
-  const drawSet = (pred, time, mirror) => {
-    for (const m of mats) {
-      if (!m.n || !pred(m)) continue;
-      gl.uniformMatrix4fv(U.uM, false, m.dyn ? mul(trans(0, 400 + Math.sin(time * 1.6) * 8, 150), rotY(time * 0.7)) : I);
-      gl.bindTexture(gl.TEXTURE_2D, m.t); gl.uniform3fv(U.uTint, m.tint);
-      gl.uniform1f(U.uEmis, m.emis * (m.emis === 1 && !m.glow ? 0.94 + 0.06 * Math.sin(time * 9 + m.start) : 1)); gl.uniform1f(U.uSpec, m.spec);
-      gl.drawArrays(gl.TRIANGLES, m.start, m.n);
-    }
+  renderer.setPixelRatio(Math.min(devicePixelRatio, mobile ? 1.4 : 1.75));
+  renderer.outputColorSpace = T.SRGBColorSpace;
+  renderer.toneMapping = T.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.35;
+  const scene = new T.Scene();
+  scene.background = new T.Color("#10181c");
+  scene.fog = new T.Fog("#10181c", 18, 61);
+  const camera = new T.PerspectiveCamera(62, 1, 0.07, 85);
+  camera.rotation.order = "YXZ";
+  scene.add(new T.HemisphereLight("#b5d7d5", "#71624d", 3.6));
+  const sun = new T.DirectionalLight("#ffe2b9", 3);
+  sun.position.set(0, 7, 6);
+  scene.add(sun);
+  scene.add(new T.AmbientLight("#c2d0d0", 0.8));
+  const env = new T.Group(),
+    animated = [],
+    obstacles = [],
+    pickables = [],
+    stations = {};
+  scene.add(env);
+  const materials = new Map(),
+    textures = new Map(),
+    loader = new T.TextureLoader();
+  let disposed = false;
+  const mat = (color, metalness = 0.1, roughness = 0.55) => {
+    const k = `${color}:${metalness}:${roughness}`;
+    if (!materials.has(k))
+      materials.set(
+        k,
+        new T.MeshStandardMaterial({ color, metalness, roughness }),
+      );
+    return materials.get(k);
   };
-  function render(P, time) {
-    resize();
-    const view = mul(mul(rotX(-P.pitch), rotY(P.yaw)), trans(-P.x, -P.eye, -P.z)), proj = persp(fov, asp, 8, 5000);
-    const flip = ident(); flip[5] = -1;
-    gl.uniform3f(U.uEye, P.x, P.eye, P.z); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-    const pass = (vp, mirror) => {
-      gl.uniformMatrix4fv(U.uVP, false, vp); gl.uniform1f(U.uMirror, mirror ? 1 : 0); gl.uniform1f(U.uAlpha, 1);
-      gl.disable(gl.BLEND); gl.depthMask(true); drawSet(m => !m.glow && !m.floor && !m.blend, time);
-      gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.depthMask(false); drawSet(m => m.blend, time);
-      gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE); gl.depthMask(false); drawSet(m => m.glow, time); gl.depthMask(true);
-    };
-    pass(mul(proj, mul(view, flip)), true);          // the room mirrored below the floor
-    gl.clear(gl.DEPTH_BUFFER_BIT);
-    gl.uniformMatrix4fv(U.uVP, false, mul(proj, view)); gl.uniform1f(U.uMirror, 0);
-    gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.uniform1f(U.uAlpha, 0.74); drawSet(m => m.floor, time); // glossy floor over it
-    pass(mul(proj, view), false);
-  }
-  // which station is under a screen point?
-  function pick(px, py, P) {
-    const t = Math.tan(fov / 2), cx = (px / innerWidth * 2 - 1) * t * asp, cy = (1 - py / innerHeight * 2) * t;
-    const cp = Math.cos(P.pitch), sp = Math.sin(P.pitch);
-    const vy = cy * cp + sp, vz = -cp + cy * sp, cs = Math.cos(P.yaw), sn = Math.sin(P.yaw);
-    const d = [cx * cs - vz * sn, vy, cx * sn + vz * cs], o = [P.x, P.eye, P.z];
-    let best = null, bt = 1e9;
-    for (const s of Object.values(stations)) {
-      let t0 = 0, t1 = 1e9;
-      for (let i = 0; i < 3; i++) { const inv = 1 / (d[i] || 1e-9); let a = (s.min[i] - o[i]) * inv, b = (s.max[i] - o[i]) * inv; if (a > b) [a, b] = [b, a]; t0 = Math.max(t0, a); t1 = Math.min(t1, b); }
-      if (t0 <= t1 && t0 < bt) { bt = t0; best = s; }
+  const glow = (color) => {
+    const k = `glow:${color}`;
+    if (!materials.has(k)) materials.set(k, new T.MeshBasicMaterial({ color }));
+    return materials.get(k);
+  };
+  function tex(url) {
+    if (!textures.has(url)) {
+      const t = loader.load(url, undefined, undefined, () => {});
+      t.colorSpace = T.SRGBColorSpace;
+      t.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
+      textures.set(url, t);
     }
-    return best;
+    return textures.get(url);
   }
-  const hfov = () => 2 * Math.atan(Math.tan(fov / 2) * asp);
+  function box(parent, x, y, z, w, h, d, m) {
+    const o = new T.Mesh(new T.BoxGeometry(w, h, d), m);
+    o.position.set(x, y, z);
+    parent.add(o);
+    return o;
+  }
+  function sphere(parent, x, y, z, r, m) {
+    const o = new T.Mesh(new T.SphereGeometry(r, 12, 8), m);
+    o.position.set(x, y, z);
+    parent.add(o);
+    return o;
+  }
+  function cylinder(parent, x, y, z, r, h, m, r2 = r) {
+    const o = new T.Mesh(new T.CylinderGeometry(r, r2, h, 20), m);
+    o.position.set(x, y, z);
+    parent.add(o);
+    return o;
+  }
+  function label(
+    parent,
+    words,
+    x,
+    y,
+    z,
+    w,
+    h,
+    color = "#f4deaf",
+    bg = "#122326",
+    size = 64,
+  ) {
+    const c = document.createElement("canvas");
+    c.width = 1024;
+    c.height = 256;
+    const ctx = c.getContext("2d");
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, 1024, 256);
+    ctx.fillStyle = color;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = `${size}px Bungee,Arial Black,sans-serif`;
+    const lines = words.split("\n");
+    lines.forEach((s, i) =>
+      ctx.fillText(s, 512, 128 + (i - (lines.length - 1) / 2) * 83, 965),
+    );
+    const texture = new T.CanvasTexture(c);
+    texture.colorSpace = T.SRGBColorSpace;
+    textures.set(`label:${textures.size}`, texture);
+    const o = new T.Mesh(
+      new T.PlaneGeometry(w, h),
+      new T.MeshBasicMaterial({ map: texture }),
+    );
+    o.position.set(x, y, z);
+    parent.add(o);
+    return o;
+  }
+  function image(parent, url, x, y, z, w, h) {
+    const o = new T.Mesh(
+      new T.PlaneGeometry(w, h),
+      new T.MeshBasicMaterial({ map: tex(url) }),
+    );
+    o.position.set(x, y, z);
+    parent.add(o);
+    return o;
+  }
+  const solid = (x, z, w, d) => obstacles.push({ x, z, w, d });
+  function station(id, title, x, z, w, d, open) {
+    const target = new T.Mesh(
+      new T.BoxGeometry(w, 3.3, d),
+      new T.MeshBasicMaterial({ visible: false }),
+    );
+    target.position.set(x, 1.65, z);
+    target.userData.station = id;
+    scene.add(target);
+    pickables.push(target);
+    stations[id] = {
+      id,
+      label: title,
+      x,
+      z,
+      w,
+      depth: d,
+      open,
+      arrival: { x, z: z + d / 2 + 2.1 },
+    };
+  }
+  for (const [a, b, c, d] of FLOOR_AREAS) {
+    box(
+      env,
+      (a + b) / 2,
+      -0.12,
+      (c + d) / 2,
+      b - a,
+      0.24,
+      d - c,
+      mat("#182529", 0.3, 0.3),
+    );
+    box(env, (a + b) / 2, 5.1, (c + d) / 2, b - a, 0.2, d - c, mat("#34454a"));
+    for (let x = a + 1; x < b; x += 2)
+      box(env, x, 0.005, (c + d) / 2, 0.018, 0.01, d - c, mat("#364345"));
+    for (let z = c + 1; z < d; z += 2)
+      box(env, (a + b) / 2, 0.005, z, b - a, 0.01, 0.018, mat("#364345"));
+    for (let x = a + 2; x < b; x += 5)
+      for (let z = c + 3; z < d; z += 7) {
+        box(env, x, 4.92, z, 1.7, 0.04, 0.75, glow("#f4d8ab"));
+      }
+  }
+  if (!mobile) {
+    const mirror = new Reflector(new T.PlaneGeometry(19.5, 27), {
+      color: 0x333b3e,
+      textureWidth: 512,
+      textureHeight: 512,
+      multisample: 0,
+      clipBias: 0.003,
+    });
+    mirror.rotation.x = -Math.PI / 2;
+    mirror.position.set(0, 0.008, 0);
+    scene.add(mirror);
+    const veil = new T.Mesh(
+      new T.PlaneGeometry(19.5, 27),
+      new T.MeshBasicMaterial({
+        color: "#294047",
+        transparent: true,
+        opacity: 0.38,
+        depthWrite: false,
+      }),
+    );
+    veil.rotation.x = -Math.PI / 2;
+    veil.position.set(0, 0.012, 0);
+    scene.add(veil);
+  }
+  for (let z = -12; z < 14; z += 4)
+    box(env, 0, 4.92, z, 20, 0.16, 0.1, mat("#4c5c5e"));
+  const pendant = cylinder(
+    env,
+    0,
+    3.8,
+    5,
+    0.55,
+    0.5,
+    mat("#ab7c48", 0.65, 0.3),
+    0.85,
+  );
+  cylinder(env, 0, 4.5, 5, 0.025, 1, mat("#ab7c48"));
+  cylinder(env, 0, 3.54, 5, 0.74, 0.035, glow("#f5d5a0"));
+  for (const [x, z, w, d] of WALLS) {
+    box(env, x, 2.5, z, w, 5, d, mat("#253d44"));
+    if (w > d) {
+      box(env, x, 0.2, z, w, 0.12, d + 0.025, mat("#c59651", 0.7, 0.3));
+      box(env, x, 4.6, z, w, 0.045, d + 0.07, glow("#61b4b0"));
+    } else {
+      box(env, x, 0.2, z, w + 0.025, 0.12, d, mat("#c59651", 0.7, 0.3));
+      box(env, x, 4.6, z, w + 0.07, 0.045, d, glow("#61b4b0"));
+    }
+  }
+  for (const [center, z, width] of [
+    [0, -27.79, 19.5],
+    [-18, -9.79, 15.5],
+    [18, -9.79, 15.5],
+  ])
+    for (let x = center - width / 2; x < center + width / 2; x += 0.23)
+      box(env, x, 2.25, z, 0.105, 4.2, 0.08, mat("#624231", 0.1, 0.75));
+  for (const x of [-8.7, 8.7]) {
+    box(env, x, 2.5, -13.8, 0.5, 5, 0.5, mat("#a78655", 0.6));
+    box(env, x, 2.5, 7, 0.45, 5, 0.45, mat("#a78655", 0.6));
+  }
+  label(
+    env,
+    "BIG BANG   /   ARCADE",
+    0,
+    4.1,
+    -13.75,
+    13.5,
+    1.15,
+    "#f4cc7c",
+    "#253d44",
+    66,
+  );
+  label(env, "THE LAB", 0, 4, -27.6, 8, 1.3, "#8ee2d8", "#15272a", 110);
+  label(env, "SOUND + SOCIAL", -18, 4, -9.6, 9, 1.05, "#eeb1d6", "#29212b", 65);
+  label(env, wall.title, 18, 4, -9.6, 10, 1.05, wall.accent, wall.backdrop, 60);
+  for (const r of ROOMS.slice(1)) {
+    const z = r.id === "lab" ? -13.7 : 0,
+      x = r.id === "lab" ? 0 : r.x > 0 ? 9.75 : -9.75;
+    const sign = label(
+      env,
+      r.name.toUpperCase(),
+      x,
+      3.9,
+      z,
+      4.7,
+      0.65,
+      r.color,
+      "#253d44",
+      68,
+    );
+    if (r.id !== "lab") sign.rotation.y = r.x > 0 ? -Math.PI / 2 : Math.PI / 2;
+  }
+  function cabinet(g) {
+    const p = cabinetPosition(g),
+      group = new T.Group();
+    group.position.set(p.x, 0, p.z);
+    env.add(group);
+    const trim = g.trim || g.color,
+      black = mat("#090d10", 0.4, 0.25),
+      edge = mat(trim, 0.45, 0.28);
+    const shape = new T.Shape();
+    shape.moveTo(-0.76, 0);
+    shape.lineTo(0.78, 0);
+    shape.lineTo(0.78, 1.2);
+    shape.lineTo(0.95, 1.65);
+    shape.lineTo(0.6, 1.85);
+    shape.lineTo(0.37, 2.95);
+    shape.lineTo(0.8, 3.32);
+    shape.lineTo(0.8, 3.85);
+    shape.lineTo(-0.76, 3.85);
+    shape.closePath();
+    for (const x of [-1.04, 1.01]) {
+      const side = new T.Mesh(
+        new T.ExtrudeGeometry(shape, { depth: 0.07, bevelEnabled: false }),
+        edge,
+      );
+      side.rotation.y = -Math.PI / 2;
+      side.position.x = x;
+      group.add(side);
+    }
+    box(group, 0, 1.84, -0.3, 2, 3.7, 0.88, black);
+    box(group, 0, 0.16, 0.45, 2.05, 0.3, 1.45, black);
+    box(group, 0, 3.58, 0.51, 2.04, 0.55, 0.33, black);
+    if (g.cab) image(group, `${g.cab}-marquee.jpg`, 0, 3.59, 0.69, 1.92, 0.44);
+    else
+      label(
+        group,
+        g.title.toUpperCase(),
+        0,
+        3.59,
+        0.69,
+        1.92,
+        0.44,
+        g.color,
+        "#0c1218",
+        76,
+      );
+    box(group, 0, 2.63, 0.31, 1.96, 1.35, 0.12, mat("#030605"));
+    if (g.id === "gamerboy") {
+      label(
+        group,
+        "GAMEBBOY\nADVENTURE AWAITS",
+        0,
+        2.64,
+        0.405,
+        1.72,
+        1.12,
+        "#b8ddff",
+        "#163887",
+        85,
+      );
+    }
+    const screenUrl = g.cab ? `${g.cab}-screen.jpg` : g.poster || g.art;
+    if (screenUrl && g.id !== "gamerboy") {
+      const screen = image(group, screenUrl, 0, 2.64, 0.39, 1.72, 1.12);
+      animated.push({ object: screen, phase: p.x });
+    } else if (g.id !== "gamerboy")
+      label(
+        group,
+        g.title + "\nCOMING SOON",
+        0,
+        2.64,
+        0.39,
+        1.72,
+        1.12,
+        g.color,
+        "#081b24",
+        70,
+      );
+    box(group, 0, 1.75, 0.65, 2.18, 0.16, 0.89, edge);
+    if (g.cab) {
+      const deck = image(group, `${g.cab}-panel.jpg`, 0, 1.84, 0.65, 2, 0.73);
+      deck.rotation.x = -Math.PI / 2;
+      image(group, `${g.cab}-base.jpg`, 0, 0.88, 0.25, 1.94, 1.35);
+    } else
+      label(
+        group,
+        g.title.toUpperCase(),
+        0,
+        0.72,
+        0.26,
+        1.9,
+        1.15,
+        g.color,
+        "#0e1720",
+        70,
+      );
+    for (const px of [-0.55, 0.5]) {
+      cylinder(group, px, 1.91, 0.58, 0.075, 0.26, mat("#9aabb0", 0.8, 0.2));
+      sphere(group, px, 2.07, 0.58, 0.12, mat("#b52d41", 0.15, 0.25));
+      for (let i = 0; i < 6; i++)
+        cylinder(
+          group,
+          px + 0.23 + (i % 3) * 0.13,
+          1.87,
+          0.48 + Math.floor(i / 3) * 0.17,
+          0.051,
+          0.07,
+          mat(i < 3 ? "#eaca69" : "#bd4347", 0.3, 0.25),
+        );
+    }
+    box(group, 0, 1.02, 0.33, 0.4, 0.42, 0.07, mat("#4c5456", 0.7, 0.2));
+    for (const x of [-0.1, 0.1])
+      box(group, x, 1.08, 0.374, 0.045, 0.15, 0.015, glow("#b92b32"));
+    label(
+      group,
+      "BIG BANG ARCADE",
+      0,
+      0.18,
+      0.79,
+      1.8,
+      0.19,
+      "#d4aa63",
+      "#10151a",
+      68,
+    );
+    label(
+      group,
+      g.status === "coming-soon"
+        ? "IN DEVELOPMENT"
+        : g.status === "demo"
+          ? "PLAY THE DEMO"
+          : "PRESS START",
+      0,
+      3.1,
+      0.71,
+      1.75,
+      0.17,
+      g.status === "coming-soon" ? "#a7b5bf" : "#d8f0e9",
+      "#121c21",
+      58,
+    );
+    if (g.cab)
+      for (const x of [-1.09, 1.09]) {
+        const side = image(
+          group,
+          `${g.cab}-side.jpg`,
+          x,
+          1.9,
+          -0.05,
+          1.35,
+          3.25,
+        );
+        side.rotation.y = x > 0 ? Math.PI / 2 : -Math.PI / 2;
+      }
+    solid(p.x, p.z, 2.25, 1.9);
+    station(g.id, "SELECT " + g.title, p.x, p.z, 2.3, 1.9, () =>
+      handlers.game(g),
+    );
+    label(
+      env,
+      g.genre.toUpperCase(),
+      p.x,
+      4.35,
+      p.z + 0.05,
+      2.5,
+      0.45,
+      g.color,
+      "#253d44",
+      80,
+    );
+  }
+  games.forEach(cabinet);
+  for (let i = 0; i < 4; i++)
+    if (!games.some((g) => g.room === "lab" && g.slot === i)) {
+      const x = [-6, -2, 2, 6][i];
+      box(env, x, 0.13, -26, 2.5, 0.25, 2.3, mat("#243d40"));
+      label(
+        env,
+        `NEXT UP / 0${i + 1}\nNEW GAME IN DEVELOPMENT`,
+        x,
+        1.9,
+        -26,
+        2.45,
+        1.65,
+        "#83ada9",
+        "#152a2d",
+        49,
+      );
+      box(env, x, 0.27, -24.82, 2.5, 0.025, 0.06, glow("#49a399"));
+    }
+  const kiosk = new T.Group();
+  kiosk.position.set(0, 0, 5);
+  env.add(kiosk);
+  box(kiosk, 0, 0.9, 0, 2, 1.8, 0.95, mat("#152226", 0.5, 0.3));
+  box(kiosk, 0, 1.9, 0, 2.5, 0.18, 1.2, mat("#d4a953", 0.65, 0.25));
+  label(
+    kiosk,
+    "THE BIG BOX",
+    0,
+    2.15,
+    0.05,
+    2.3,
+    0.58,
+    "#eecf8b",
+    "#132428",
+    72,
+  );
+  box(kiosk, 0, 1.2, 0.51, 1.85, 1, 0.08, mat("#070d12"));
+  label(
+    kiosk,
+    "FIND YOUR NEXT GAME\nTAP TO EXPLORE",
+    0,
+    1.21,
+    0.56,
+    1.73,
+    0.87,
+    "#c9ddd9",
+    "#132327",
+    61,
+  );
+  solid(0, 5, 2.5, 1.3);
+  station("bigbox", "BROWSE THE GAMES", 0, 5, 2.5, 1.3, handlers.bigbox);
+  const jukebox = new T.Group();
+  jukebox.position.set(-21, 0, -7.8);
+  env.add(jukebox);
+  box(jukebox, 0, 1.5, 0, 2.4, 3, 0.9, mat("#251b29", 0.45, 0.35));
+  box(jukebox, 0, 1.55, 0.48, 2.1, 2.8, 0.12, mat("#a98252", 0.75, 0.3));
+  box(jukebox, 0, 1.55, 0.56, 1.87, 2.55, 0.1, mat("#171b26"));
+  label(
+    jukebox,
+    "BIG BANG\nJUKEBOX",
+    0,
+    2.4,
+    0.64,
+    1.6,
+    0.7,
+    "#f5c6e4",
+    "#24182c",
+    100,
+  );
+  const arch = new T.Mesh(
+    new T.TorusGeometry(0.68, 0.055, 8, 32, Math.PI),
+    glow("#da7cbe"),
+  );
+  arch.position.set(0, 2.25, 0.65);
+  jukebox.add(arch);
+  for (let i = 0; i < 9; i++)
+    box(
+      jukebox,
+      -0.65 + i * 0.16,
+      0.82,
+      0.65,
+      0.08,
+      1.2,
+      0.025,
+      mat(i % 2 ? "#c6a569" : "#6b5c78", 0.5),
+    );
+  station("jukebox", "PICK A RECORD", -21, -7.8, 2.4, 1.2, handlers.jukebox);
+  solid(-21, -7.8, 2.5, 1.2);
+  for (const [x, z] of [
+    [-23, 3],
+    [-15, 3],
+  ]) {
+    box(env, x, 0.5, z, 3.5, 0.5, 1.4, mat("#77483e", 0.1, 0.9));
+    box(env, x, 0.95, z + 0.6, 3.5, 1, 0.25, mat("#77483e"));
+    solid(x, z, 3.5, 1.7);
+  }
+  box(env, -19, 0.45, 3, 2.4, 0.14, 1.1, mat("#7a6249", 0.3));
+  solid(-19, 3, 2.4, 1.1);
+  for (let i = 0; i < 3; i++) {
+    const x = -18 + i * 2;
+    box(env, x, 2.45, -9.6, 1.5, 1.5, 0.12, mat("#c1a365", 0.65));
+    const a = cylinder(
+      env,
+      x,
+      2.45,
+      -9.48,
+      0.53,
+      0.04,
+      mat("#10141c", 0.8, 0.2),
+    );
+    a.rotation.x = Math.PI / 2;
+    const b = cylinder(
+      env,
+      x,
+      2.45,
+      -9.44,
+      0.17,
+      0.04,
+      mat(["#bb666b", "#c5ad69", "#77aca4"][i]),
+    );
+    b.rotation.x = Math.PI / 2;
+  }
+  const accent = wall.accent,
+    backdrop = wall.backdrop;
+  const mood =
+    wall.style === "neon"
+      ? "#c477ce"
+      : wall.style === "studio"
+        ? "#eac694"
+        : accent;
+  for (let col = 0; col < 3; col++) {
+    const x = 13.5 + col * 4.5;
+    box(env, x, 1.9, -8.9, 3.9, 3.75, 0.3, mat(backdrop));
+    box(env, x, 0.1, -8.2, 4, 0.2, 1.8, mat("#b48b4d", 0.6));
+    for (let row = 0; row < 4; row++) {
+      const y = 0.35 + row * 0.85;
+      box(env, x, y, -8.1, 4, 0.08, 1.55, mat("#c8a56b", 0.7, 0.25));
+      box(env, x, y + 0.07, -7.35, 3.8, 0.025, 0.04, glow(accent));
+    }
+    solid(x, -8.2, 4, 1.8);
+  }
+  function sculpt(p, parent) {
+    const gold = mat("#c69d48", 0.8, 0.22),
+      dark = mat("#1d2330", 0.35, 0.3);
+    if (p.id === "mic") {
+      cylinder(parent, 0, 0.3, 0, 0.065, 0.45, gold);
+      sphere(parent, 0, 0.58, 0, 0.16, mat("#9eaab3", 0.8, 0.35));
+    } else if (p.id === "record") {
+      const a = cylinder(parent, 0, 0.33, 0, 0.31, 0.055, gold);
+      a.rotation.x = Math.PI / 2;
+      const b = cylinder(parent, 0, 0.33, 0.04, 0.11, 0.06, dark);
+      b.rotation.x = Math.PI / 2;
+    } else if (p.id === "ring") {
+      const a = new T.Mesh(new T.TorusGeometry(0.2, 0.07, 8, 24), gold);
+      a.position.y = 0.28;
+      parent.add(a);
+      box(parent, 0, 0.52, 0, 0.17, 0.16, 0.16, mat("#b8dfec", 0.5, 0.1));
+    } else if (p.id === "crown") {
+      cylinder(parent, 0, 0.16, 0, 0.24, 0.2, gold);
+      for (let i = 0; i < 7; i++) {
+        const a = (i * Math.PI * 2) / 7;
+        const spike = new T.Mesh(new T.ConeGeometry(0.085, 0.3, 4), gold);
+        spike.position.set(Math.cos(a) * 0.2, 0.35, Math.sin(a) * 0.2);
+        parent.add(spike);
+      }
+      sphere(parent, 0, 0.25, 0.25, 0.06, mat("#a52e45", 0.5, 0.2));
+    } else if (p.id === "belt") {
+      box(parent, 0, 0.26, 0, 0.95, 0.28, 0.07, dark);
+      const plate = sphere(parent, 0, 0.28, 0.06, 0.23, gold);
+      plate.scale.set(1.25, 0.85, 0.3);
+      label(parent, "BBA", 0, 0.28, 0.15, 0.3, 0.13, "#442c16", "#d1a84f", 90);
+    } else if (p.id === "trophy") {
+      cylinder(parent, 0, 0.15, 0, 0.22, 0.25, gold);
+      sphere(parent, 0, 0.37, 0, 0.17, gold);
+      for (const x of [-0.3, 0.3]) {
+        const h = new T.Mesh(
+          new T.TorusGeometry(0.17, 0.035, 8, 20, Math.PI * 1.5),
+          gold,
+        );
+        h.position.set(x, 0.4, 0);
+        parent.add(h);
+      }
+      box(parent, 0, 0.02, 0, 0.6, 0.09, 0.4, dark);
+    } else if (p.id === "beanie") {
+      sphere(parent, 0, 0.25, 0, 0.28, dark).scale.y = 0.6;
+      box(parent, 0.08, 0.23, 0.25, 0.4, 0.04, 0.25, dark);
+    } else if (p.id === "shades") {
+      for (const x of [-0.17, 0.17]) {
+        const a = cylinder(parent, x, 0.3, 0, 0.14, 0.05, dark);
+        a.rotation.x = Math.PI / 2;
+      }
+      box(parent, 0, 0.34, 0, 0.14, 0.04, 0.05, gold);
+    } else if (p.id === "hoodie") {
+      box(parent, 0, 0.3, 0, 0.36, 0.45, 0.16, mat("#8d3439"));
+      for (const x of [-0.26, 0.26])
+        box(parent, x, 0.34, 0, 0.15, 0.4, 0.14, mat("#8d3439")).rotation.z =
+          x > 0 ? 0.3 : -0.3;
+      sphere(parent, 0, 0.57, 0, 0.17, mat("#8d3439"));
+    } else if (p.id === "boots") {
+      for (const x of [-0.13, 0.13]) {
+        box(parent, x, 0.21, 0, 0.18, 0.3, 0.22, dark);
+        box(parent, x, 0.07, 0.12, 0.19, 0.12, 0.4, mat("#b49769"));
+      }
+    } else
+      label(
+        parent,
+        p.icon + "\n" + p.name,
+        0,
+        0.3,
+        0.02,
+        0.75,
+        0.6,
+        accent,
+        backdrop,
+        70,
+      );
+  }
+  for (const p of prizes.filter((p) => p.visible && !p.real)) {
+    const col = p.shelf % 3,
+      row = Math.floor(p.shelf / 3),
+      group = new T.Group();
+    group.position.set(13.5 + col * 4.5, 0.46 + row * 0.85, -8.05);
+    group.rotation.y = T.MathUtils.degToRad(p.rotation);
+    group.scale.setScalar(p.scale);
+    env.add(group);
+    if (p.model)
+      new GLTFLoader().load(
+        p.model,
+        (gltf) => {
+          if (disposed) {
+            gltf.scene.traverse((o) => o.geometry?.dispose());
+            return;
+          }
+          const bounds = new T.Box3().setFromObject(gltf.scene),
+            size = bounds.getSize(new T.Vector3()),
+            center = bounds.getCenter(new T.Vector3());
+          gltf.scene.scale.setScalar(0.65 / Math.max(size.x, size.y, size.z));
+          gltf.scene.position.copy(center).multiplyScalar(-gltf.scene.scale.x);
+          gltf.scene.position.y += 0.35;
+          group.add(gltf.scene);
+        },
+        undefined,
+        () => sculpt(p, group),
+      );
+    else if (p.image) {
+      box(group, 0, 0.35, -0.05, 0.85, 0.65, 0.06, mat("#c9aa70", 0.7));
+      image(group, p.image, 0, 0.35, 0, 0.77, 0.57);
+    } else sculpt(p, group);
+    label(
+      env,
+      p.name.toUpperCase() + " / " + p.cost + " TOKENS",
+      group.position.x,
+      group.position.y - 0.13,
+      -7.3,
+      3.4,
+      0.17,
+      "#e1d7be",
+      backdrop,
+      50,
+    );
+  }
+  const galleryLight = new T.PointLight(mood, 24 * wall.lighting, 19, 2);
+  galleryLight.position.set(18, 3, -4);
+  scene.add(galleryLight);
+  station(
+    "prizes",
+    "EXPLORE THE PRIZE GALLERY",
+    18,
+    -8,
+    12,
+    1.8,
+    handlers.prizes,
+  );
+  for (const [id, title, x, z, color] of [
+    ["scores", "HALL OF FAME", -6, 12.9, "#96c9ba"],
+    ["closet", "MY COLLECTION", 6, 12.9, "#e3ba78"],
+    ["credits", "THE PEOPLE BEHIND THE PLAY", -24, 6.5, "#e0b0cf"],
+    ["donate", "KEEP THE LIGHTS ON", 24, 6.5, "#efba78"],
+  ]) {
+    label(env, title, x, 2.2, z, 3.5, 1, color, "#1b2c31", 65).rotation.y =
+      Math.PI;
+    station(id, title, x, z, 3.5, 0.3, handlers[id]);
+    stations[id].arrival = { x, z: z - 2.2 };
+    stations[id].yaw = Math.PI;
+  }
+  // Merge repeated solid architecture, retaining independent screen and artwork meshes.
+  scene.updateMatrixWorld(true);
+  const groups = new Map(),
+    remove = [];
+  env.traverse((o) => {
+    if (o.isMesh && !o.material.map) {
+      const k = o.material.uuid,
+        arr = groups.get(k) || [];
+      const geo = o.geometry.clone();
+      arr.push(
+        (geo.index ? geo.toNonIndexed() : geo).applyMatrix4(o.matrixWorld),
+      );
+      groups.set(k, arr);
+      remove.push(o);
+    }
+  });
+  for (const [k, geoms] of groups) {
+    const m = remove.find((o) => o.material.uuid === k).material,
+      combined = mergeGeometries(geoms, false);
+    if (combined) scene.add(new T.Mesh(combined, m));
+    geoms.forEach((g) => g.dispose());
+  }
+  remove.forEach((o) => {
+    o.parent.remove(o);
+    o.geometry.dispose();
+  });
+  const { createNavigation } = await import("./src/navigation.js");
+  const nav = await createNavigation(obstacles);
+  function resize() {
+    const w = canvas.clientWidth,
+      h = canvas.clientHeight;
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+  }
   resize();
-  return { stations, render, pick, hfov, vfov: () => fov };
+  const observer = new ResizeObserver(resize);
+  observer.observe(canvas);
+  let lost = false;
+  const onLost = (e) => {
+    e.preventDefault();
+    lost = true;
+    canvas.dispatchEvent(
+      new CustomEvent("room-error", {
+        detail: "Graphics paused. Reload to return to the arcade.",
+      }),
+    );
+  };
+  canvas.addEventListener("webglcontextlost", onLost);
+  const raycaster = new T.Raycaster();
+  function render(p, time) {
+    if (lost || disposed) return;
+    camera.position.set(p.x, p.eye || 1.72, p.z);
+    camera.rotation.set(p.pitch || 0, -p.yaw, 0);
+    if (!matchMedia("(prefers-reduced-motion:reduce)").matches)
+      for (const a of animated)
+        a.object.material.color.setScalar(
+          0.94 + Math.sin(time * 0.7 + a.phase) * 0.035,
+        );
+    renderer.render(scene, camera);
+  }
+  function pick(x, y) {
+    const r = canvas.getBoundingClientRect();
+    raycaster.setFromCamera(
+      new T.Vector2(
+        ((x - r.left) / r.width) * 2 - 1,
+        (-(y - r.top) / r.height) * 2 + 1,
+      ),
+      camera,
+    );
+    return (
+      stations[
+        raycaster.intersectObjects(pickables, false)[0]?.object.userData.station
+      ] || null
+    );
+  }
+  return {
+    stations,
+    render,
+    pick,
+    ...nav,
+    getZone: (p) =>
+      p.z < -14 ? "lab" : p.x < -10 ? "lounge" : p.x > 10 ? "gallery" : "main",
+    renderer,
+    dispose() {
+      disposed = true;
+      observer.disconnect();
+      canvas.removeEventListener("webglcontextlost", onLost);
+      nav.dispose();
+      scene.traverse((o) => {
+        o.geometry?.dispose();
+        if (o.material)
+          for (const m of Array.isArray(o.material) ? o.material : [o.material])
+            m.dispose();
+      });
+      textures.forEach((t) => t.dispose());
+      renderer.dispose();
+    },
+  };
 }

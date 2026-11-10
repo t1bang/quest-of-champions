@@ -2,16 +2,16 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <title>Big Bang Arcade</title>
-<meta name="description" content="Walk the Big Bang Arcade: Quest of Champions, T1 Versus, Guerilla City and Gamerboy. Win tokens, hit the prize wall, run the jukebox.">
+<meta name="description" content="Walk the Big Bang Arcade: Quest of Champions, T1 Vs., Gorilla City 2032 and GAMEBBOY. Win tokens, hit the prize wall, run the jukebox.">
 <meta name="theme-color" content="#0b0612">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bungee&family=Press+Start+2P&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<canvas id="view"></canvas>
+<canvas id="view" aria-label="Walkable Big Bang Arcade"></canvas>
 
 <header id="hud">
   <div class="logo">BIG BANG<span>ARCADE</span></div>
@@ -22,23 +22,23 @@
     <button id="snd" aria-label="Music on or off">♪</button>
   </div>
 </header>
-<div id="hint">DRAG TO LOOK · TAP A MACHINE TO WALK UP</div>
+<div id="preview-banner" hidden>OWNER PREVIEW · <a href="owner.html">BACK TO EDITOR</a></div><div id="location-chip"><span class="live-dot"></span><span id="zone-name">Main floor</span></div><div id="hint">WASD TO MOVE · DRAG TO LOOK · M FOR MAP</div>
 <button id="act" hidden></button>
 <div id="stick" aria-hidden="true"><i></i></div>
 
-<div id="panel" hidden><div class="box"><button class="x" aria-label="Close">✕</button><div id="pbody"></div></div></div>
+<div id="panel" role="dialog" aria-modal="true" aria-label="Arcade menu" hidden><div class="box"><button class="x" aria-label="Close">✕</button><div id="pbody"></div></div></div>
 
 <div id="gf" hidden>
   <div class="gfbar"><b></b><a target="_blank" rel="noopener">OPEN IN NEW TAB</a><button>✕ EXIT GAME</button></div>
-  <iframe allow="autoplay; fullscreen; gamepad"></iframe>
+  <iframe title="Arcade game" allow="autoplay; fullscreen; gamepad"></iframe>
 </div>
 
 <div id="gate">
   <div class="gbox">
     <div class="glogo">BIG BANG<span>ARCADE</span></div>
-    <p class="gsub">4 GAMES · REAL TOKENS · PRIZE WALL · JUKEBOX</p>
+    <p class="gsub">PLAY YOUR WAY. MAKE SOME NOISE.</p>
     <input id="gname" maxlength="16" placeholder="PLAYER NAME" autocomplete="off">
-    <button id="genter">ENTER THE ARCADE</button>
+    <button id="genter" disabled>LOADING THE ARCADE…</button>
     <p class="gcred">Created by Chuck Crawley &amp; Tone Da Boss · T1 Entertainment</p>
   </div>
 </div>
