@@ -52,7 +52,7 @@ export const COVERS = {
      ${svgSprite(HERO, PAL.hero, 14, 120, 8)}${svgSprite(HERO, PAL.rival, 174, 120, 8, true)}
      <text x="150" y="112" text-anchor="middle" font-family="Bungee,Impact,sans-serif" font-size="40" fill="#fff" stroke="#000" stroke-width="2">VS</text>
      <rect y="290" width="300" height="110" fill="#000" opacity=".55"/>
-     ${title(['T1', 'VENDETTA'], '#ffb400', '#c40d1e', 326, 36)}`),
+     ${title(['T1', 'VERSUS'], '#ffb400', '#c40d1e', 326, 36)}`),
   guerilla: frame('Open World', '#35e06f',
     `<defs><linearGradient id="cg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#03130a"/><stop offset="1" stop-color="#0f5a2c"/></linearGradient></defs>
      <rect width="300" height="400" fill="url(#cg)"/><circle cx="226" cy="84" r="34" fill="#d8ffe6" opacity=".9"/>
@@ -138,7 +138,7 @@ const SCENES = {
 };
 const CAPTIONS = {
   quest: ['GRAB THE MIC', 'COLLECT THE RECORDS', 'COURT. GRIDIRON. HUSTLEMANIA.', 'BECOME A CHAMPION'],
-  vendetta: ['21 FIGHTERS', 'ROUND 1... FIGHT!', 'SETTLE THE SCORE', 'PLAY ONLINE'],
+  vendetta: ['T1 VERSUS', '21 FIGHTERS', 'ROUND 1... FIGHT!', 'SETTLE THE SCORE'],
   guerilla: ['ONE BIG CITY', 'GO ANYWHERE', 'RUN THE STREETS', 'OWN THE MAP'],
   gamerboy: ['JUMP IN', 'GRAB EVERY GEM', 'EXPLORE EVERY WORLD', 'ADVENTURE AWAITS'],
 };

@@ -99,28 +99,44 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers) {
   const add = (id, label, T, w, depth, h, open) => { const p = tf(T, [0, 0, depth / 2]), r = Math.max(w, depth) / 2 + 10; stations[id] = { id, label, x: T.x, z: T.z, w, depth, T, open, min: [p[0] - r, 0, p[2] - r], max: [p[0] + r, h, p[2] + r] }; };
   const dark = solid('#12121c', 0, 0.5), metal = solid('#2a2a38', 0, 0.8);
 
-  // ---------- game cabinets ----------
-  const coinT = tex(256, 256, (x, w) => { x.fillStyle = '#0c0c14'; x.fillRect(0, 0, w, w); x.fillStyle = '#23232f'; x.fillRect(58, 70, 60, 110); x.fillRect(138, 70, 60, 110); x.fillStyle = '#ffc93a'; x.fillRect(82, 96, 12, 34); x.fillRect(162, 96, 12, 34); text(x, 'INSERT TOKEN', 128, 218, `15px ${PIX}`, '#ffc93a'); });
-  const coinM = mat(coinT, { emis: 0.35 });
+  // ---------- game cabinets (classic upright shape; art wraps come from config `cab`) ----------
+  function tri(m, T, a, b, c, ua, ub, uc) {
+    const [A_, B_, C_] = [a, b, c].map(p => tf(T, p)), e1 = [B_[0] - A_[0], B_[1] - A_[1], B_[2] - A_[2]], e2 = [C_[0] - A_[0], C_[1] - A_[1], C_[2] - A_[2]];
+    const n = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]], l = Math.hypot(...n) || 1;
+    [[A_, ua], [B_, ub], [C_, uc]].forEach(([p, u]) => m.v.push(p[0], p[1], p[2], n[0] / l, n[1] / l, n[2] / l, u[0], u[1]));
+  }
+  function sphere(m, T, cx, cy, cz, rad) {
+    const pt = (i, j) => { const th = i / 6 * Math.PI, ph = j / 10 * Math.PI * 2; return [cx + rad * Math.sin(th) * Math.cos(ph), cy + rad * Math.cos(th), cz + rad * Math.sin(th) * Math.sin(ph)]; };
+    for (let i = 0; i < 6; i++) for (let j = 0; j < 10; j++) quad(m, T, pt(i, j), pt(i, j + 1), pt(i + 1, j + 1), pt(i + 1, j));
+  }
+  const imgTex = (src, w, h) => withImg(src, w, h, (x, W, H, e) => { x.fillStyle = '#0c0c14'; x.fillRect(0, 0, W, H); if (e.ok) x.drawImage(e.im, 0, 0, W, H); });
+  // side-view outline, [z, y] from the floor up the front to the top-back
+  const OUT = [[150, 0], [150, 205], [205, 225], [205, 238], [125, 262], [95, 400], [150, 405], [150, 470], [20, 470], [0, 445]];
+  const PARTS = [[[0, 0], [150, 0], [150, 205], [0, 205]], [[0, 205], [150, 205], [205, 225], [205, 238], [125, 262], [0, 262]], [[0, 262], [125, 262], [95, 400], [0, 400]], [[0, 400], [95, 400], [150, 405], [150, 470], [20, 470], [0, 445]]];
+  const coinT = imgTex('assets/cabs/versus-coin.jpg', 256, 256);
   GAMES.forEach((g, i) => {
-    const T = { x: -540 + i * 360, z: -698, th: 0 };
-    const screen = mat(withImg(g.art, 512, 512, (x, w, h, e) => { x.fillStyle = '#000'; x.fillRect(0, 0, w, h); if (e.ok) { x.save(); x.scale(1, h / (w * 0.75)); x.globalAlpha = .35; drawFit(x, e, 0, 0, w, w * .75, true); x.globalAlpha = 1; x.fillStyle = 'rgba(0,0,0,.45)'; x.fillRect(0, 0, w, w * .75); drawFit(x, e, 0, 0, w, w * .75, false); x.restore(); } x.fillStyle = 'rgba(255,255,255,.05)'; for (let y = 0; y < h; y += 4) x.fillRect(0, y, w, 1); }), { emis: 1, spec: 0.6 });
-    const marq = mat(tex(512, 128, (x, w, h) => { x.fillStyle = g.color; x.fillRect(0, 0, w, h); x.fillStyle = 'rgba(255,255,255,.25)'; x.fillRect(0, 0, w, 10); fitText(x, g.title.toUpperCase(), w / 2, h / 2 + 4, 62, w - 36, '#0b0612'); }), { emis: 1, spec: 0 });
-    const side = mat(tex(256, 512, (x, w, h) => { x.fillStyle = '#0c0c14'; x.fillRect(0, 0, w, h); x.fillStyle = g.color; for (let k = 0; k < 3; k++) { x.beginPath(); x.moveTo(0, 140 + k * 70); x.lineTo(w, 40 + k * 70); x.lineTo(w, 70 + k * 70); x.lineTo(0, 170 + k * 70); x.fill(); } text(x, 'T1', w / 2, 400, `110px ${BIG}`, g.color); }), { spec: 0.5 });
-    const col = solid(g.color, 1, 0);
-    box(side, T, -125, -112, 0, 470, 0, 150); box(side, T, 112, 125, 0, 470, 0, 150);
-    box(dark, T, -112, 112, 0, 200, 0, 140, { front: coinM });
-    box(metal, T, -125, 125, 200, 222, 60, 205);
-    box(solid('#d8d8e0', 0, 1), T, -72, -60, 222, 258, 150, 162); box(solid('#ff2a3c', 0.6, 1), T, -78, -54, 258, 280, 144, 168);
-    [10, 46, 82].forEach(bx => box(col, T, bx, bx + 22, 222, 230, 150, 172));
-    box(dark, T, -112, 112, 222, 400, 0, 62);
-    quad(screen, T, [-102, 392, 68], [102, 392, 68], [102, 234, 96], [-102, 234, 96]);
-    box(dark, T, -125, 125, 400, 470, 0, 150, { front: marq });
-    glow(g.color, T, 0, 315, 120, 420, 330); glow(g.color, T, 0, 436, 160, 420, 150);
-    quad(neon(g.genre.toUpperCase(), g.color), T, [-150, 548, 5], [150, 548, 5], [150, 482, 5], [-150, 482, 5]);
-    glow(g.color, T, 0, 515, 12, 460, 150);
-    light(T, [0, 280, 260], g.color, 1.15);
-    add(g.id, 'PLAY ' + g.title.toUpperCase(), T, 250, 200, 470, () => handlers.game(g));
+    const T = { x: -540 + i * 360, z: -698, th: 0 }, c = g.cab, trimC = g.trim || g.color;
+    const scr = imgTex(c ? c + '-screen.jpg' : g.art, 512, 512);
+    const screen = mat(c ? scr : withImg(g.art, 512, 512, (x, w, h, e) => { x.fillStyle = '#000'; x.fillRect(0, 0, w, h); if (e.ok) { x.save(); x.scale(1, h / (w * 0.75)); x.globalAlpha = .35; drawFit(x, e, 0, 0, w, w * .75, true); x.globalAlpha = 1; x.fillStyle = 'rgba(0,0,0,.45)'; x.fillRect(0, 0, w, w * .75); drawFit(x, e, 0, 0, w, w * .75, false); x.restore(); } }), { emis: 1, spec: 0.7 });
+    const marq = mat(c ? imgTex(c + '-marquee.jpg', 512, 128) : tex(512, 128, (x, w, h) => { const gr = x.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#1a0b2b'); gr.addColorStop(1, g.color); x.fillStyle = gr; x.fillRect(0, 0, w, h); fitText(x, g.title.toUpperCase(), w / 2, h / 2 + 4, 66, w - 36, '#ffc93a', '#000'); }), { emis: 1, spec: 0 });
+    const side = mat(c ? imgTex(c + '-side.jpg', 256, 512) : withImg(g.art, 256, 512, (x, w, h, e) => { const gr = x.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#1a0b2b'); gr.addColorStop(1, g.color); x.fillStyle = gr; x.fillRect(0, 0, w, h); x.globalAlpha = .9; drawFit(x, e, 14, 150, w - 28, 230, true); x.globalAlpha = 1; x.strokeStyle = '#000'; x.lineWidth = 6; x.strokeRect(14, 150, w - 28, 230); x.save(); x.translate(w / 2, 86); x.rotate(-0.12); fitText(x, g.title.toUpperCase(), 0, 0, 44, w - 30, '#ffc93a', '#000'); x.restore(); text(x, 'T1', w / 2, 448, `80px ${BIG}`, '#fff', '#000'); }), { emis: 0.55, spec: 0.4 });
+    const panel = mat(c ? imgTex(c + '-panel.jpg', 512, 128) : tex(512, 128, (x, w, h) => { const gr = x.createLinearGradient(0, 0, w, 0); gr.addColorStop(0, '#1a0b2b'); gr.addColorStop(.5, g.color); gr.addColorStop(1, '#1a0b2b'); x.fillStyle = gr; x.fillRect(0, 0, w, h); x.fillStyle = 'rgba(0,0,0,.45)'; x.fillRect(0, 0, w, h); for (const ox of [150, 390]) for (let k = 0; k < 6; k++) { x.fillStyle = '#000'; x.beginPath(); x.arc(ox + (k % 3) * 34, 44 + (k / 3 | 0) * 34, 15, 0, 7); x.fill(); x.fillStyle = k < 3 ? '#ffc93a' : g.color; x.beginPath(); x.arc(ox + (k % 3) * 34, 42 + (k / 3 | 0) * 34, 12, 0, 7); x.fill(); } text(x, 'P1 START      P2 START', w / 2, 112, `10px ${PIX}`, '#fff'); }), { emis: 0.6, spec: 0.5 });
+    const base = mat(c ? imgTex(c + '-base.jpg', 512, 128) : tex(512, 128, (x, w, h) => { x.fillStyle = '#0c0c14'; x.fillRect(0, 0, w, h); x.fillStyle = g.color; x.fillRect(0, 0, w, 6); for (let k = 0; k < 16; k++) { const bh = 20 + (k * 37 % 5) * 9; x.globalAlpha = .55; x.fillRect(k * 32 + 2, 62 - bh, 28, bh); } x.globalAlpha = 1; x.fillStyle = '#000'; x.fillRect(0, 62, w, 66); text(x, '——  BIG BANG ARCADE  ——', w / 2, 96, `17px ${PIX}`, '#ffc93a'); }), { emis: 0.6, spec: 0.3 });
+    const coin = mat(c ? imgTex(c + '-coin.jpg', 256, 256) : coinT, { emis: 0.45, spec: 0.6 }), trim = solid(trimC, 0.5, 0.9);
+    const P3 = (x, p) => [x, p[1], p[0]], uvS = (p, flip) => [flip ? 1 - p[0] / 205 : p[0] / 205, 1 - p[1] / 470];
+    for (const [sx, flip] of [[-125, false], [125, true]]) for (const part of PARTS) for (let k = 1; k < part.length - 1; k++) tri(side, T, P3(sx, part[0]), P3(sx, part[k]), P3(sx, part[k + 1]), uvS(part[0], flip), uvS(part[k], flip), uvS(part[k + 1], flip));
+    const span = (m, lo, hi, x0 = -113, x1 = 113) => quad(m, T, [x0, hi[1], hi[0]], [x1, hi[1], hi[0]], [x1, lo[1], lo[0]], [x0, lo[1], lo[0]]);
+    for (let k = 0; k < OUT.length - 1; k++) { span(trim, OUT[k], OUT[k + 1], -125, -113); span(trim, OUT[k], OUT[k + 1], 113, 125); }
+    span(dark, OUT[0], OUT[1]); span(base, [151, 4], [151, 62]); span(coin, [151, 80], [151, 192], -58, 58);
+    span(dark, OUT[1], OUT[2]); span(trim, OUT[2], OUT[3]); span(panel, OUT[3], OUT[4]); span(dark, OUT[4], OUT[5]);
+    span(screen, [124, 274], [99.5, 391], -97, 97);
+    span(dark, OUT[5], OUT[6]); span(marq, OUT[6], OUT[7]); span(dark, OUT[7], OUT[8]); span(dark, OUT[8], OUT[9]);
+    for (const jx of [-80, 33]) { box(solid('#16161c', 0, 1), T, jx - 3, jx + 3, 250, 280, 160, 166); sphere(solid(c ? trimC : '#ff2a3c', 0.35, 1), T, jx, 287, 163, 11); }
+    glow(g.color, T, 0, 330, 135, 420, 330); glow(g.color, T, 0, 438, 160, 420, 150);
+    quad(neon(g.genre.toUpperCase(), g.color), T, [-150, 550, 5], [150, 550, 5], [150, 488, 5], [-150, 488, 5]);
+    glow(g.color, T, 0, 518, 12, 460, 150);
+    light(T, [0, 290, 270], g.color, 1.15);
+    add(g.id, 'PLAY ' + g.title.toUpperCase(), T, 250, 205, 470, () => handlers.game(g));
   });
 
   // ---------- Big Box ----------
@@ -239,5 +255,5 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers) {
   }
   const hfov = () => 2 * Math.atan(Math.tan(fov / 2) * asp);
   resize();
-  return { stations, render, pick, hfov };
+  return { stations, render, pick, hfov, vfov: () => fov };
 }

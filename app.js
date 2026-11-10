@@ -76,7 +76,7 @@ function goTo(id) {
   const s = stations[id]; if (!s) return;
   closePanel(); $('#hint').style.opacity = 0;
   if (!room) return s.open();
-  const d = (s.depth || 0) + Math.max(190, Math.min(460, (s.w / 2) / Math.tan(room.hfov() / 2) * 1.15));
+  const d = (s.depth || 0) + Math.max(190, Math.min(410, Math.max((s.w / 2) / Math.tan(room.hfov() / 2) * 1.15, (s.max[1] / 2) / Math.tan(room.vfov() / 2))));
   const to = { x: Math.max(-690, Math.min(690, s.x + Math.sin(s.T.th) * d)), z: Math.max(ZMIN, Math.min(ZMAX, s.z + Math.cos(s.T.th) * d)) };
   collide(); goal = { path: route(to), yaw: -s.T.th, id, t: 0 };
 }
