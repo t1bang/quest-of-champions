@@ -1,6 +1,12 @@
 # Big Bang Arcade
 
-Free browser games from T1 Entertainment. The arcade home page is `index.html`; each game lives in its own folder under `games/`.
+Free browser games from T1 Entertainment. Created by Chuck Crawley and Tone Da Boss.
+
+The home page (`index.html`) is a walk-around 3D arcade: `room.js` draws the room, `app.js` runs the controls and panels, `art.js` holds original cover art and trailers, and `api/arcade.js` is the online database (players, tokens, closet, leaderboards, comments). **Edit `config.js`** to change game links, songs, donate links and socials, and `prizes.js` for the prize wall. The earlier simple home page is kept as `classic.html`. Each game lives in its own folder under `games/`.
+
+Games report scores to the arcade with `parent.postMessage({ bba: 'score', score: 1234 }, '*')`.
+
+The database uses Vercel Blob (connect a Blob store to the project) or Upstash Redis if its environment variables are present.
 
 | Game | Folder | Own domain |
 |---|---|---|

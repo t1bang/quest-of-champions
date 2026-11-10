@@ -328,12 +328,13 @@ function spawnEnemy(kind,x){
 function spawnBoss(){const b=L.boss;boss={x:camX+W+100,y:player.z,z:player.z,vx:0,vy:0,face:-1,hp:b.hp,maxHp:b.hp,speed:b.speed,o:b.o,moves:b.moves,walk:0,attack:0,cd:90,hurt:0,charge:0,isBoss:true,stun:0};bossActive=true;msg=b.name;msgT=120;shake=20;}
 function puff(x,y,c,n=6,spd=3){for(let i=0;i<n;i++)particles.push({x,y,vx:rnd(-spd,spd),vy:rnd(-spd,spd)-1,life:rnd(15,35),c,sz:rnd(2,5)});}
 function floatText(x,y,s,c){particles.push({x,y,vx:0,vy:-1.2,life:40,txt:s,c});}
+function bbaReport(){try{if(parent!==window)parent.postMessage({bba:'score',score:score},'*');}catch(e){}}
 function addScore(n,x,y){score+=n;if(x!==undefined)floatText(x,y,'+'+n,'#f2c94c');}
 function hurtPlayer(d,kx){
   if(player.inv>0||win||state!=='play'||player.down>0)return;player.chargeP=0;player.chargeK=0;player.hp-=d;player.inv=60;player.hurt=12;player.vx=kx*5;player.vy=-5;player.y-=1;player.air=true;player.duck=false;shake=8;puff(player.x,player.y-40,'#e0202a',8);
   if(player.hp<=0){loseLife();}
 }
-function loseLife(){lives--;player.down=70;player.vx=0;if(lives<=0){player.down=99999;setTimeout(()=>{state='gameover';stopMusic();showLinks('gameover');},1400);}else{msg='LIFE LOST';msgT=60;}}
+function loseLife(){lives--;player.down=70;player.vx=0;if(lives<=0){player.down=99999;setTimeout(()=>{state='gameover';bbaReport();stopMusic();showLinks('gameover');},1400);}else{msg='LIFE LOST';msgT=60;}}
 function damageEnemy(e,d,kx,fire,byPlayer,isProj,assist){
   if(e.dead)return;if(e.isBoss&&assist)d=10;e.hp-=d;if(e.isBoss&&!byPlayer&&e.hp<3){e.hp=3;floatText(e.x,e.y-190,'FINISH HIM YOURSELF!','#f2c94c');}e.hurt=10;e.vx=kx*4;if(e.charge>0&&isProj){e.charge=0;floatText(e.x,e.y-90,'STOPPED!','#fff');}
   puff(e.x,e.y-40,fire?'#ff9a1a':'#fff',6);
@@ -343,7 +344,7 @@ function damageEnemy(e,d,kx,fire,byPlayer,isProj,assist){
     if(!e.isBoss){kills++;const n=e.isRef?3:1;for(let i=0;i<n;i++)pickups.push({type:'mic',x:e.x+(i-1)*34,z:e.z,life:1200});}
     if(e.isBoss){win=true;shake=30;setTimeout(()=>{finishLevel();},1800);}}
 }
-function finishLevel(){
+function finishLevel(){bbaReport();
   state='victory';save.beaten[level]=true;justUnlocked=(level<3&&save.unlocked<level+1);if(level<3&&save.unlocked<level+1)save.unlocked=level+1;persist();
   showLinks('victory');checkHighScore();if(!(entry&&entry.pending)){stopMusic();if(EMBED_VIDEO[level])showVideo(EMBED_VIDEO[level],[330,16,300,169]);}
 }
