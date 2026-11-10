@@ -209,7 +209,7 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers) {
   const I = ident();
   let fov = 1, asp = 1;
   function resize() {
-    const d = Math.min(devicePixelRatio || 1, innerWidth < 800 ? 1.5 : 2), w = Math.round(innerWidth * d), h = Math.round(innerHeight * d);
+    const d = Math.min(devicePixelRatio || 1, innerWidth < 800 ? 1.5 : 2) * (window.__scale || 1), w = Math.round(innerWidth * d), h = Math.round(innerHeight * d);
     if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
     gl.viewport(0, 0, w, h); asp = w / h; fov = asp > 1 ? 1.05 : 1.3;
   }

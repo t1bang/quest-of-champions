@@ -140,7 +140,7 @@ const CAPTIONS = {
   quest: ['GRAB THE MIC', 'COLLECT THE RECORDS', 'COURT. GRIDIRON. HUSTLEMANIA.', 'BECOME A CHAMPION'],
   vendetta: ['T1 VERSUS', '21 FIGHTERS', 'ROUND 1... FIGHT!', 'SETTLE THE SCORE'],
   guerilla: ['ONE BIG CITY', 'GO ANYWHERE', 'RUN THE STREETS', 'OWN THE MAP'],
-  gamerboy: ['JUMP IN', 'GRAB EVERY GEM', 'EXPLORE EVERY WORLD', 'ADVENTURE AWAITS'],
+  gamerboy: ['TONE DA BOSS + ENTRE LUCHÉ', 'JUMP THE ENEMIES', 'COLLECT THE RECORDS', 'RACE TO THE FLAGPOLE'],
 };
 // Plays a looping 12-second trailer on a canvas. Returns a stop function. onLoop fires each time it finishes.
 // shots = real screenshots/artwork: shown as a slow-zoom slideshow instead of the drawn scene.

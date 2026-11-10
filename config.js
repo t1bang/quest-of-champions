@@ -20,9 +20,11 @@ export const GAMES = [
     cab: 'assets/cabs/gorilla',
     art: 'assets/cabs/gorilla-cabinet.jpg',
     shots: ['assets/cabs/gorilla-screen.jpg', 'assets/cabs/gorilla-cabinet.jpg'] },
-  { id: 'gamerboy', title: 'Gamerboy', genre: 'Adventure', color: '#3ea8ff',
-    blurb: 'Jump in the handheld and adventure through every level.',
-    play: '', trailer: '' },
+  { id: 'gamerboy', title: 'Gamer Boyz', genre: 'Adventure', color: '#3ea8ff',
+    blurb: 'Tone Da Boss and Entre Luché run, jump and grab records in a handheld side-scroller synced to the song.',
+    play: 'https://gamer-boyz.vercel.app', trailer: '',
+    art: 'assets/gamerboyz-cover.jpg',
+    shots: ['assets/gamerboyz-cover.jpg'] },
 ];
 
 // Background music for the room. Temporary arcade loop until the real
