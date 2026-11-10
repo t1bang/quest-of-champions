@@ -30,3 +30,6 @@ export const PRIZES = [
 // minute = each minute a game window is open; fatality = T1 Versus; level = beating a Quest of Champions level;
 // social = one-time bonus for signing in with Google or Facebook.
 export const REWARDS = { daily: 25, play: 5, trailer: 3, song: 1, scorePer100: 1, scoreMax: 50, minute: 1, fatality: 3, level: 5, social: 5 };
+
+// The bar in the lounge.
+export const BAR = { beer: 2, tips: [1, 2, 5] };

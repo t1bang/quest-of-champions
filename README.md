@@ -71,3 +71,9 @@ A Tone Da Boss beat 'em up. Everything is one HTML file plus assets; no build st
 
 ## Shipping it as an app
 The game is a plain static site, so it wraps directly with Capacitor (iOS/Android) or can be added to a phone's home screen from the browser. High scores and the mute setting are stored in `localStorage` on the device.
+
+## Lounge, avatars and live players
+
+- The lounge (through the doorway at the front of the room) has a bar, couches, darts, pool, air hockey and bowling. The four games are simple timing mini-games.
+- The bar and avatars use two extra API actions, `spend` and `avatar`; the token rules `minute`, `level`, `fatality` and `social` are in `api/arcade.js` too. **The Supabase `bba_arcade` function must implement the same actions** for them to work on the live site.
+- Other players' avatars are shared through a Supabase Realtime broadcast channel (`bba-arcade-room`), so Realtime must be enabled on the project.
