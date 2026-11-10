@@ -2,11 +2,11 @@
 // Lit 3D cabinets, coloured point lights, glossy reflective floor, neon glow.
 const VS = `attribute vec3 aP;attribute vec3 aN;attribute vec2 aU;uniform mat4 uVP;uniform mat4 uM;varying vec3 vP;varying vec3 vN;varying vec2 vU;
 void main(){vec4 w=uM*vec4(aP,1.);vP=w.xyz;vN=mat3(uM)*aN;vU=aU;gl_Position=uVP*w;}`;
-const FS = `precision highp float;varying vec3 vP;varying vec3 vN;varying vec2 vU;uniform sampler2D uT;uniform vec3 uEye;uniform vec3 uLP[12];uniform vec3 uLC[12];
+const FS = `precision highp float;varying vec3 vP;varying vec3 vN;varying vec2 vU;uniform sampler2D uT;uniform vec3 uEye;uniform vec3 uLP[16];uniform vec3 uLC[16];
 uniform vec3 uTint;uniform float uEmis;uniform float uSpec;uniform float uAlpha;uniform float uMirror;
 void main(){if(uMirror>0.5&&vP.y<0.)discard;vec4 t=texture2D(uT,vU);if(t.a<0.04)discard;vec3 n=normalize(vN);vec3 v=normalize(uEye-vP);if(dot(n,v)<0.)n=-n;
 vec3 lit=vec3(.2,.17,.27);vec3 sp=vec3(0.);
-for(int i=0;i<12;i++){vec3 d=uLP[i]-vP;float r2=dot(d,d);vec3 l=d*inversesqrt(r2);float a=1./(1.+r2/160000.);lit+=uLC[i]*max(dot(n,l),0.)*a;sp+=uLC[i]*pow(max(dot(n,normalize(l+v)),0.),48.)*a;}
+for(int i=0;i<16;i++){vec3 d=uLP[i]-vP;float r2=dot(d,d);vec3 l=d*inversesqrt(r2);float a=1./(1.+r2/160000.);lit+=uLC[i]*max(dot(n,l),0.)*a;sp+=uLC[i]*pow(max(dot(n,normalize(l+v)),0.),48.)*a;}
 vec3 c=t.rgb*uTint*mix(lit,vec3(1.),uEmis)+sp*uSpec;float f=smoothstep(700.,2300.,length(uEye-vP))*.55;c=mix(c,vec3(.05,.02,.09),f*(1.-uEmis*.7));
 gl_FragColor=vec4(c,t.a*uAlpha);}`;
 
@@ -17,7 +17,7 @@ const rotX = a => { const c = Math.cos(a), s = Math.sin(a); return new Float32Ar
 const trans = (x, y, z) => { const m = ident(); m[12] = x; m[13] = y; m[14] = z; return m; };
 const persp = (fov, asp, n, f) => { const t = 1 / Math.tan(fov / 2); return new Float32Array([t / asp, 0, 0, 0, 0, t, 0, 0, 0, 0, (f + n) / (n - f), -1, 0, 0, 2 * f * n / (n - f), 0]); };
 
-export function buildRoom(canvas, GAMES, PRIZES, handlers) {
+export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = []) {
   const gl = canvas.getContext('webgl', { antialias: true, alpha: false, powerPreference: 'high-performance' });
   if (!gl) return null;
   const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(s)); return s; };
@@ -69,7 +69,7 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers) {
     quad(f.top || m, T, [x0, y1, z0], [x1, y1, z0], [x1, y1, z1], [x0, y1, z1]);
   }
   const glow = (c, T, cx, cy, z, w, h) => quad(glowM(c), T, [cx - w / 2, cy + h / 2, z], [cx + w / 2, cy + h / 2, z], [cx + w / 2, cy - h / 2, z], [cx - w / 2, cy - h / 2, z]);
-  const lights = []; const light = (T, p, c, k = 1) => { if (lights.length < 12) lights.push({ p: tf(T, p), c: rgb(c).map(v => v * k) }); };
+  const lights = []; const light = (T, p, c, k = 1) => { if (lights.length < 16) lights.push({ p: tf(T, p), c: rgb(c).map(v => v * k) }); };
 
   // ---------- room shell ----------
   const O = { x: 0, z: 0 }, HW = 800, HD = 700, ZF = 900, CH = 560;
@@ -89,7 +89,15 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers) {
   const floorM = mat(floorT, { floor: true, spec: 0.5 }), wallM = mat(wallT, { spec: 0.1 }), ceilM = mat(ceilT, { emis: 0.55, spec: 0 });
   quad(floorM, O, [-HW, 0, -HD], [HW, 0, -HD], [HW, 0, ZF], [-HW, 0, ZF], [0, 0, 8, 8]);
   quad(ceilM, O, [-HW, CH, ZF], [HW, CH, ZF], [HW, CH, -HD], [-HW, CH, -HD], [0, 0, 4, 4]);
-  quad(wallM, O, [-HW, CH, -HD], [HW, CH, -HD], [HW, 0, -HD], [-HW, 0, -HD], [0, 0, 4, 1]);
+  const DW = 150, CW = 350, CZ = -1500; // doorway half-width, hallway half-width, hallway end
+  quad(wallM, O, [-HW, CH, -HD], [-DW, CH, -HD], [-DW, 0, -HD], [-HW, 0, -HD], [0, 0, 1.625, 1]);
+  quad(wallM, O, [DW, CH, -HD], [HW, CH, -HD], [HW, 0, -HD], [DW, 0, -HD], [0, 0, 1.625, 1]);
+  quad(wallM, O, [-CW, CH, -HD], [-CW, CH, CZ], [-CW, 0, CZ], [-CW, 0, -HD], [0, 0, 2, 1]);
+  quad(wallM, O, [CW, CH, CZ], [CW, CH, -HD], [CW, 0, -HD], [CW, 0, CZ], [0, 0, 2, 1]);
+  quad(wallM, O, [-CW, CH, CZ], [CW, CH, CZ], [CW, 0, CZ], [-CW, 0, CZ], [0, 0, 1.75, 1]);
+  quad(floorM, O, [-CW, 0, CZ], [CW, 0, CZ], [CW, 0, -HD], [-CW, 0, -HD], [0, 0, 3.5, 4]);
+  quad(ceilM, O, [-CW, CH, -HD], [CW, CH, -HD], [CW, CH, CZ], [-CW, CH, CZ], [0, 0, 1.75, 2]);
+  light(O, [0, 430, -1050], '#ffffff', 0.5);
   quad(wallM, O, [HW, CH, ZF], [-HW, CH, ZF], [-HW, 0, ZF], [HW, 0, ZF], [0, 0, 4, 1]);
   quad(wallM, O, [-HW, CH, ZF], [-HW, CH, -HD], [-HW, 0, -HD], [-HW, 0, ZF], [0, 0, 4, 1]);
   quad(wallM, O, [HW, CH, -HD], [HW, CH, ZF], [HW, 0, ZF], [HW, 0, -HD], [0, 0, 4, 1]);
@@ -114,8 +122,8 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers) {
   const OUT = [[150, 0], [150, 205], [205, 225], [205, 238], [125, 262], [95, 400], [150, 405], [150, 470], [20, 470], [0, 445]];
   const PARTS = [[[0, 0], [150, 0], [150, 205], [0, 205]], [[0, 205], [150, 205], [205, 225], [205, 238], [125, 262], [0, 262]], [[0, 262], [125, 262], [95, 400], [0, 400]], [[0, 400], [95, 400], [150, 405], [150, 470], [20, 470], [0, 445]]];
   const coinT = imgTex('assets/cabs/versus-coin.jpg', 256, 256);
-  GAMES.forEach((g, i) => {
-    const T = { x: -540 + i * 360, z: -698, th: 0 }, c = g.cab, trimC = g.trim || g.color;
+  function cabinet(g, T, soon) {
+    const c = g.cab, trimC = g.trim || g.color;
     const scr = imgTex(c ? c + '-screen.jpg' : g.art, 512, 512);
     const screen = mat(c ? scr : withImg(g.art, 512, 512, (x, w, h, e) => { x.fillStyle = '#000'; x.fillRect(0, 0, w, h); if (e.ok) { x.save(); x.scale(1, h / (w * 0.75)); x.globalAlpha = .35; drawFit(x, e, 0, 0, w, w * .75, true); x.globalAlpha = 1; x.fillStyle = 'rgba(0,0,0,.45)'; x.fillRect(0, 0, w, w * .75); drawFit(x, e, 0, 0, w, w * .75, false); x.restore(); } }), { emis: 1, spec: 0.7 });
     const marq = mat(c ? imgTex(c + '-marquee.jpg', 512, 128) : tex(512, 128, (x, w, h) => { const gr = x.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#1a0b2b'); gr.addColorStop(1, g.color); x.fillStyle = gr; x.fillRect(0, 0, w, h); fitText(x, g.title.toUpperCase(), w / 2, h / 2 + 4, 66, w - 36, '#ffc93a', '#000'); }), { emis: 1, spec: 0 });
@@ -133,17 +141,31 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers) {
     span(dark, OUT[5], OUT[6]); span(marq, OUT[6], OUT[7]); span(dark, OUT[7], OUT[8]); span(dark, OUT[8], OUT[9]);
     for (const jx of [-80, 33]) { box(solid('#16161c', 0, 1), T, jx - 3, jx + 3, 250, 280, 160, 166); sphere(solid(c ? trimC : '#ff2a3c', 0.35, 1), T, jx, 287, 163, 11); }
     glow(g.color, T, 0, 330, 135, 420, 330); glow(g.color, T, 0, 438, 160, 420, 150);
+    if (soon) { quad(neon('COMING SOON', '#ffffff', 512, 128), T, [-96, 390, 102], [96, 390, 102], [96, 344, 111.5], [-96, 344, 111.5]); add(g.id, 'COMING SOON: ' + g.title.toUpperCase(), T, 250, 205, 470, () => handlers.soon(g)); return; }
     quad(neon(g.genre.toUpperCase(), g.color), T, [-150, 550, 5], [150, 550, 5], [150, 488, 5], [-150, 488, 5]);
     glow(g.color, T, 0, 518, 12, 460, 150);
     light(T, [0, 290, 270], g.color, 1.15);
     add(g.id, 'PLAY ' + g.title.toUpperCase(), T, 250, 205, 470, () => handlers.game(g));
-  });
+  }
+  GAMES.forEach((g, i) => cabinet(g, { x: [-600, -320, 320, 600][i], z: -698, th: 0 }));
+  SOON.forEach((g, i) => cabinet(g, { x: i % 2 ? CW - 2 : 2 - CW, z: i < 2 ? -930 : -1260, th: i % 2 ? -Math.PI / 2 : Math.PI / 2 }, true));
+  // hallway banner + vault door
+  { const B = { x: 0, z: -HD, th: 0 }, bn = neon('COMING SOON', '#ff4fd8', 1024, 128);
+    quad(bn, B, [-DW, 545, 2], [DW, 545, 2], [DW, 470, 2], [-DW, 470, 2]); glow('#ff4fd8', B, 0, 508, 8, 420, 170);
+    const V = { x: 0, z: CZ + 2, th: 0 };
+    const vt = tex(512, 512, (x, w) => { x.clearRect(0, 0, w, w); const g2 = x.createRadialGradient(256, 256, 30, 256, 256, 250); g2.addColorStop(0, '#dfe6f2'); g2.addColorStop(.6, '#8d97ab'); g2.addColorStop(1, '#3d4456'); x.fillStyle = '#20242f'; x.beginPath(); x.arc(256, 256, 254, 0, 7); x.fill(); x.fillStyle = g2; x.beginPath(); x.arc(256, 256, 226, 0, 7); x.fill();
+      x.strokeStyle = '#2a2f3c'; x.lineWidth = 10; x.beginPath(); x.arc(256, 256, 170, 0, 7); x.stroke(); for (let k = 0; k < 12; k++) { const a = k / 12 * Math.PI * 2; x.fillStyle = '#20242f'; x.beginPath(); x.arc(256 + Math.cos(a) * 198, 256 + Math.sin(a) * 198, 13, 0, 7); x.fill(); }
+      x.lineWidth = 18; x.strokeStyle = '#20242f'; for (let k = 0; k < 4; k++) { const a = k / 4 * Math.PI + .4; x.beginPath(); x.moveTo(256 - Math.cos(a) * 120, 256 - Math.sin(a) * 120); x.lineTo(256 + Math.cos(a) * 120, 256 + Math.sin(a) * 120); x.stroke(); } x.beginPath(); x.arc(256, 256, 120, 0, 7); x.stroke(); x.fillStyle = '#ffc93a'; x.beginPath(); x.arc(256, 256, 34, 0, 7); x.fill(); text(x, 'BB', 256, 258, `30px ${BIG}`, '#20242f'); });
+    quad(mat(vt, { spec: 1, emis: 0.25, blend: true }), V, [-215, 445, 6], [215, 445, 6], [215, 15, 6], [-215, 15, 6]);
+    box(solid('#20242f', 0, 0.9), V, -240, 240, 0, 470, 0, 4);
+    quad(neon('BIG BANG VAULT', '#3ea8ff', 1024, 128), V, [-250, 550, 4], [250, 550, 4], [250, 480, 4], [-250, 480, 4]); glow('#3ea8ff', V, 0, 512, 10, 620, 190);
+    light(V, [0, 300, 240], '#3ea8ff', 1.1); add('vault', 'OPEN THE BIG BANG VAULT', V, 430, 20, 470, handlers.vault); }
 
   // ---------- Big Box ----------
   const BB = { x: 0, z: 150, th: 0 };
   const bbT = tex(512, 512, (x, w, h) => {
     x.fillStyle = '#0b0b12'; x.fillRect(0, 0, w, h); x.strokeStyle = '#ffc93a'; x.lineWidth = 14; x.strokeRect(7, 7, w - 14, h - 14);
-    text(x, 'BIG BOX', w / 2, 62, `64px ${BIG}`, '#ffc93a');
+    fitText(x, 'BIG BANG BOX', w / 2, 60, 60, w - 50, '#ffc93a');
     GAMES.forEach((g, i) => { const X = 40 + (i % 2) * 222, Y = 108 + (i >> 1) * 176; x.fillStyle = g.color; x.fillRect(X - 4, Y - 4, 218, 164); x.fillStyle = '#000'; x.fillRect(X, Y, 210, 156); drawFit(x, img(g.art), X, Y, 210, 156, true); });
     text(x, 'SELECT YOUR GAME', w / 2, 480, `17px ${PIX}`, '#fff');
   });
@@ -152,9 +174,9 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers) {
   box(solid('#1a1a24', 0, 0.8), BB, -130, 130, 0, 290, -130, 130, { front: bbM, back: bbM, left: bbM, right: bbM });
   for (const [ex, ez] of [[-130, -130], [130, -130], [-130, 130], [130, 130]]) box(solid('#ffc93a', 1, 0), BB, ex - 6, ex + 6, 0, 296, ez - 6, ez + 6);
   light(BB, [0, 330, 260], '#ffc93a', 0.9);
-  const spinM = mat(tex(512, 128, (x, w, h) => { x.fillStyle = '#ffc93a'; x.fillRect(0, 0, w, h); text(x, '★ BIG BOX ★', w / 2, h / 2 + 4, `58px ${BIG}`, '#0b0612'); }), { emis: 1, spec: 0, dyn: 'spin' });
+  const spinM = mat(tex(512, 128, (x, w, h) => { x.fillStyle = '#ffc93a'; x.fillRect(0, 0, w, h); fitText(x, '★ BIG BANG BOX ★', w / 2, h / 2 + 4, 58, w - 24, '#0b0612'); }), { emis: 1, spec: 0, dyn: 'spin' });
   { const S = { x: 0, z: 0 }; box(spinM, S, -80, 80, -24, 24, -80, 80); }
-  stations.bigbox = { id: 'bigbox', label: 'OPEN THE BIG BOX', x: 0, z: 280, w: 260, depth: 0, T: { x: 0, z: 280, th: 0 }, open: handlers.bigbox, min: [-140, 0, 10], max: [140, 300, 290] };
+  stations.bigbox = { id: 'bigbox', label: 'OPEN THE BIG BANG BOX', x: 0, z: 280, w: 260, depth: 0, T: { x: 0, z: 280, th: 0 }, open: handlers.bigbox, min: [-140, 0, 10], max: [140, 300, 290] };
 
   // ---------- other stations ----------
   const panel = (w, h, color, draw) => mat(tex(512, 512, (x, W, H) => { x.fillStyle = '#0c0c14'; x.fillRect(0, 0, W, H); x.strokeStyle = color; x.lineWidth = 16; x.strokeRect(8, 8, W - 16, H - 16); draw(x, W, H); }), { emis: 0.85, spec: 0.3 });
@@ -203,8 +225,8 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers) {
   const data = new Float32Array(total * 8); for (const m of mats) { data.set(m.v, m.start * 8); m.v = null; }
   gl.bindBuffer(gl.ARRAY_BUFFER, buf); gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
   [[0, 3, 0], [1, 3, 12], [2, 2, 24]].forEach(([i, n, o]) => { gl.enableVertexAttribArray(A[i]); gl.vertexAttribPointer(A[i], n, gl.FLOAT, false, 32, o); });
-  gl.uniform3fv(U.uLP, new Float32Array(12 * 3).map((_, i) => (lights[i / 3 | 0] || { p: [0, 0, 0] }).p[i % 3]));
-  gl.uniform3fv(U.uLC, new Float32Array(12 * 3).map((_, i) => (lights[i / 3 | 0] || { c: [0, 0, 0] }).c[i % 3]));
+  gl.uniform3fv(U.uLP, new Float32Array(16 * 3).map((_, i) => (lights[i / 3 | 0] || { p: [0, 0, 0] }).p[i % 3]));
+  gl.uniform3fv(U.uLC, new Float32Array(16 * 3).map((_, i) => (lights[i / 3 | 0] || { c: [0, 0, 0] }).c[i % 3]));
   gl.uniform1i(U.uT, 0); gl.enable(gl.DEPTH_TEST); gl.clearColor(0.03, 0.015, 0.06, 1);
   const I = ident();
   let fov = 1, asp = 1;

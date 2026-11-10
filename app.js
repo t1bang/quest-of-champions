@@ -1,4 +1,4 @@
-import { GAMES, SONGS, MUSIC_PAGES, DONATE, SOCIALS, CLAIM_HELP, BGM } from './config.js';
+import { GAMES, SONGS, MUSIC_PAGES, DONATE, SOCIALS, CLAIM_HELP, BGM, SOON, VAULT, SOCIAL_AUTH } from './config.js';
 import { PRIZES, REWARDS, REAL_PRIZES_LIVE } from './prizes.js';
 import { COVERS, playTrailer } from './art.js';
 import { buildRoom } from './room.js';
@@ -37,12 +37,15 @@ async function join(name) {
 // ---------------- the 3D room ----------------
 const svgUrl = svg => 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
 GAMES.forEach(g => { g.art = g.art || svgUrl(COVERS[g.id]); });
+const soonCard = g => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400"><defs><linearGradient id="s" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#12081d"/><stop offset="1" stop-color="${g.color}"/></linearGradient></defs><rect width="400" height="400" fill="url(#s)"/><rect x="14" y="14" width="372" height="372" fill="none" stroke="#fff" stroke-width="6"/><text x="200" y="170" text-anchor="middle" font-family="Impact,'Arial Black',sans-serif" font-size="${g.title.length > 14 ? 40 : 54}" fill="#fff" stroke="#000" stroke-width="2">${g.title.toUpperCase()}</text><text x="200" y="250" text-anchor="middle" font-family="Impact,'Arial Black',sans-serif" font-size="34" fill="#ffc93a">COMING SOON</text><text x="200" y="330" text-anchor="middle" font-family="monospace" font-size="16" fill="#fff">BIG BANG ARCADE</text></svg>`;
+SOON.forEach(g => { g.art = g.art || svgUrl(soonCard(g)); });
 const cover = g => `<img src="${g.art}" alt="${g.title} cover art">`;
 await Promise.race([Promise.all([document.fonts.load('40px Bungee'), document.fonts.load('16px "Press Start 2P"')]).catch(() => {}), new Promise(r => setTimeout(r, 1800))]);
-const handlers = { game: g => openGame(g), bigbox: () => openBigBox(), jukebox: () => openJukebox(), closet: () => openCloset(), prizes: () => openPrizes(), scores: () => openBoard('all'), donate: () => openDonate(), credits: () => openCredits() };
-const room = buildRoom(view, GAMES, PRIZES, handlers);
+const handlers = { game: g => openGame(g), bigbox: () => openBigBox(), jukebox: () => openJukebox(), closet: () => openCloset(), prizes: () => openPrizes(), scores: () => openBoard('all'), donate: () => openDonate(), credits: () => openCredits(), soon: g => openSoon(g), vault: () => openVault() };
+const room = buildRoom(view, GAMES, PRIZES, handlers, SOON);
 const stations = room ? room.stations : Object.fromEntries([...GAMES.map(g => [g.id, { id: g.id, label: 'PLAY ' + g.title.toUpperCase(), open: () => openGame(g) }]),
-  ...[['bigbox', 'OPEN THE BIG BOX'], ['jukebox', 'OPEN THE JUKEBOX'], ['closet', 'OPEN MY CLOSET'], ['prizes', 'SHOP THE PRIZE WALL'], ['scores', 'SEE THE LEADERBOARD'], ['donate', 'DONATE'], ['credits', 'CREDITS + SOCIALS']].map(([id, label]) => [id, { id, label, open: handlers[id] }])]);
+  ...SOON.map(g => [g.id, { id: g.id, label: 'COMING SOON: ' + g.title.toUpperCase(), open: () => openSoon(g) }]),
+  ...[['vault', 'OPEN THE BIG BANG VAULT'], ['bigbox', 'OPEN THE BIG BANG BOX'], ['jukebox', 'OPEN THE JUKEBOX'], ['closet', 'OPEN MY CLOSET'], ['prizes', 'SHOP THE PRIZE WALL'], ['scores', 'SEE THE LEADERBOARD'], ['donate', 'DONATE'], ['credits', 'CREDITS + SOCIALS']].map(([id, label]) => [id, { id, label, open: handlers[id] }])]);
 if (!room) { $('#hint').textContent = 'YOUR BROWSER CANNOT SHOW THE 3D ROOM. USE THE MAP BUTTON.'; $('#stick').hidden = true; }
 
 // ---------------- movement + controls ----------------
@@ -50,8 +53,13 @@ const P = { x: 0, z: 780, yaw: 0, pitch: 0, eye: 300 }, keys = {}, joy = { x: 0,
 let goal = null, near = null, walkT = 0;
 const BZ = 150, BR = 215, ZMIN = -380, ZMAX = 790; // Big Box position + walkable depth
 const angDiff = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b));
+const LANE = 120, HEND = -1400, inHall = p => p.z < ZMIN; // the coming-soon hallway behind the cabinets
 function collide() {
-  P.x = Math.max(-690, Math.min(690, P.x)); P.z = Math.max(ZMIN, Math.min(ZMAX, P.z));
+  if (inHall(P)) {
+    if (Math.abs(P.x) > LANE) { if (P.z > ZMIN - 40) P.z = ZMIN; else P.x = Math.sign(P.x) * LANE; }
+    P.z = Math.max(HEND, P.z); if (inHall(P)) return;
+  }
+  P.x = Math.max(-690, Math.min(690, P.x)); P.z = Math.min(ZMAX, P.z);
   const dx = P.x, dz = P.z - BZ;
   if (Math.abs(dx) < BR && Math.abs(dz) < BR) { if (Math.abs(dx) > Math.abs(dz)) P.x = Math.sign(dx || 1) * BR; else P.z = Math.sign(dz || 1) * BR + BZ; }
 }
@@ -64,12 +72,12 @@ function blocked(a, b) {
   }
   return t0 < t1;
 }
-function route(to) {
+function route(from, to) {
   const K = BR + 12, C = [[-K, BZ - K], [K, BZ - K], [K, BZ + K], [-K, BZ + K]].map(([x, z]) => ({ x, z }));
-  if (!blocked(P, to)) return [to];
+  if (!blocked(from, to)) return [to];
   let best = null, bl = 1e9; const len = (...p) => p.slice(1).reduce((s, q, i) => s + Math.hypot(q.x - p[i].x, q.z - p[i].z), 0);
-  for (const c of C) if (!blocked(P, c) && !blocked(c, to) && len(P, c, to) < bl) { bl = len(P, c, to); best = [c, to]; }
-  for (let i = 0; i < 4; i++) for (const j of [(i + 1) % 4, (i + 3) % 4]) { const c = C[i], e = C[j]; if (!blocked(P, c) && !blocked(e, to) && len(P, c, e, to) < bl) { bl = len(P, c, e, to); best = [c, e, to]; } }
+  for (const c of C) if (!blocked(from, c) && !blocked(c, to) && len(from, c, to) < bl) { bl = len(from, c, to); best = [c, to]; }
+  for (let i = 0; i < 4; i++) for (const j of [(i + 1) % 4, (i + 3) % 4]) { const c = C[i], e = C[j]; if (!blocked(from, c) && !blocked(e, to) && len(from, c, e, to) < bl) { bl = len(from, c, e, to); best = [c, e, to]; } }
   return best || [to];
 }
 function goTo(id) {
@@ -77,8 +85,13 @@ function goTo(id) {
   closePanel(); $('#hint').style.opacity = 0;
   if (!room) return s.open();
   const d = (s.depth || 0) + Math.max(190, Math.min(410, Math.max((s.w / 2) / Math.tan(room.hfov() / 2) * 1.15, (s.max[1] / 2) / Math.tan(room.vfov() / 2))));
-  const to = { x: Math.max(-690, Math.min(690, s.x + Math.sin(s.T.th) * d)), z: Math.max(ZMIN, Math.min(ZMAX, s.z + Math.cos(s.T.th) * d)) };
-  collide(); goal = { path: route(to), yaw: -s.T.th, id, t: 0 };
+  let to = { x: s.x + Math.sin(s.T.th) * d, z: s.z + Math.cos(s.T.th) * d };
+  const hall = s.z < -700 || (s.T.th !== 0 && Math.abs(s.x) < 400 && s.z < -700);
+  to = hall ? { x: Math.max(-LANE + 10, Math.min(LANE - 10, to.x)), z: Math.max(HEND, Math.min(ZMIN - 60, to.z)) } : { x: Math.max(-690, Math.min(690, to.x)), z: Math.max(ZMIN, Math.min(ZMAX, to.z)) };
+  collide();
+  const door = { x: 0, z: ZMIN + 10 }, a = inHall(P), b = inHall(to);
+  const path = a === b ? (a ? [to] : route(P, to)) : a ? [door, ...route(door, to)] : [...route(P, door), to];
+  goal = { path, yaw: -s.T.th, id, t: 0 };
 }
 let last = performance.now();
 function frame(now) {
@@ -93,7 +106,7 @@ function frame(now) {
     const want = lastLeg && d < 260 ? goal.yaw : Math.atan2(dx, -dz), da = angDiff(d > step || lastLeg ? want : P.yaw, P.yaw);
     P.yaw += Math.abs(da) < 0.02 ? da : da * Math.min(1, dt * 6); P.pitch *= 1 - Math.min(1, dt * 5);
     goal.t += dt;
-    if ((lastLeg && d <= step && Math.abs(angDiff(goal.yaw, P.yaw)) < 0.05) || goal.t > 8) { const id = goal.id; goal = null; stations[id].open(); }
+    if ((lastLeg && d <= step && Math.abs(angDiff(goal.yaw, P.yaw)) < 0.05) || goal.t > 12) { const id = goal.id; goal = null; stations[id].open(); }
   } else if (f || st) {
     const sp = 430 * dt, s = Math.sin(P.yaw), c = Math.cos(P.yaw);
     P.x += (s * f + c * st) * sp; P.z += (-c * f + s * st) * sp; collide(); moving = true;
@@ -173,6 +186,7 @@ function openGame(g) {
     earn('play', g.id); closePanel();
     const gf = $('#gf'); gf.hidden = false; gf.dataset.game = g.id; gf.querySelector('b').textContent = g.title.toUpperCase();
     gf.querySelector('a').href = g.play; gf.querySelector('iframe').src = g.play; pauseBgm(true);
+    clearInterval(playTimer); playTimer = setInterval(() => { if (!gf.hidden && !document.hidden) earn('minute', g.id); }, 60000);
   };
   api('board', null, '&game=' + g.id).then(r => { const o = $('#grank'); if (o) o.innerHTML = rows(r.rows, ''); }).catch(() => { const o = $('#grank'); if (o) o.innerHTML = '<li class="dim">Leaderboard is offline.</li>'; });
   const loadC = () => api('comments', null, '&game=' + g.id).then(r => {
@@ -187,12 +201,18 @@ function openGame(g) {
     try { await api('comment', { game: g.id, text: inp.value }); inp.value = ''; loadC(); } catch (err) { toast(err.message.toUpperCase()); }
   };
 }
-$('#gf button').onclick = () => { const gf = $('#gf'); gf.hidden = true; gf.querySelector('iframe').src = 'about:blank'; pauseBgm(false); };
+let playTimer;
+$('#gf button').onclick = () => { const gf = $('#gf'); clearInterval(playTimer); gf.hidden = true; gf.querySelector('iframe').src = 'about:blank'; pauseBgm(false); };
 // Games report scores with: parent.postMessage({ bba: 'score', score: 1234 }, '*')
-addEventListener('message', e => { const gf = $('#gf'); if (!gf.hidden && e.data && e.data.bba === 'score') earn('score', gf.dataset.game, e.data.score); });
+// and events with: parent.postMessage({ bba: 'level' }, '*')  or  { bba: 'fatality' }
+addEventListener('message', e => {
+  const gf = $('#gf'), d = e.data; if (gf.hidden || !d) return;
+  if (d.bba === 'score') earn('score', gf.dataset.game, d.score);
+  if (d.bba === 'level' || d.bba === 'fatality') earn(d.bba, gf.dataset.game);
+});
 
 function openBigBox() {
-  show(`<h2>BIG BOX</h2><p>Pick a game. Walk up to its cabinet or jump straight in.</p>` +
+  show(`<h2>BIG BANG BOX</h2><p>Pick a game. Walk up to its cabinet or jump straight in.</p>` +
     GAMES.map(g => `<h3 style="color:${g.color}">${g.genre.toUpperCase()}</h3><div class="card" style="flex-direction:row;text-align:left;border-color:${g.color}">
       <div class="thumb" style="width:110px;flex:none">${cover(g)}</div><div style="flex:1"><p style="color:#fff">${g.title.toUpperCase()}</p><p class="dim">${g.blurb}</p>
       <button class="btn go" data-open="${g.id}">▶ SELECT</button><button class="btn" data-walk="${g.id}">WALK UP</button></div></div>`).join(''), '#ffc93a');
@@ -215,15 +235,18 @@ function openJukebox() {
 }
 
 function openPrizes() {
-  const shown = PRIZES.filter(p => !p.real || REAL_PRIZES_LIVE);
+  if (!auth.pid) { openProfile(); return toast('SIGN IN TO REACH THE PRIZE WALL'); }
+  const card = p => { const own = me && me.closet.includes(p.id) && !p.real; return `<div class="card ${own ? 'on' : ''}"><div class="ico">${p.icon}</div><span>${p.name}</span>
+      <button class="btn ${own ? 'off' : 'go'}" data-buy="${p.id}" ${own ? 'disabled' : ''}>${own ? 'OWNED' : '🪙 ' + p.cost}</button></div>`; };
+  const real = PRIZES.filter(p => p.real && REAL_PRIZES_LIVE), songs = PRIZES.filter(p => p.file), gear = PRIZES.filter(p => !p.real && !p.file);
   show(`<h2>PRIZE WALL</h2><p>You have <b style="color:var(--gold)">🪙 ${me ? me.tokens : 0}</b> tokens. Everything you win goes in your closet.</p>
-    <div class="grid">${shown.map(p => { const own = me && me.closet.includes(p.id) && !p.real; return `<div class="card ${own ? 'on' : ''}"><div class="ico">${p.icon}</div><span>${p.name}</span>
-      <button class="btn ${own ? 'off' : 'go'}" data-buy="${p.id}" ${own ? 'disabled' : ''}>${own ? 'OWNED' : '🪙 ' + p.cost}</button></div>`; }).join('')}
-      ${REAL_PRIZES_LIVE ? '' : '<div class="card"><div class="ico">🎁</div><span>REAL PRIZES</span><button class="btn off" data-soon="1">COMING SOON</button></div>'}</div>
-    <h3>HOW TO WIN TOKENS</h3><p class="dim">Daily visit +${REWARDS.daily} · Play a game +${REWARDS.play} · Watch a trailer +${REWARDS.trailer} · Spin the jukebox +${REWARDS.song} · Game scores up to +${REWARDS.scoreMax} a run</p>`, '#ffc93a');
+    ${real.length ? `<h3>REAL PRIZES</h3><div class="grid">${real.map(card).join('')}</div>` : ''}
+    ${songs.length ? `<h3>SONG DOWNLOADS</h3><div class="grid">${songs.map(card).join('')}</div>` : ''}
+    <h3>CLOSET GEAR</h3><div class="grid">${gear.map(card).join('')}</div>
+    <h3>HOW TO WIN TOKENS</h3><p class="dim">Every minute you play +${REWARDS.minute} · Beat a Quest of Champions level +${REWARDS.level} · T1 Versus fatality +${REWARDS.fatality} · Google or Facebook sign-in +${REWARDS.social} (one time) · Daily visit +${REWARDS.daily} · Game scores up to +${REWARDS.scoreMax} a run</p>`, '#ffc93a');
   pbody.onclick = async e => {
     const b = e.target.closest('[data-buy]'); if (!b || !needMe()) return;
-    try { const r = await api('buy', { id: b.dataset.buy }); setMe(r.player); if (r.code) openCloset(); else { toast('ADDED TO YOUR CLOSET'); openPrizes(); } } catch (err) { toast(err.message.toUpperCase()); }
+    try { const r = await api('buy', { id: b.dataset.buy }); setMe(r.player); if (r.code || b.dataset.buy.startsWith('song-')) openCloset(); else { toast('ADDED TO YOUR CLOSET'); openPrizes(); } } catch (err) { toast(err.message.toUpperCase()); }
   };
   cleanup = () => { pbody.onclick = null; };
 }
@@ -231,7 +254,7 @@ function openPrizes() {
 function openCloset() {
   const own = me ? PRIZES.filter(p => me.closet.includes(p.id)) : [];
   show(`<h2>MY CLOSET</h2>${own.length ? `<p>Tap a prize to wear it next to your name.</p><div class="grid">${own.map(p => `<div class="card ${me.badge === p.id ? 'on' : ''}"><div class="ico">${p.icon}</div><span>${p.name}</span>
-      <button class="btn" data-wear="${me.badge === p.id ? '' : p.id}">${me.badge === p.id ? 'TAKE OFF' : 'WEAR'}</button></div>`).join('')}</div>` : '<p>Empty for now. Win tokens and hit the prize wall.</p><button class="btn go" data-go="prizes">GO TO THE PRIZE WALL</button>'}
+      ${p.file ? `<a class="btn go" href="${p.file}" download="${p.name}.mp3">⬇ DOWNLOAD</a>` : `<button class="btn" data-wear="${me.badge === p.id ? '' : p.id}">${me.badge === p.id ? 'TAKE OFF' : 'WEAR'}</button>`}</div>`).join('')}</div>` : '<p>Empty for now. Win tokens and hit the prize wall.</p><button class="btn go" data-go="prizes">GO TO THE PRIZE WALL</button>'}
     ${me && me.claims.length ? `<h3>REAL PRIZE CLAIM CODES</h3><p>${CLAIM_HELP}</p>${me.claims.map(c => `<div><span class="code">${c.code}</span> ${(PRIZES.find(p => p.id === c.id) || {}).name || ''}</div>`).join('')}` : ''}`, '#3ea8ff');
   pbody.onclick = async e => {
     if (e.target.closest('[data-go]')) return goTo('prizes');
@@ -262,9 +285,48 @@ function openMap() {
   pbody.onclick = e => { const b = e.target.closest('[data-go]'); if (b) goTo(b.dataset.go); };
   cleanup = () => { pbody.onclick = null; };
 }
+function openSoon(g) {
+  show(`<span class="tag" style="--c:${g.color}">COMING SOON</span><h2>${g.title}</h2><div class="stage" style="--c:${g.color};aspect-ratio:1/1;max-width:340px">${cover(g)}</div>
+    <p>This game is on the way.${g.song ? ` Soundtrack: <b style="color:var(--gold)">${g.song}</b>.` : ''}</p>${g.song && !g.file ? '<p class="dim">The song will play here once it is added.</p>' : ''}`, g.color);
+}
+const ytId = u => ((u || '').match(/(?:v=|youtu\.be\/|shorts\/|embed\/)([\w-]{11})/) || [])[1];
+function openVault() {
+  show(`<h2>BIG BANG VAULT</h2><p>Big Bang videos. Pick one to watch.</p><div class="stage" id="vstage" style="--c:#3ea8ff" hidden></div>
+    <ul class="list">${VAULT.map((v, i) => `<li><span>${v.title}</span><button class="btn go" data-vid="${i}">▶ WATCH</button></li>`).join('')}</ul>`, '#3ea8ff');
+  pbody.onclick = e => {
+    const b = e.target.closest('[data-vid]'); if (!b) return;
+    const v = VAULT[b.dataset.vid], id = ytId(v.link), st = $('#vstage');
+    if (id) { st.hidden = false; st.innerHTML = `<iframe src="https://www.youtube.com/embed/${id}?autoplay=1&playsinline=1" allow="autoplay; fullscreen" allowfullscreen></iframe>`; pauseBgm(true); panel.firstElementChild.scrollTop = 0; }
+    else window.open(v.link || 'https://www.youtube.com/results?search_query=' + encodeURIComponent(v.title), '_blank', 'noopener');
+  };
+  cleanup = () => { pbody.onclick = null; pauseBgm(false); };
+}
+// Google / Facebook sign-in through Supabase Auth; gives a one-time token bonus.
+let sbClient;
+async function sb() {
+  if (!sbClient) { const m = await import('https://esm.sh/@supabase/supabase-js@2'); sbClient = m.createClient(SOCIAL_AUTH.url, SOCIAL_AUTH.key); }
+  return sbClient;
+}
+async function socialSignIn(provider) {
+  try { const c = await sb(), r = await c.auth.signInWithOAuth({ provider, options: { redirectTo: location.origin + location.pathname } }); if (r.error) throw r.error; }
+  catch { toast(provider.toUpperCase() + ' SIGN-IN IS NOT SET UP YET'); }
+}
+async function socialReturn() { // runs after Google/Facebook sends the player back
+  if (!/access_token=|code=/.test(location.hash + location.search)) return;
+  try {
+    const c = await sb(), { data } = await c.auth.getSession(); if (!data.session) return;
+    const u = data.session.user, nm = (u.user_metadata && (u.user_metadata.full_name || u.user_metadata.name)) || 'Player';
+    if (!auth.pid) await join(nm);
+    const r = await api('social', { token: data.session.access_token }); setMe(r.player);
+    toast(r.gained ? `SIGNED IN +${r.gained} TOKENS` : 'SIGNED IN'); history.replaceState(null, '', location.pathname);
+  } catch {}
+}
+const socialBtns = `<h3>OR SIGN IN FOR +${REWARDS.social} TOKENS</h3><button class="btn" data-social="google">CONTINUE WITH GOOGLE</button><button class="btn" data-social="facebook">CONTINUE WITH FACEBOOK</button>`;
 function openProfile() {
-  if (me) return show(`<h2>${me.name}</h2><p>🪙 ${me.tokens} tokens · ${me.earned} won all time · ${me.closet.length} prizes</p><button class="btn go" data-go="closet">MY CLOSET</button><button class="btn" data-go="prizes">PRIZE WALL</button>`), (pbody.onclick = e => { const b = e.target.closest('[data-go]'); if (b) goTo(b.dataset.go); }), (cleanup = () => { pbody.onclick = null; });
-  show(`<h2>PLAYER NAME</h2><p>Pick a name to win tokens, post scores and comment.</p><form class="cf" id="pform"><input maxlength="16" placeholder="PLAYER NAME"><button class="btn go">SAVE</button></form>`);
+  const wire = () => { pbody.onclick = e => { const b = e.target.closest('[data-go]'), so = e.target.closest('[data-social]'); if (b) goTo(b.dataset.go); if (so) socialSignIn(so.dataset.social); }; cleanup = () => { pbody.onclick = null; }; };
+  if (me) { show(`<h2>${me.name}</h2><p>🪙 ${me.tokens} tokens · ${me.earned} won all time · ${me.closet.length} prizes</p><button class="btn go" data-go="closet">MY CLOSET</button><button class="btn" data-go="prizes">PRIZE WALL</button>${socialBtns}`); return wire(); }
+  show(`<h2>SIGN IN</h2><p>Pick a player name to win tokens, reach the prize wall, post scores and comment.</p><form class="cf" id="pform"><input maxlength="16" placeholder="PLAYER NAME"><button class="btn go">SAVE</button></form>${socialBtns}`);
+  wire();
   $('#pform').onsubmit = async e => { e.preventDefault(); try { await join(e.target.querySelector('input').value); closePanel(); toast('WELCOME, ' + me.name.toUpperCase()); } catch (err) { toast(err.message.toUpperCase()); } };
 }
 $('#map').onclick = openMap; $('#who').onclick = openProfile; $('#tok').onclick = () => goTo('prizes');
@@ -278,6 +340,14 @@ function pauseBgm(on) { held = on; if (!on) $('#song').pause(); applyVol(); }
 function toggleMute() { muted = !muted; store.set('bba-mute', muted); started = true; applyVol(); }
 $('#snd').onclick = toggleMute; applyVol();
 document.addEventListener('visibilitychange', applyVol);
+// coming-soon cabinets play their song when you walk up
+const prox = new Audio(); prox.loop = true; let proxId = null;
+setInterval(() => {
+  let hit = null;
+  if (started && !muted && $('#gf').hidden) for (const g of SOON) { const st = stations[g.id]; if (g.file && st && st.x != null && Math.hypot(st.x - P.x, st.z - P.z) < 430) hit = g; }
+  const id = hit ? hit.id : null; if (id === proxId) return; proxId = id;
+  if (hit) { prox.src = hit.file; prox.play().catch(() => {}); pauseBgm(true); toast('NOW PLAYING: ' + hit.song.toUpperCase()); } else { prox.pause(); pauseBgm(false); }
+}, 500);
 
 // ---------------- entrance ----------------
 const gate = $('#gate'), gname = $('#gname');
@@ -290,3 +360,4 @@ const enter = async () => {
 $('#genter').onclick = enter; gname.addEventListener('keydown', e => { if (e.key === 'Enter') enter(); });
 if (auth.pid) { gname.hidden = true; api('me', {}).then(r => { setMe(r.player); earn('daily'); }).catch(() => { auth = {}; gname.hidden = false; }); }
 setMe(null);
+socialReturn();

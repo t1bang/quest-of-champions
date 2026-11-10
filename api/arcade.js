@@ -98,7 +98,16 @@ const actions = {
       const board = (await get('scores/' + game)) || [];
       const mine = board.find(e => e.pid === b.pid);
       if (!mine || score > mine.score) await rank('scores/' + game, { pid: b.pid, name: p.name, badge: badgeIcon(p), score, ts: Date.now() }, 'score');
-    } else if (REWARDS[why] && !p.did[tag]) {
+    } else if (why === 'minute' || why === 'fatality' || why === 'level') {
+      // repeatable rewards, rate-limited: [seconds between awards, max awards a day]
+      const [gap, cap] = { minute: [55, 180], fatality: [20, 20], level: [30, 12] }[why];
+      const okGame = why === 'minute' ? GAMES.includes(game) : game === (why === 'fatality' ? 'vendetta' : 'quest');
+      if (!okGame) throw fail(400, 'Unknown game');
+      p.last = p.last || {};
+      if (Date.now() - (p.last[why] || 0) >= gap * 1000 && (p.did['n:' + why] || 0) < cap) {
+        gained = REWARDS[why]; p.last[why] = Date.now(); p.did['n:' + why] = (p.did['n:' + why] || 0) + 1;
+      }
+    } else if (why !== 'social' && REWARDS[why] && !p.did[tag]) {
       gained = REWARDS[why];
       p.did[tag] = 1;
     }
@@ -106,6 +115,22 @@ const actions = {
       p.tokens += gained; p.earned += gained;
       await rank('earners', { pid: b.pid, name: p.name, badge: badgeIcon(p), score: p.earned, ts: Date.now() }, 'score');
     }
+    await set('player/' + b.pid, p);
+    return { player: pub(p), gained };
+  },
+  // One-time bonus for signing in with Google or Facebook (verified with Supabase Auth).
+  async social(b) {
+    const p = await auth(b);
+    const r = await fetch(`${SB_URL}/auth/v1/user`, { headers: { apikey: SB_KEY, Authorization: `Bearer ${b.token}` } });
+    const u = r.ok ? await r.json() : null, provider = u && u.app_metadata && u.app_metadata.provider;
+    if (!u || !u.id || !['google', 'facebook'].includes(provider)) throw fail(400, 'That sign-in could not be verified');
+    let gained = 0;
+    if (!p.social && !(await get('social/' + u.id))) {
+      gained = REWARDS.social; p.tokens += gained; p.earned += gained;
+      await set('social/' + u.id, { pid: b.pid, ts: Date.now() });
+      await rank('earners', { pid: b.pid, name: p.name, badge: badgeIcon(p), score: p.earned, ts: Date.now() }, 'score');
+    }
+    p.social = provider;
     await set('player/' + b.pid, p);
     return { player: pub(p), gained };
   },

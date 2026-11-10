@@ -344,7 +344,7 @@ function damageEnemy(e,d,kx,fire,byPlayer,isProj,assist){
     if(!e.isBoss){kills++;const n=e.isRef?3:1;for(let i=0;i<n;i++)pickups.push({type:'mic',x:e.x+(i-1)*34,z:e.z,life:1200});}
     if(e.isBoss){win=true;shake=30;setTimeout(()=>{finishLevel();},1800);}}
 }
-function finishLevel(){bbaReport();
+function finishLevel(){bbaReport();try{if(parent!==window)parent.postMessage({bba:'level'},'*');}catch(e){}
   state='victory';save.beaten[level]=true;justUnlocked=(level<3&&save.unlocked<level+1);if(level<3&&save.unlocked<level+1)save.unlocked=level+1;persist();
   showLinks('victory');checkHighScore();if(!(entry&&entry.pending)){stopMusic();if(EMBED_VIDEO[level])showVideo(EMBED_VIDEO[level],[330,16,300,169]);}
 }

@@ -27,6 +27,26 @@ export const GAMES = [
     shots: ['assets/gamerboyz-cover.jpg'] },
 ];
 
+// Coming-soon games in the hallway. "file" = the song that plays when a player walks up
+// (an MP3 address); "art" = the song artwork used as the cover for now.
+export const SOON = [
+  { id: 'cruizin', title: 'Cruizin IA', color: '#ff7a1a', song: 'Send It', file: '', art: '' },
+  { id: 'bslam', title: 'Basketball Slam', color: '#ffd23e', song: 'Slam', file: '', art: '' },
+  { id: 'blankman', title: 'Blankman', color: '#b06cff', song: '', file: '', art: '' },
+  { id: 'toptier', title: 'Top Tier Wrestling', color: '#ff2a3c', song: 'Everything Top Tier, Everything Critical', file: '', art: '' },
+];
+
+// Big Bang Vault videos. Paste each YouTube link; until then the button opens a YouTube search.
+export const VAULT = [
+  { title: 'Big Bang - Spongebob Ready', link: '' },
+  { title: 'Big Bang - Polo', link: '' },
+  { title: 'Big Bang - Hustlin Everyday featuring Wiz Khalifa', link: '' },
+  { title: 'Big Bang - Holster featuring Young Buck', link: '' },
+];
+
+// Sign in with Google / Facebook (Supabase Auth). Turn the providers on in the Supabase project first.
+export const SOCIAL_AUTH = { url: 'https://fspcfzxtohaaeoudrack.supabase.co', key: 'sb_publishable_GoAREk7bfAgNZbKY7DsHrw_X6JSb3Jd' };
+
 // Background music for the room. Temporary arcade loop until the real
 // arcade version of Spongebob Ready is ready; then point this at that file.
 export const BGM = 'assets/audio/arcade-loop.mp3';
