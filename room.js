@@ -1,259 +1,1363 @@
-// Big Bang Arcade — real-time 3D room (WebGL, no libraries).
-// Lit 3D cabinets, coloured point lights, glossy reflective floor, neon glow.
-const VS = `attribute vec3 aP;attribute vec3 aN;attribute vec2 aU;uniform mat4 uVP;uniform mat4 uM;varying vec3 vP;varying vec3 vN;varying vec2 vU;
-void main(){vec4 w=uM*vec4(aP,1.);vP=w.xyz;vN=mat3(uM)*aN;vU=aU;gl_Position=uVP*w;}`;
-const FS = `precision highp float;varying vec3 vP;varying vec3 vN;varying vec2 vU;uniform sampler2D uT;uniform vec3 uEye;uniform vec3 uLP[12];uniform vec3 uLC[12];
-uniform vec3 uTint;uniform float uEmis;uniform float uSpec;uniform float uAlpha;uniform float uMirror;
-void main(){if(uMirror>0.5&&vP.y<0.)discard;vec4 t=texture2D(uT,vU);if(t.a<0.04)discard;vec3 n=normalize(vN);vec3 v=normalize(uEye-vP);if(dot(n,v)<0.)n=-n;
-vec3 lit=vec3(.2,.17,.27);vec3 sp=vec3(0.);
-for(int i=0;i<12;i++){vec3 d=uLP[i]-vP;float r2=dot(d,d);vec3 l=d*inversesqrt(r2);float a=1./(1.+r2/160000.);lit+=uLC[i]*max(dot(n,l),0.)*a;sp+=uLC[i]*pow(max(dot(n,normalize(l+v)),0.),48.)*a;}
-vec3 c=t.rgb*uTint*mix(lit,vec3(1.),uEmis)+sp*uSpec;float f=smoothstep(700.,2300.,length(uEye-vP))*.55;c=mix(c,vec3(.05,.02,.09),f*(1.-uEmis*.7));
-gl_FragColor=vec4(c,t.a*uAlpha);}`;
+import * as T from "three";
+import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+import { createSurfaces } from "./src/room-materials.js";
+import { Reflector } from "three/addons/objects/Reflector.js";
+import { WALLS, FLOOR_AREAS } from "./src/navigation.js";
+import { ROOMS, cabinetPosition } from "./src/content.js";
 
-const mul = (a, b) => { const o = new Float32Array(16); for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) o[c * 4 + r] = a[r] * b[c * 4] + a[4 + r] * b[c * 4 + 1] + a[8 + r] * b[c * 4 + 2] + a[12 + r] * b[c * 4 + 3]; return o; };
-const ident = () => new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
-const rotY = a => { const c = Math.cos(a), s = Math.sin(a); return new Float32Array([c, 0, -s, 0, 0, 1, 0, 0, s, 0, c, 0, 0, 0, 0, 1]); };
-const rotX = a => { const c = Math.cos(a), s = Math.sin(a); return new Float32Array([1, 0, 0, 0, 0, c, s, 0, 0, -s, c, 0, 0, 0, 0, 1]); };
-const trans = (x, y, z) => { const m = ident(); m[12] = x; m[13] = y; m[14] = z; return m; };
-const persp = (fov, asp, n, f) => { const t = 1 / Math.tan(fov / 2); return new Float32Array([t / asp, 0, 0, 0, 0, t, 0, 0, 0, 0, (f + n) / (n - f), -1, 0, 0, 2 * f * n / (n - f), 0]); };
-
-export function buildRoom(canvas, GAMES, PRIZES, handlers) {
-  const gl = canvas.getContext('webgl', { antialias: true, alpha: false, powerPreference: 'high-performance' });
-  if (!gl) return null;
-  const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(s)); return s; };
-  const prog = gl.createProgram(); gl.attachShader(prog, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FS)); gl.linkProgram(prog); gl.useProgram(prog);
-  const U = {}; for (const n of ['uVP', 'uM', 'uT', 'uEye', 'uLP', 'uLC', 'uTint', 'uEmis', 'uSpec', 'uAlpha', 'uMirror']) U[n] = gl.getUniformLocation(prog, n);
-  const A = ['aP', 'aN', 'aU'].map(n => gl.getAttribLocation(prog, n));
-
-  // ---------- textures (drawn on 2D canvases) ----------
-  const BIG = "Bungee,Impact,'Arial Black',sans-serif", PIX = "'Press Start 2P',monospace";
-  function tex(w, h, draw, repeat) {
-    const c = document.createElement('canvas'); c.width = w; c.height = h; const x = c.getContext('2d'), t = gl.createTexture();
-    const up = () => {
-      draw(x, w, h); gl.bindTexture(gl.TEXTURE_2D, t); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, c); gl.generateMipmap(gl.TEXTURE_2D);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
-      const wr = repeat ? gl.REPEAT : gl.CLAMP_TO_EDGE; gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, wr); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, wr);
-    };
-    up(); t.redraw = up; return t;
+export async function buildRoom(canvas, games, prizes, handlers, wall) {
+  const mobile = matchMedia("(pointer:coarse)").matches || innerWidth < 700;
+  let renderer;
+  try {
+    renderer = new T.WebGLRenderer({
+      canvas,
+      antialias: !mobile,
+      powerPreference: "high-performance",
+    });
+  } catch {
+    return null;
   }
-  const white = tex(4, 4, x => { x.fillStyle = '#fff'; x.fillRect(0, 0, 4, 4); });
-  const glowT = tex(128, 128, (x, w) => { const g = x.createRadialGradient(w / 2, w / 2, 0, w / 2, w / 2, w / 2); g.addColorStop(0, 'rgba(255,255,255,.55)'); g.addColorStop(.5, 'rgba(255,255,255,.14)'); g.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = g; x.fillRect(0, 0, w, w); });
-  const rgb = h => [parseInt(h.slice(1, 3), 16) / 255, parseInt(h.slice(3, 5), 16) / 255, parseInt(h.slice(5, 7), 16) / 255];
-  const mats = [];
-  const mat = (t, o = {}) => { const m = { t, blend: !!o.blend, v: [], tint: o.tint ? rgb(o.tint) : [1, 1, 1], emis: o.emis || 0, spec: o.spec == null ? 0.25 : o.spec, glow: !!o.glow, floor: !!o.floor, dyn: o.dyn || null }; mats.push(m); return m; };
-  const solids = {}; const solid = (c, emis = 0, spec) => solids[c + emis] || (solids[c + emis] = mat(white, { tint: c, emis, spec }));
-  const glows = {}; const glowM = c => glows[c] || (glows[c] = mat(glowT, { tint: c, emis: 1, glow: true }));
-  const text = (x, s, cx, y, font, fill, stroke) => { x.font = font; x.textAlign = 'center'; x.textBaseline = 'middle'; if (stroke) { x.lineWidth = 8; x.strokeStyle = stroke; x.lineJoin = 'round'; x.strokeText(s, cx, y); } x.fillStyle = fill; x.fillText(s, cx, y); };
-  const fitText = (x, s, cx, y, size, maxW, fill, stroke, fam = BIG) => { let f = size; do { x.font = `${f}px ${fam}`; f -= 2; } while (x.measureText(s).width > maxW && f > 8); text(x, s, cx, y, x.font, fill, stroke); };
-  const neon = (s, color, w = 512, h = 128) => mat(tex(w, h, (x) => { x.clearRect(0, 0, w, h); x.shadowColor = color; x.shadowBlur = 22; fitText(x, s, w / 2, h / 2, h * 0.62, w - 40, '#fff', color); x.shadowBlur = 0; fitText(x, s, w / 2, h / 2, h * 0.62, w - 40, '#fff'); }), { emis: 1, spec: 0, blend: true });
-  const images = {};
-  const img = (src, cb) => { let e = images[src]; if (!e) { e = images[src] = { im: new Image(), ok: false, cbs: [] }; e.im.onload = () => { e.ok = true; e.cbs.forEach(f => f()); }; e.im.src = src; } if (cb) e.ok ? cb() : e.cbs.push(cb); return e; };
-  const drawFit = (x, e, dx, dy, dw, dh, cover) => { if (!e.ok) return; const iw = e.im.naturalWidth || 300, ih = e.im.naturalHeight || 400, s = (cover ? Math.max : Math.min)(dw / iw, dh / ih), w = iw * s, h = ih * s; x.save(); x.beginPath(); x.rect(dx, dy, dw, dh); x.clip(); x.drawImage(e.im, dx + (dw - w) / 2, dy + (dh - h) / 2, w, h); x.restore(); };
-  const withImg = (src, w, h, draw, repeat) => { const e = img(src), t = tex(w, h, (x, W, H) => draw(x, W, H, e), repeat); img(src, t.redraw); return t; };
-
-  // ---------- geometry ----------
-  const tf = (T, p) => { const c = Math.cos(T.th || 0), s = Math.sin(T.th || 0); return [T.x + p[0] * c + p[2] * s, p[1], T.z - p[0] * s + p[2] * c]; };
-  function quad(m, T, a, b, c, d, uv = [0, 0, 1, 1]) { // a=top-left b=top-right c=bottom-right d=bottom-left
-    const [A_, B_, C_, D_] = [a, b, c, d].map(p => tf(T, p));
-    const e1 = [B_[0] - A_[0], B_[1] - A_[1], B_[2] - A_[2]], e2 = [D_[0] - A_[0], D_[1] - A_[1], D_[2] - A_[2]];
-    const n = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]], l = Math.hypot(...n) || 1;
-    const put = (p, u, v) => m.v.push(p[0], p[1], p[2], n[0] / l, n[1] / l, n[2] / l, u, v);
-    const [u0, v0, u1, v1] = uv;
-    put(A_, u0, v0); put(B_, u1, v0); put(C_, u1, v1); put(A_, u0, v0); put(C_, u1, v1); put(D_, u0, v1);
-  }
-  function box(m, T, x0, x1, y0, y1, z0, z1, f = {}) {
-    quad(f.front || m, T, [x0, y1, z1], [x1, y1, z1], [x1, y0, z1], [x0, y0, z1]);
-    quad(f.back || m, T, [x1, y1, z0], [x0, y1, z0], [x0, y0, z0], [x1, y0, z0]);
-    quad(f.left || m, T, [x0, y1, z0], [x0, y1, z1], [x0, y0, z1], [x0, y0, z0]);
-    quad(f.right || m, T, [x1, y1, z1], [x1, y1, z0], [x1, y0, z0], [x1, y0, z1]);
-    quad(f.top || m, T, [x0, y1, z0], [x1, y1, z0], [x1, y1, z1], [x0, y1, z1]);
-  }
-  const glow = (c, T, cx, cy, z, w, h) => quad(glowM(c), T, [cx - w / 2, cy + h / 2, z], [cx + w / 2, cy + h / 2, z], [cx + w / 2, cy - h / 2, z], [cx - w / 2, cy - h / 2, z]);
-  const lights = []; const light = (T, p, c, k = 1) => { if (lights.length < 12) lights.push({ p: tf(T, p), c: rgb(c).map(v => v * k) }); };
-
-  // ---------- room shell ----------
-  const O = { x: 0, z: 0 }, HW = 800, HD = 700, ZF = 900, CH = 560;
-  const floorT = tex(512, 512, (x, w) => {
-    x.fillStyle = '#0d0716'; x.fillRect(0, 0, w, w);
-    for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) { x.fillStyle = (i + j) % 2 ? '#1b1030' : '#120a22'; x.fillRect(i * 128 + 3, j * 128 + 3, 122, 122); }
-    x.strokeStyle = 'rgba(255,42,60,.55)'; x.lineWidth = 3; for (let i = 0; i <= 4; i++) { x.beginPath(); x.moveTo(i * 128, 0); x.lineTo(i * 128, w); x.moveTo(0, i * 128); x.lineTo(w, i * 128); x.stroke(); }
-    [['#ffc93a', 64, 64], ['#3ea8ff', 320, 192], ['#35e06f', 192, 448], ['#ff4fd8', 448, 320]].forEach(([c, a, b]) => { x.fillStyle = c; x.beginPath(); x.moveTo(a, b - 16); x.lineTo(a + 16, b); x.lineTo(a, b + 16); x.lineTo(a - 16, b); x.fill(); });
-  }, true);
-  const wallT = tex(512, 512, (x, w) => {
-    const g = x.createLinearGradient(0, 0, 0, w); g.addColorStop(0, '#241038'); g.addColorStop(.6, '#3a1a5a'); g.addColorStop(1, '#150a24'); x.fillStyle = g; x.fillRect(0, 0, w, w);
-    x.fillStyle = 'rgba(0,0,0,.35)'; for (let i = 0; i < 4; i++) x.fillRect(i * 128, 0, 6, w);
-    x.fillStyle = 'rgba(255,255,255,.05)'; for (let i = 0; i < 4; i++) x.fillRect(i * 128 + 6, 0, 3, w);
-    x.fillStyle = '#ff2a3c'; x.fillRect(0, 26, w, 10); x.fillStyle = '#ffc93a'; x.fillRect(0, 44, w, 4); x.fillStyle = '#07040c'; x.fillRect(0, w - 40, w, 40); x.fillStyle = '#ff2a3c'; x.fillRect(0, w - 44, w, 4);
-  }, true);
-  const ceilT = tex(256, 256, (x, w) => { x.fillStyle = '#0a0612'; x.fillRect(0, 0, w, w); x.strokeStyle = '#1d1230'; x.lineWidth = 4; x.strokeRect(2, 2, w - 4, w - 4); x.fillStyle = '#fff3d6'; x.fillRect(48, 104, 160, 48); }, true);
-  const floorM = mat(floorT, { floor: true, spec: 0.5 }), wallM = mat(wallT, { spec: 0.1 }), ceilM = mat(ceilT, { emis: 0.55, spec: 0 });
-  quad(floorM, O, [-HW, 0, -HD], [HW, 0, -HD], [HW, 0, ZF], [-HW, 0, ZF], [0, 0, 8, 8]);
-  quad(ceilM, O, [-HW, CH, ZF], [HW, CH, ZF], [HW, CH, -HD], [-HW, CH, -HD], [0, 0, 4, 4]);
-  quad(wallM, O, [-HW, CH, -HD], [HW, CH, -HD], [HW, 0, -HD], [-HW, 0, -HD], [0, 0, 4, 1]);
-  quad(wallM, O, [HW, CH, ZF], [-HW, CH, ZF], [-HW, 0, ZF], [HW, 0, ZF], [0, 0, 4, 1]);
-  quad(wallM, O, [-HW, CH, ZF], [-HW, CH, -HD], [-HW, 0, -HD], [-HW, 0, ZF], [0, 0, 4, 1]);
-  quad(wallM, O, [HW, CH, -HD], [HW, CH, ZF], [HW, 0, ZF], [HW, 0, -HD], [0, 0, 4, 1]);
-  light(O, [0, 500, 520], '#ffffff', 0.55);
-
-  const stations = {};
-  const add = (id, label, T, w, depth, h, open) => { const p = tf(T, [0, 0, depth / 2]), r = Math.max(w, depth) / 2 + 10; stations[id] = { id, label, x: T.x, z: T.z, w, depth, T, open, min: [p[0] - r, 0, p[2] - r], max: [p[0] + r, h, p[2] + r] }; };
-  const dark = solid('#12121c', 0, 0.5), metal = solid('#2a2a38', 0, 0.8);
-
-  // ---------- game cabinets (classic upright shape; art wraps come from config `cab`) ----------
-  function tri(m, T, a, b, c, ua, ub, uc) {
-    const [A_, B_, C_] = [a, b, c].map(p => tf(T, p)), e1 = [B_[0] - A_[0], B_[1] - A_[1], B_[2] - A_[2]], e2 = [C_[0] - A_[0], C_[1] - A_[1], C_[2] - A_[2]];
-    const n = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]], l = Math.hypot(...n) || 1;
-    [[A_, ua], [B_, ub], [C_, uc]].forEach(([p, u]) => m.v.push(p[0], p[1], p[2], n[0] / l, n[1] / l, n[2] / l, u[0], u[1]));
-  }
-  function sphere(m, T, cx, cy, cz, rad) {
-    const pt = (i, j) => { const th = i / 6 * Math.PI, ph = j / 10 * Math.PI * 2; return [cx + rad * Math.sin(th) * Math.cos(ph), cy + rad * Math.cos(th), cz + rad * Math.sin(th) * Math.sin(ph)]; };
-    for (let i = 0; i < 6; i++) for (let j = 0; j < 10; j++) quad(m, T, pt(i, j), pt(i, j + 1), pt(i + 1, j + 1), pt(i + 1, j));
-  }
-  const imgTex = (src, w, h) => withImg(src, w, h, (x, W, H, e) => { x.fillStyle = '#0c0c14'; x.fillRect(0, 0, W, H); if (e.ok) x.drawImage(e.im, 0, 0, W, H); });
-  // side-view outline, [z, y] from the floor up the front to the top-back
-  const OUT = [[150, 0], [150, 205], [205, 225], [205, 238], [125, 262], [95, 400], [150, 405], [150, 470], [20, 470], [0, 445]];
-  const PARTS = [[[0, 0], [150, 0], [150, 205], [0, 205]], [[0, 205], [150, 205], [205, 225], [205, 238], [125, 262], [0, 262]], [[0, 262], [125, 262], [95, 400], [0, 400]], [[0, 400], [95, 400], [150, 405], [150, 470], [20, 470], [0, 445]]];
-  const coinT = imgTex('assets/cabs/versus-coin.jpg', 256, 256);
-  GAMES.forEach((g, i) => {
-    const T = { x: -540 + i * 360, z: -698, th: 0 }, c = g.cab, trimC = g.trim || g.color;
-    const scr = imgTex(c ? c + '-screen.jpg' : g.art, 512, 512);
-    const screen = mat(c ? scr : withImg(g.art, 512, 512, (x, w, h, e) => { x.fillStyle = '#000'; x.fillRect(0, 0, w, h); if (e.ok) { x.save(); x.scale(1, h / (w * 0.75)); x.globalAlpha = .35; drawFit(x, e, 0, 0, w, w * .75, true); x.globalAlpha = 1; x.fillStyle = 'rgba(0,0,0,.45)'; x.fillRect(0, 0, w, w * .75); drawFit(x, e, 0, 0, w, w * .75, false); x.restore(); } }), { emis: 1, spec: 0.7 });
-    const marq = mat(c ? imgTex(c + '-marquee.jpg', 512, 128) : tex(512, 128, (x, w, h) => { const gr = x.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#1a0b2b'); gr.addColorStop(1, g.color); x.fillStyle = gr; x.fillRect(0, 0, w, h); fitText(x, g.title.toUpperCase(), w / 2, h / 2 + 4, 66, w - 36, '#ffc93a', '#000'); }), { emis: 1, spec: 0 });
-    const side = mat(c ? imgTex(c + '-side.jpg', 256, 512) : withImg(g.art, 256, 512, (x, w, h, e) => { const gr = x.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#1a0b2b'); gr.addColorStop(1, g.color); x.fillStyle = gr; x.fillRect(0, 0, w, h); x.globalAlpha = .9; drawFit(x, e, 14, 150, w - 28, 230, true); x.globalAlpha = 1; x.strokeStyle = '#000'; x.lineWidth = 6; x.strokeRect(14, 150, w - 28, 230); x.save(); x.translate(w / 2, 86); x.rotate(-0.12); fitText(x, g.title.toUpperCase(), 0, 0, 44, w - 30, '#ffc93a', '#000'); x.restore(); text(x, 'T1', w / 2, 448, `80px ${BIG}`, '#fff', '#000'); }), { emis: 0.55, spec: 0.4 });
-    const panel = mat(c ? imgTex(c + '-panel.jpg', 512, 128) : tex(512, 128, (x, w, h) => { const gr = x.createLinearGradient(0, 0, w, 0); gr.addColorStop(0, '#1a0b2b'); gr.addColorStop(.5, g.color); gr.addColorStop(1, '#1a0b2b'); x.fillStyle = gr; x.fillRect(0, 0, w, h); x.fillStyle = 'rgba(0,0,0,.45)'; x.fillRect(0, 0, w, h); for (const ox of [150, 390]) for (let k = 0; k < 6; k++) { x.fillStyle = '#000'; x.beginPath(); x.arc(ox + (k % 3) * 34, 44 + (k / 3 | 0) * 34, 15, 0, 7); x.fill(); x.fillStyle = k < 3 ? '#ffc93a' : g.color; x.beginPath(); x.arc(ox + (k % 3) * 34, 42 + (k / 3 | 0) * 34, 12, 0, 7); x.fill(); } text(x, 'P1 START      P2 START', w / 2, 112, `10px ${PIX}`, '#fff'); }), { emis: 0.6, spec: 0.5 });
-    const base = mat(c ? imgTex(c + '-base.jpg', 512, 128) : tex(512, 128, (x, w, h) => { x.fillStyle = '#0c0c14'; x.fillRect(0, 0, w, h); x.fillStyle = g.color; x.fillRect(0, 0, w, 6); for (let k = 0; k < 16; k++) { const bh = 20 + (k * 37 % 5) * 9; x.globalAlpha = .55; x.fillRect(k * 32 + 2, 62 - bh, 28, bh); } x.globalAlpha = 1; x.fillStyle = '#000'; x.fillRect(0, 62, w, 66); text(x, '——  BIG BANG ARCADE  ——', w / 2, 96, `17px ${PIX}`, '#ffc93a'); }), { emis: 0.6, spec: 0.3 });
-    const coin = mat(c ? imgTex(c + '-coin.jpg', 256, 256) : coinT, { emis: 0.45, spec: 0.6 }), trim = solid(trimC, 0.5, 0.9);
-    const P3 = (x, p) => [x, p[1], p[0]], uvS = (p, flip) => [flip ? 1 - p[0] / 205 : p[0] / 205, 1 - p[1] / 470];
-    for (const [sx, flip] of [[-125, false], [125, true]]) for (const part of PARTS) for (let k = 1; k < part.length - 1; k++) tri(side, T, P3(sx, part[0]), P3(sx, part[k]), P3(sx, part[k + 1]), uvS(part[0], flip), uvS(part[k], flip), uvS(part[k + 1], flip));
-    const span = (m, lo, hi, x0 = -113, x1 = 113) => quad(m, T, [x0, hi[1], hi[0]], [x1, hi[1], hi[0]], [x1, lo[1], lo[0]], [x0, lo[1], lo[0]]);
-    for (let k = 0; k < OUT.length - 1; k++) { span(trim, OUT[k], OUT[k + 1], -125, -113); span(trim, OUT[k], OUT[k + 1], 113, 125); }
-    span(dark, OUT[0], OUT[1]); span(base, [151, 4], [151, 62]); span(coin, [151, 80], [151, 192], -58, 58);
-    span(dark, OUT[1], OUT[2]); span(trim, OUT[2], OUT[3]); span(panel, OUT[3], OUT[4]); span(dark, OUT[4], OUT[5]);
-    span(screen, [124, 274], [99.5, 391], -97, 97);
-    span(dark, OUT[5], OUT[6]); span(marq, OUT[6], OUT[7]); span(dark, OUT[7], OUT[8]); span(dark, OUT[8], OUT[9]);
-    for (const jx of [-80, 33]) { box(solid('#16161c', 0, 1), T, jx - 3, jx + 3, 250, 280, 160, 166); sphere(solid(c ? trimC : '#ff2a3c', 0.35, 1), T, jx, 287, 163, 11); }
-    glow(g.color, T, 0, 330, 135, 420, 330); glow(g.color, T, 0, 438, 160, 420, 150);
-    quad(neon(g.genre.toUpperCase(), g.color), T, [-150, 550, 5], [150, 550, 5], [150, 488, 5], [-150, 488, 5]);
-    glow(g.color, T, 0, 518, 12, 460, 150);
-    light(T, [0, 290, 270], g.color, 1.15);
-    add(g.id, 'PLAY ' + g.title.toUpperCase(), T, 250, 205, 470, () => handlers.game(g));
-  });
-
-  // ---------- Big Box ----------
-  const BB = { x: 0, z: 150, th: 0 };
-  const bbT = tex(512, 512, (x, w, h) => {
-    x.fillStyle = '#0b0b12'; x.fillRect(0, 0, w, h); x.strokeStyle = '#ffc93a'; x.lineWidth = 14; x.strokeRect(7, 7, w - 14, h - 14);
-    text(x, 'BIG BOX', w / 2, 62, `64px ${BIG}`, '#ffc93a');
-    GAMES.forEach((g, i) => { const X = 40 + (i % 2) * 222, Y = 108 + (i >> 1) * 176; x.fillStyle = g.color; x.fillRect(X - 4, Y - 4, 218, 164); x.fillStyle = '#000'; x.fillRect(X, Y, 210, 156); drawFit(x, img(g.art), X, Y, 210, 156, true); });
-    text(x, 'SELECT YOUR GAME', w / 2, 480, `17px ${PIX}`, '#fff');
-  });
-  GAMES.forEach(g => img(g.art, bbT.redraw));
-  const bbM = mat(bbT, { emis: 0.9, spec: 0.4 });
-  box(solid('#1a1a24', 0, 0.8), BB, -130, 130, 0, 290, -130, 130, { front: bbM, back: bbM, left: bbM, right: bbM });
-  for (const [ex, ez] of [[-130, -130], [130, -130], [-130, 130], [130, 130]]) box(solid('#ffc93a', 1, 0), BB, ex - 6, ex + 6, 0, 296, ez - 6, ez + 6);
-  light(BB, [0, 330, 260], '#ffc93a', 0.9);
-  const spinM = mat(tex(512, 128, (x, w, h) => { x.fillStyle = '#ffc93a'; x.fillRect(0, 0, w, h); text(x, '★ BIG BOX ★', w / 2, h / 2 + 4, `58px ${BIG}`, '#0b0612'); }), { emis: 1, spec: 0, dyn: 'spin' });
-  { const S = { x: 0, z: 0 }; box(spinM, S, -80, 80, -24, 24, -80, 80); }
-  stations.bigbox = { id: 'bigbox', label: 'OPEN THE BIG BOX', x: 0, z: 280, w: 260, depth: 0, T: { x: 0, z: 280, th: 0 }, open: handlers.bigbox, min: [-140, 0, 10], max: [140, 300, 290] };
-
-  // ---------- other stations ----------
-  const panel = (w, h, color, draw) => mat(tex(512, 512, (x, W, H) => { x.fillStyle = '#0c0c14'; x.fillRect(0, 0, W, H); x.strokeStyle = color; x.lineWidth = 16; x.strokeRect(8, 8, W - 16, H - 16); draw(x, W, H); }), { emis: 0.85, spec: 0.3 });
-  const emoji = (x, s, cx, cy, size) => text(x, s, cx, cy, `${size}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`, '#fff');
-  const L = z => ({ x: -798, z, th: Math.PI / 2 }), R = z => ({ x: 798, z, th: -Math.PI / 2 }), F = x => ({ x, z: ZF - 2, th: Math.PI });
-
-  let T = L(-230);
-  box(solid('#1a0a1c', 0, 0.6), T, -125, 125, 0, 400, 0, 110, { front: panel(250, 400, '#ff4fd8', (x, W) => { x.fillStyle = '#ff4fd8'; x.beginPath(); x.arc(W / 2, 190, 150, Math.PI, 0); x.fill(); x.fillStyle = '#0c0c14'; x.beginPath(); x.arc(W / 2, 190, 118, Math.PI, 0); x.fill(); emoji(x, '🎵', W / 2, 140, 96); text(x, 'JUKEBOX', W / 2, 270, `66px ${BIG}`, '#ff4fd8'); for (let i = 0; i < 8; i++) { x.fillStyle = i % 2 ? '#ffc93a' : '#3ea8ff'; x.fillRect(70 + i * 48, 330, 36, 90); } text(x, 'BIG BANG MUSIC', W / 2, 462, `16px ${PIX}`, '#fff'); }) });
-  for (const sx of [-131, 131]) box(solid('#ff4fd8', 1, 0), T, sx - 6, sx + 6, 0, 400, 100, 116);
-  glow('#ff4fd8', T, 0, 220, 130, 480, 520); light(T, [0, 260, 240], '#ff4fd8'); add('jukebox', 'OPEN THE JUKEBOX', T, 260, 110, 400, handlers.jukebox);
-
-  T = L(330);
-  box(solid('#0e1a2c', 0, 0.5), T, -135, 135, 0, 440, 0, 30, { front: panel(270, 440, '#3ea8ff', (x, W) => { x.fillStyle = '#16304f'; x.fillRect(60, 60, 392, 392); x.fillStyle = '#0c0c14'; x.fillRect(250, 60, 6, 392); emoji(x, '👕', 160, 200, 90); emoji(x, '🧢', 350, 200, 90); text(x, 'MY CLOSET', W / 2, 330, `58px ${BIG}`, '#3ea8ff'); text(x, 'YOUR PRIZES LIVE HERE', W / 2, 400, `14px ${PIX}`, '#fff'); x.fillStyle = '#ffc93a'; x.beginPath(); x.arc(232, 256, 9, 0, 7); x.arc(274, 256, 9, 0, 7); x.fill(); }) });
-  glow('#3ea8ff', T, 0, 230, 50, 460, 540); light(T, [0, 260, 220], '#3ea8ff', 0.8); add('closet', 'OPEN MY CLOSET', T, 270, 60, 440, handlers.closet);
-
-  T = R(-200);
-  box(solid('#1c1608', 0, 0.4), T, -290, 290, 50, 480, 0, 18);
-  for (const sy of [150, 290]) box(solid('#ffc93a', 0.35, 1), T, -280, 280, sy - 10, sy, 18, 100);
-  PRIZES.filter(p => !p.real).slice(0, 10).forEach((p, i) => { const em = mat(tex(128, 128, (x, w) => { x.clearRect(0, 0, w, w); emoji(x, p.icon, 64, 70, 96); }), { emis: 1, spec: 0, blend: true }), cx = -224 + (i % 5) * 112, y = i < 5 ? 290 : 150; quad(em, T, [cx - 46, y + 96, 60], [cx + 46, y + 96, 60], [cx + 46, y + 4, 60], [cx - 46, y + 4, 60]); });
-  quad(neon('PRIZE WALL', '#ffc93a'), T, [-190, 478, 22], [190, 478, 22], [190, 396, 22], [-190, 396, 22]);
-  glow('#ffc93a', T, 0, 440, 40, 560, 200); light(T, [0, 300, 260], '#ffc93a', 1.1); add('prizes', 'SHOP THE PRIZE WALL', T, 560, 100, 480, handlers.prizes);
-
-  T = R(400);
-  box(metal, T, -160, 160, 110, 450, 0, 30, { front: panel(320, 340, '#35e06f', (x, W) => { emoji(x, '🏆', W / 2, 96, 84); text(x, 'HIGH SCORES', W / 2, 190, `52px ${BIG}`, '#35e06f'); ['1ST', '2ND', '3RD', '4TH'].forEach((s, i) => { text(x, `${s}  ......  ?`, W / 2, 262 + i * 46, `20px ${PIX}`, i ? '#fff' : '#ffc93a'); }); text(x, 'WHO RUNS THE ARCADE?', W / 2, 462, `14px ${PIX}`, '#35e06f'); }) });
-  glow('#35e06f', T, 0, 280, 50, 520, 480); light(T, [0, 280, 220], '#35e06f', 0.8); add('scores', 'SEE THE LEADERBOARD', T, 320, 60, 450, handlers.scores);
-
-  T = F(-360);
-  box(solid('#2a0a10', 0, 0.5), T, -140, 140, 0, 390, 0, 90, { front: panel(280, 390, '#ff2a3c', (x, W) => { emoji(x, '❤️', W / 2, 150, 130); text(x, 'DONATE', W / 2, 300, `76px ${BIG}`, '#ff2a3c'); text(x, 'KEEP THE ARCADE OPEN', W / 2, 380, `15px ${PIX}`, '#fff'); text(x, 'CASH APP · APPLE PAY', W / 2, 428, `12px ${PIX}`, '#ffc93a'); text(x, 'PAYPAL · VENMO', W / 2, 456, `12px ${PIX}`, '#ffc93a'); }) });
-  glow('#ff2a3c', T, 0, 220, 110, 480, 500); light(T, [0, 260, 240], '#ff2a3c', 0.8); add('donate', 'DONATE', T, 280, 90, 390, handlers.donate);
-
-  T = F(360);
-  box(solid('#e8e8f0', 0, 0.8), T, -160, 160, 50, 450, 0, 14, { front: panel(320, 400, '#ffffff', (x, W) => { emoji(x, '⭐', W / 2, 84, 70); text(x, 'CREATED BY', W / 2, 160, `20px ${PIX}`, '#fff'); text(x, 'CHUCK CRAWLEY', W / 2, 224, `46px ${BIG}`, '#ffc93a'); text(x, '&', W / 2, 274, `34px ${BIG}`, '#fff'); text(x, 'TONE DA BOSS', W / 2, 326, `50px ${BIG}`, '#ffc93a'); text(x, 'T1 ENTERTAINMENT', W / 2, 400, `16px ${PIX}`, '#ff2a3c'); text(x, 'FOLLOW US', W / 2, 452, `14px ${PIX}`, '#fff'); }) });
-  glow('#ffffff', T, 0, 250, 30, 440, 480); light(T, [0, 260, 220], '#ffffff', 0.5); add('credits', 'CREDITS + SOCIALS', T, 320, 40, 450, handlers.credits);
-
-  // ---------- neon + posters ----------
-  T = F(0);
-  quad(neon('BIG BANG ARCADE', '#ff2a3c', 1024, 128), T, [-330, 520, 4], [330, 520, 4], [330, 436, 4], [-330, 436, 4]); glow('#ff2a3c', T, 0, 478, 10, 860, 220);
-  GAMES.filter(g => g.poster).forEach((g, i) => {
-    const P = i ? { x: -798, z: 55, th: Math.PI / 2 } : F(0), pm = mat(withImg(g.poster, 1024, 512, (x, w, h, e) => { x.fillStyle = '#000'; x.fillRect(0, 0, w, h); drawFit(x, e, 0, 0, w, h, true); }), { emis: 0.8, spec: 0.3 });
-    const hw = i ? 105 : 180, y0 = 190, hh = hw * 0.5625;
-    box(solid(g.color, 1, 0), P, -hw - 6, hw + 6, y0 - 6, y0 + hh * 2 + 6, 0, 6); quad(pm, P, [-hw, y0 + hh * 2, 8], [hw, y0 + hh * 2, 8], [hw, y0, 8], [-hw, y0, 8]);
-  });
-
-  // ---------- upload ----------
-  const buf = gl.createBuffer(); let total = 0; for (const m of mats) { m.start = total; m.n = m.v.length / 8; total += m.n; }
-  const data = new Float32Array(total * 8); for (const m of mats) { data.set(m.v, m.start * 8); m.v = null; }
-  gl.bindBuffer(gl.ARRAY_BUFFER, buf); gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
-  [[0, 3, 0], [1, 3, 12], [2, 2, 24]].forEach(([i, n, o]) => { gl.enableVertexAttribArray(A[i]); gl.vertexAttribPointer(A[i], n, gl.FLOAT, false, 32, o); });
-  gl.uniform3fv(U.uLP, new Float32Array(12 * 3).map((_, i) => (lights[i / 3 | 0] || { p: [0, 0, 0] }).p[i % 3]));
-  gl.uniform3fv(U.uLC, new Float32Array(12 * 3).map((_, i) => (lights[i / 3 | 0] || { c: [0, 0, 0] }).c[i % 3]));
-  gl.uniform1i(U.uT, 0); gl.enable(gl.DEPTH_TEST); gl.clearColor(0.03, 0.015, 0.06, 1);
-  const I = ident();
-  let fov = 1, asp = 1;
-  function resize() {
-    const d = Math.min(devicePixelRatio || 1, innerWidth < 800 ? 1.5 : 2), w = Math.round(innerWidth * d), h = Math.round(innerHeight * d);
-    if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
-    gl.viewport(0, 0, w, h); asp = w / h; fov = asp > 1 ? 1.05 : 1.3;
-  }
-  const drawSet = (pred, time, mirror) => {
-    for (const m of mats) {
-      if (!m.n || !pred(m)) continue;
-      gl.uniformMatrix4fv(U.uM, false, m.dyn ? mul(trans(0, 400 + Math.sin(time * 1.6) * 8, 150), rotY(time * 0.7)) : I);
-      gl.bindTexture(gl.TEXTURE_2D, m.t); gl.uniform3fv(U.uTint, m.tint);
-      gl.uniform1f(U.uEmis, m.emis * (m.emis === 1 && !m.glow ? 0.94 + 0.06 * Math.sin(time * 9 + m.start) : 1)); gl.uniform1f(U.uSpec, m.spec);
-      gl.drawArrays(gl.TRIANGLES, m.start, m.n);
-    }
+  renderer.setPixelRatio(Math.min(devicePixelRatio, mobile ? 1.4 : 1.75));
+  renderer.outputColorSpace = T.SRGBColorSpace;
+  renderer.toneMapping = T.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.15;
+  const scene = new T.Scene();
+  scene.background = new T.Color("#101017");
+  scene.fog = new T.Fog("#101017", 23, 68);
+  const camera = new T.PerspectiveCamera(55, 1, 0.07, 85);
+  camera.rotation.order = "YXZ";
+  const pmrem = new T.PMREMGenerator(renderer);
+  const studio = new RoomEnvironment();
+  const environment = pmrem.fromScene(studio, 0.04);
+  scene.environment = environment.texture;
+  scene.environmentIntensity = 0.38;
+  studio.dispose();
+  pmrem.dispose();
+  const surfaces = createSurfaces(renderer);
+  const reducedMotion = matchMedia("(prefers-reduced-motion:reduce)");
+  scene.add(new T.HemisphereLight("#afbed5", "#36251c", 0.85));
+  const sun = new T.DirectionalLight("#ffe0b0", 1.0);
+  sun.position.set(-3, 6, 4);
+  scene.add(sun);
+  scene.add(new T.AmbientLight("#b4bfd5", 0.2));
+  const env = new T.Group(),
+    animated = [],
+    obstacles = [],
+    pickables = [],
+    stations = {};
+  scene.add(env);
+  const materials = new Map(),
+    textures = new Map(),
+    loader = new T.TextureLoader();
+  let disposed = false;
+  const mat = (color, metalness = 0.1, roughness = 0.55) => {
+    const k = `${color}:${metalness}:${roughness}`;
+    if (!materials.has(k))
+      materials.set(
+        k,
+        new T.MeshStandardMaterial({ color, metalness, roughness }),
+      );
+    return materials.get(k);
   };
-  function render(P, time) {
-    resize();
-    const view = mul(mul(rotX(-P.pitch), rotY(P.yaw)), trans(-P.x, -P.eye, -P.z)), proj = persp(fov, asp, 8, 5000);
-    const flip = ident(); flip[5] = -1;
-    gl.uniform3f(U.uEye, P.x, P.eye, P.z); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-    const pass = (vp, mirror) => {
-      gl.uniformMatrix4fv(U.uVP, false, vp); gl.uniform1f(U.uMirror, mirror ? 1 : 0); gl.uniform1f(U.uAlpha, 1);
-      gl.disable(gl.BLEND); gl.depthMask(true); drawSet(m => !m.glow && !m.floor && !m.blend, time);
-      gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.depthMask(false); drawSet(m => m.blend, time);
-      gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE); gl.depthMask(false); drawSet(m => m.glow, time); gl.depthMask(true);
-    };
-    pass(mul(proj, mul(view, flip)), true);          // the room mirrored below the floor
-    gl.clear(gl.DEPTH_BUFFER_BIT);
-    gl.uniformMatrix4fv(U.uVP, false, mul(proj, view)); gl.uniform1f(U.uMirror, 0);
-    gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.uniform1f(U.uAlpha, 0.74); drawSet(m => m.floor, time); // glossy floor over it
-    pass(mul(proj, view), false);
-  }
-  // which station is under a screen point?
-  function pick(px, py, P) {
-    const t = Math.tan(fov / 2), cx = (px / innerWidth * 2 - 1) * t * asp, cy = (1 - py / innerHeight * 2) * t;
-    const cp = Math.cos(P.pitch), sp = Math.sin(P.pitch);
-    const vy = cy * cp + sp, vz = -cp + cy * sp, cs = Math.cos(P.yaw), sn = Math.sin(P.yaw);
-    const d = [cx * cs - vz * sn, vy, cx * sn + vz * cs], o = [P.x, P.eye, P.z];
-    let best = null, bt = 1e9;
-    for (const s of Object.values(stations)) {
-      let t0 = 0, t1 = 1e9;
-      for (let i = 0; i < 3; i++) { const inv = 1 / (d[i] || 1e-9); let a = (s.min[i] - o[i]) * inv, b = (s.max[i] - o[i]) * inv; if (a > b) [a, b] = [b, a]; t0 = Math.max(t0, a); t1 = Math.min(t1, b); }
-      if (t0 <= t1 && t0 < bt) { bt = t0; best = s; }
+  const glow = (color) => {
+    const k = `glow:${color}`;
+    if (!materials.has(k)) materials.set(k, new T.MeshBasicMaterial({ color }));
+    return materials.get(k);
+  };
+  function tex(url) {
+    if (!textures.has(url)) {
+      const t = loader.load(url, undefined, undefined, () => {});
+      t.colorSpace = T.SRGBColorSpace;
+      t.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
+      textures.set(url, t);
     }
-    return best;
+    return textures.get(url);
   }
-  const hfov = () => 2 * Math.atan(Math.tan(fov / 2) * asp);
+  function box(parent, x, y, z, w, h, d, m) {
+    const o = new T.Mesh(new T.BoxGeometry(w, h, d), m);
+    o.position.set(x, y, z);
+    parent.add(o);
+    return o;
+  }
+  function rounded(parent, x, y, z, w, h, d, m, r = 0.05) {
+    const o = new T.Mesh(new RoundedBoxGeometry(w, h, d, 2, r), m);
+    o.position.set(x, y, z);
+    parent.add(o);
+    return o;
+  }
+  const wood = new T.MeshStandardMaterial({
+    map: surfaces.walnut,
+    roughness: 0.47,
+    metalness: 0.08,
+  });
+  const leather = new T.MeshStandardMaterial({
+    map: surfaces.leather,
+    roughness: 0.57,
+    metalness: 0.08,
+  });
+  const speaker = new T.MeshStandardMaterial({
+    map: surfaces.grille,
+    roughness: 0.65,
+    metalness: 0.5,
+  });
+  const brass = mat("#b98942", 0.82, 0.27);
+  function halo(parent, x, y, z, w, h, color, rotation = 0) {
+    const o = new T.Mesh(
+      new T.PlaneGeometry(w, h),
+      new T.MeshBasicMaterial({
+        map: surfaces.halo,
+        color,
+        transparent: true,
+        depthWrite: false,
+        blending: T.AdditiveBlending,
+      }),
+    );
+    o.position.set(x, y, z);
+    o.rotation.y = rotation;
+    parent.add(o);
+    return o;
+  }
+  function contactShadow(x, z, w, d) {
+    const o = new T.Mesh(
+      new T.PlaneGeometry(w, d),
+      new T.MeshBasicMaterial({
+        map: surfaces.shadow,
+        transparent: true,
+        depthWrite: false,
+        opacity: 0.85,
+      }),
+    );
+    o.rotation.x = -Math.PI / 2;
+    o.position.set(x, 0.025, z);
+    scene.add(o);
+  }
+  function point(color, power, x, y, z, range = 10) {
+    const light = new T.PointLight(color, power, range, 2);
+    light.position.set(x, y, z);
+    scene.add(light);
+    return light;
+  }
+  function pendant(x, z) {
+    cylinder(env, x, 4.58, z, 0.025, 0.7, brass);
+    const shade = new T.Mesh(
+      new T.SphereGeometry(0.53, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2),
+      mat("#151419", 0.65, 0.28),
+    );
+    shade.position.set(x, 3.76, z);
+    env.add(shade);
+    cylinder(env, x, 3.77, z, 0.53, 0.055, brass);
+    cylinder(env, x, 3.74, z, 0.46, 0.02, glow("#ffcd83"));
+    point("#ffd292", 18, x, 3.5, z, 10);
+    const pool = halo(env, x, 0.027, z, 5, 5, "#b98344");
+    pool.rotation.x = -Math.PI / 2;
+  }
+  function plant(x, z, scale = 1) {
+    const g = new T.Group();
+    g.position.set(x, 0, z);
+    g.scale.setScalar(scale);
+    env.add(g);
+    cylinder(g, 0, 0.35, 0, 0.34, 0.7, brass, 0.27);
+    for (let i = 0; i < 13; i++) {
+      const angle = i * 2.4,
+        height = 0.85 + (i % 4) * 0.28;
+      const stem = cylinder(
+        g,
+        Math.sin(angle) * 0.12,
+        0.6 + height / 2,
+        Math.cos(angle) * 0.12,
+        0.015,
+        height,
+        mat("#42572c"),
+      );
+      stem.rotation.z = Math.sin(angle) * 0.2;
+      const leaf = new T.Mesh(
+        new T.SphereGeometry(0.3, 10, 6),
+        mat(i % 2 ? "#2e4a27" : "#5b6630", 0.1, 0.6),
+      );
+      leaf.scale.set(0.55, 2.2, 0.12);
+      leaf.position.set(
+        Math.sin(angle) * 0.35,
+        0.8 + height,
+        Math.cos(angle) * 0.35,
+      );
+      leaf.rotation.set(0, angle, Math.sin(angle) * 0.75);
+      g.add(leaf);
+    }
+    contactShadow(x, z, 1.5 * scale, 1.5 * scale);
+    solid(x, z, 0.85 * scale, 0.85 * scale);
+  }
+  function sphere(parent, x, y, z, r, m) {
+    const o = new T.Mesh(new T.SphereGeometry(r, 12, 8), m);
+    o.position.set(x, y, z);
+    parent.add(o);
+    return o;
+  }
+  function cylinder(parent, x, y, z, r, h, m, r2 = r) {
+    const o = new T.Mesh(new T.CylinderGeometry(r, r2, h, 20), m);
+    o.position.set(x, y, z);
+    parent.add(o);
+    return o;
+  }
+  function label(
+    parent,
+    words,
+    x,
+    y,
+    z,
+    w,
+    h,
+    color = "#f4deaf",
+    bg = "#122326",
+    size = 64,
+  ) {
+    const c = document.createElement("canvas");
+    c.width = 1024;
+    c.height = Math.max(64, Math.round((1024 * h) / w));
+    const ctx = c.getContext("2d");
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, c.width, c.height);
+    ctx.fillStyle = color;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = `900 ${Math.min((c.height * 0.68) / words.split("\n").length, size * 1.5)}px "Arial Black",Arial,sans-serif`;
+    const lines = words.split("\n");
+    lines.forEach((s, i) =>
+      ctx.fillText(
+        s,
+        512,
+        c.height / 2 + ((i - (lines.length - 1) / 2) * c.height) / lines.length,
+        965,
+      ),
+    );
+    const texture = new T.CanvasTexture(c);
+    texture.colorSpace = T.SRGBColorSpace;
+    textures.set(`label:${textures.size}`, texture);
+    const o = new T.Mesh(
+      new T.PlaneGeometry(w, h),
+      new T.MeshBasicMaterial({
+        map: texture,
+        transparent: bg === "transparent",
+      }),
+    );
+    o.position.set(x, y, z);
+    parent.add(o);
+    return o;
+  }
+  function image(parent, url, x, y, z, w, h) {
+    const o = new T.Mesh(
+      new T.PlaneGeometry(w, h),
+      new T.MeshBasicMaterial({ map: tex(url) }),
+    );
+    o.position.set(x, y, z);
+    parent.add(o);
+    return o;
+  }
+  const solid = (x, z, w, d) => obstacles.push({ x, z, w, d });
+  function station(id, title, x, z, w, d, open, height = 3.95) {
+    const target = new T.Mesh(
+      new T.BoxGeometry(w, height, d),
+      new T.MeshBasicMaterial({ visible: false }),
+    );
+    target.position.set(x, height / 2, z);
+    target.userData.station = id;
+    scene.add(target);
+    pickables.push(target);
+    stations[id] = {
+      id,
+      label: title,
+      x,
+      z,
+      w,
+      depth: d,
+      open,
+      arrival: { x, z: z + d / 2 + 2.1 },
+    };
+  }
+  for (const [a, b, c, d] of FLOOR_AREAS) {
+    const floorMap = surfaces.stone.clone();
+    floorMap.repeat.set((b - a) / 2, (d - c) / 2);
+    floorMap.needsUpdate = true;
+    textures.set(`floor:${a}:${c}`, floorMap);
+    const floor = new T.Mesh(
+      new T.PlaneGeometry(b - a, d - c),
+      new T.MeshStandardMaterial({
+        map: floorMap,
+        color: "#c6c0b9",
+        metalness: 0.28,
+        roughness: 0.28,
+      }),
+    );
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.set((a + b) / 2, 0, (c + d) / 2);
+    env.add(floor);
+    box(
+      env,
+      (a + b) / 2,
+      5.12,
+      (c + d) / 2,
+      b - a,
+      0.2,
+      d - c,
+      mat("#14141a", 0.2, 0.65),
+    );
+    for (let z = c + 2; z < d; z += 4)
+      box(
+        env,
+        (a + b) / 2,
+        4.99,
+        z,
+        b - a,
+        0.19,
+        0.13,
+        mat("#232127", 0.6, 0.4),
+      );
+    for (let x = a + 2; x < b; x += 5) {
+      const pipe = cylinder(
+        env,
+        x,
+        4.79,
+        (c + d) / 2,
+        0.105,
+        d - c,
+        mat("#4b3429", 0.8, 0.38),
+      );
+      pipe.rotation.x = Math.PI / 2;
+      for (let z = c + 2; z < d; z += 4) {
+        const ring = cylinder(env, x, 4.79, z, 0.128, 0.055, brass);
+        ring.rotation.x = Math.PI / 2;
+      }
+    }
+  }
+  if (!mobile) {
+    const mirror = new Reflector(new T.PlaneGeometry(19.5, 27), {
+      color: 0x73717a,
+      textureWidth: 768,
+      textureHeight: 512,
+      multisample: 0,
+      clipBias: 0.003,
+    });
+    mirror.material.fragmentShader = mirror.material.fragmentShader.replace(
+      "vec4 base = texture2DProj( tDiffuse, vUv );",
+      `vec2 uv=vUv.xy/vUv.w;
+      vec4 base=texture2D(tDiffuse,uv)*0.36;
+      base+=texture2D(tDiffuse,uv+vec2(0.003,0.002))*0.16;
+      base+=texture2D(tDiffuse,uv+vec2(-0.003,0.002))*0.16;
+      base+=texture2D(tDiffuse,uv+vec2(0.003,-0.002))*0.16;
+      base+=texture2D(tDiffuse,uv+vec2(-0.003,-0.002))*0.16;`,
+    );
+    mirror.rotation.x = -Math.PI / 2;
+    mirror.position.set(0, 0.004, 0);
+    scene.add(mirror);
+    const tileMap = surfaces.stone.clone();
+    tileMap.repeat.set(9.75, 13.5);
+    tileMap.needsUpdate = true;
+    textures.set("reflection-tile", tileMap);
+    const veil = new T.Mesh(
+      new T.PlaneGeometry(19.5, 27),
+      new T.MeshBasicMaterial({
+        map: tileMap,
+        color: "#ffffff",
+        transparent: true,
+        opacity: 0.8,
+        depthWrite: false,
+      }),
+    );
+    veil.rotation.x = -Math.PI / 2;
+    veil.position.set(0, 0.012, 0);
+    scene.add(veil);
+  }
+  for (const [x, z, w, d] of WALLS) {
+    box(env, x, 2.5, z, w, 5, d, mat("#252128", 0.08, 0.8));
+    if (w > d) {
+      box(env, x, 0.18, z, w, 0.13, d + 0.04, brass);
+      box(env, x, 4.45, z, w, 0.04, d + 0.07, glow("#6dcced"));
+      box(env, x, 3.55, z, w, 0.09, d + 0.05, wood);
+      for (let px = x - w / 2 + 0.15; px < x + w / 2; px += 0.22)
+        box(env, px, 4.02, z, 0.1, 0.75, d + 0.04, wood);
+    } else {
+      box(env, x, 0.18, z, w + 0.04, 0.13, d, brass);
+      box(env, x, 4.45, z, w + 0.07, 0.04, d, glow("#6dcced"));
+      box(env, x, 3.55, z, w + 0.05, 0.09, d, wood);
+      for (let pz = z - d / 2 + 0.15; pz < z + d / 2; pz += 0.22)
+        box(env, x, 4.02, pz, w + 0.04, 0.75, 0.1, wood);
+    }
+  }
+  for (const [center, z, width] of [
+    [0, -27.79, 19.5],
+    [-18, -9.79, 15.5],
+    [18, -9.79, 15.5],
+    [-6.5, -13.79, 6.6],
+    [6.5, -13.79, 6.6],
+  ])
+    for (let x = center - width / 2; x < center + width / 2; x += 0.22)
+      box(env, x, 2.25, z, 0.1, 4.15, 0.08, wood);
+  for (const x of [-9.3, 9.3])
+    for (const z of [-12, 7]) {
+      box(env, x, 2.5, z, 0.5, 5, 0.5, mat("#24232b", 0.25));
+      box(env, x, 2.7, z + 0.27, 0.15, 0.6, 0.15, brass);
+      halo(env, x, 2.75, z + 0.29, 1.7, 3.8, "#ffb75d");
+    }
+  for (const [x, z] of [
+    [-5, -8.5],
+    [5, -8.5],
+    [-18, -4],
+    [18, -4],
+    [0, -23],
+    [0, 7],
+  ])
+    pendant(x, z);
+  for (const [x, z] of [
+    [-8.8, -11.5],
+    [8.8, -11.5],
+    [-24, -8],
+    [24, -8],
+    [-8, 10],
+  ])
+    plant(x, z, 0.9);
+  // The sign hangs above the route through to the next room, never across it.
+  box(env, 0, 4.46, -12.1, 11.6, 1.0, 0.14, wood);
+  label(
+    env,
+    "BIG BANG  ARCADE",
+    0,
+    4.48,
+    -11.99,
+    10.5,
+    0.65,
+    "#ffdb95",
+    "transparent",
+    100,
+  );
+  halo(env, 0, 4.45, -12.0, 13, 2.0, "#d48e33");
+  label(env, "THE LAB", 0, 4, -27.6, 7, 0.9, "#8ee2d8", "transparent", 110);
+  label(
+    env,
+    "SOUND + SOCIAL",
+    -18,
+    4,
+    -9.6,
+    9,
+    0.7,
+    "#eeb1d6",
+    "transparent",
+    90,
+  );
+  label(env, wall.title, 18, 4, -9.6, 10, 0.7, wall.accent, "transparent", 90);
+  for (const r of ROOMS.slice(1)) {
+    const z = r.id === "lab" ? -13.65 : 0,
+      x = r.id === "lab" ? 0 : r.x > 0 ? 9.75 : -9.75;
+    const sign = label(
+      env,
+      r.name.toUpperCase(),
+      x,
+      3.85,
+      z,
+      4.7,
+      0.45,
+      r.color,
+      "#17181d",
+      85,
+    );
+    if (r.id !== "lab") sign.rotation.y = r.x > 0 ? -Math.PI / 2 : Math.PI / 2;
+  }
+  function handheldScreen(parent) {
+    const c = document.createElement("canvas");
+    c.width = 480;
+    c.height = 320;
+    const q = c.getContext("2d");
+    q.fillStyle = "#142653";
+    q.fillRect(0, 0, 480, 320);
+    q.fillStyle = "#f7d672";
+    q.font = "900 32px Arial";
+    q.textAlign = "center";
+    q.fillText("GAMEBBOY", 240, 40);
+    q.fillStyle = "#bdc7da";
+    q.beginPath();
+    q.roundRect(156, 58, 168, 235, 16);
+    q.fill();
+    q.fillStyle = "#363a50";
+    q.fillRect(172, 77, 136, 116);
+    q.fillStyle = "#14294c";
+    q.fillRect(184, 88, 112, 93);
+    q.fillStyle = "#4cce8d";
+    q.fillRect(186, 161, 45, 6);
+    q.fillRect(249, 133, 45, 6);
+    q.fillStyle = "#f1c06c";
+    q.fillRect(234, 110, 17, 18);
+    q.fillStyle = "#a273e0";
+    q.fillRect(231, 128, 22, 19);
+    q.fillStyle = "#162134";
+    q.fillRect(184, 220, 45, 13);
+    q.fillRect(200, 204, 13, 45);
+    q.fillStyle = "#c93665";
+    for (const [x, y] of [
+      [282, 219],
+      [264, 239],
+    ]) {
+      q.beginPath();
+      q.arc(x, y, 10, 0, Math.PI * 2);
+      q.fill();
+    }
+    const t = new T.CanvasTexture(c);
+    t.colorSpace = T.SRGBColorSpace;
+    textures.set("handheld-screen", t);
+    const m = new T.Mesh(
+      new T.PlaneGeometry(1.68, 1.11),
+      new T.MeshBasicMaterial({ map: t }),
+    );
+    m.position.set(0, 2.58, 0.399);
+    parent.add(m);
+  }
+  function cabinet(g) {
+    const p = cabinetPosition(g),
+      group = new T.Group();
+    group.position.set(p.x, 0, p.z);
+    env.add(group);
+    const trim = g.trim || g.color,
+      black = mat("#101015", 0.35, 0.31),
+      edge = mat(trim, 0.5, 0.3);
+    const shape = new T.Shape();
+    [
+      [-0.76, 0.1],
+      [0.78, 0.1],
+      [0.78, 1.25],
+      [1.02, 1.64],
+      [0.94, 1.84],
+      [0.46, 1.99],
+      [0.27, 3.05],
+      [0.72, 3.27],
+      [0.72, 3.84],
+      [-0.76, 3.84],
+    ].forEach(([x, y], i) => (i ? shape.lineTo(x, y) : shape.moveTo(x, y)));
+    shape.closePath();
+    for (const x of [-1.03, 1.03]) {
+      const geo = new T.ExtrudeGeometry(shape, {
+        depth: 0.08,
+        bevelEnabled: true,
+        bevelThickness: 0.035,
+        bevelSize: 0.035,
+        bevelSegments: 2,
+        steps: 1,
+      });
+      const uv = geo.attributes.uv,
+        pos = geo.attributes.position;
+      for (let i = 0; i < uv.count; i++)
+        uv.setXY(i, (pos.getX(i) + 0.8) / 1.85, pos.getY(i) / 3.9);
+      const skin = g.cab
+        ? new T.MeshStandardMaterial({
+            map: tex(`${g.cab}-side.jpg`),
+            roughness: 0.35,
+            metalness: 0.12,
+          })
+        : black;
+      const side = new T.Mesh(geo, [skin, edge]);
+      side.rotation.y = -Math.PI / 2;
+      side.position.x = x;
+      group.add(side);
+      const contour = new T.BufferGeometry().setFromPoints(
+        shape
+          .getPoints(30)
+          .map((v) => new T.Vector3(x > 0 ? x + 0.04 : x - 0.12, v.y, v.x)),
+      );
+      group.add(
+        new T.LineLoop(contour, new T.LineBasicMaterial({ color: trim })),
+      );
+    }
+    rounded(group, 0, 1.92, -0.37, 2, 3.67, 0.8, black);
+    rounded(group, 0, 0.11, 0, 2.13, 0.2, 1.7, mat("#08090d", 0.2, 0.7));
+    rounded(group, 0, 3.58, 0.48, 2.05, 0.58, 0.45, black);
+    rounded(group, 0, 3.58, 0.72, 1.96, 0.46, 0.035, edge, 0.025);
+    if (g.cab) image(group, `${g.cab}-marquee.jpg`, 0, 3.58, 0.746, 1.85, 0.39);
+    else
+      label(
+        group,
+        g.title.toUpperCase(),
+        0,
+        3.58,
+        0.746,
+        1.85,
+        0.39,
+        g.color,
+        "#111321",
+        90,
+      );
+    // Recessed glass, deep bevel and a tilted screen retain the cabinet silhouette.
+    rounded(
+      group,
+      0,
+      2.57,
+      0.25,
+      1.98,
+      1.53,
+      0.2,
+      mat("#050608", 0.15, 0.4),
+      0.11,
+    );
+    rounded(
+      group,
+      0,
+      2.58,
+      0.37,
+      1.78,
+      1.23,
+      0.035,
+      mat("#24242e", 0.5, 0.18),
+      0.06,
+    );
+    const screenUrl = g.cab ? `${g.cab}-screen.jpg` : g.poster || g.art;
+    if (g.id === "gamerboy") handheldScreen(group);
+    else if (screenUrl) {
+      const screen = image(group, screenUrl, 0, 2.58, 0.397, 1.68, 1.11);
+      animated.push({ object: screen, phase: p.x });
+    }
+    const glass = box(
+      group,
+      0,
+      2.58,
+      0.405,
+      1.69,
+      1.12,
+      0.005,
+      new T.MeshPhysicalMaterial({
+        color: "#afd7ff",
+        transparent: true,
+        opacity: 0.045,
+        metalness: 0,
+        roughness: 0.08,
+        depthWrite: false,
+      }),
+    );
+    glass.userData.animated = true;
+    for (const x of [-0.69, 0.69])
+      rounded(group, x, 3.17, 0.39, 0.4, 0.13, 0.04, speaker, 0.02);
+    label(
+      group,
+      g.status === "coming-soon" ? "IN DEVELOPMENT" : "1 PLAYER     2 PLAYER",
+      0,
+      3.18,
+      0.42,
+      0.7,
+      0.09,
+      "#edc47b",
+      "#0c1016",
+      55,
+    );
+    rounded(group, 0, 1.74, 0.65, 2.2, 0.17, 0.92, black, 0.04);
+    box(group, 0, 1.66, 1.1, 2.1, 0.045, 0.03, edge);
+    if (g.cab) {
+      const deck = image(group, `${g.cab}-panel.jpg`, 0, 1.83, 0.65, 2, 0.8);
+      deck.rotation.x = -Math.PI / 2;
+    }
+    for (const px of [-0.66, 0.38]) {
+      cylinder(group, px, 1.86, 0.78, 0.14, 0.055, mat("#111318", 0.8, 0.2));
+      cylinder(group, px, 1.97, 0.78, 0.034, 0.22, mat("#b4bcc2", 0.9, 0.18));
+      sphere(
+        group,
+        px,
+        2.09,
+        0.78,
+        0.1,
+        mat(g.id === "guerilla" ? "#15bbc2" : "#d5224e", 0.35, 0.18),
+      );
+      for (let i = 0; i < 6; i++) {
+        const bx = px + 0.27 + (i % 3) * 0.14,
+          bz = 0.53 + Math.floor(i / 3) * 0.17;
+        cylinder(group, bx, 1.86, bz, 0.069, 0.035, mat("#07090c", 0.3));
+        cylinder(
+          group,
+          bx,
+          1.892,
+          bz,
+          0.053,
+          0.04,
+          mat(i < 3 ? "#ffd36c" : trim, 0.4, 0.22),
+        );
+      }
+    }
+    rounded(group, 0, 0.85, 0.68, 1.94, 1.52, 0.17, black, 0.025);
+    if (g.cab) image(group, `${g.cab}-base.jpg`, 0, 0.29, 0.775, 1.9, 0.42);
+    rounded(
+      group,
+      0,
+      0.96,
+      0.79,
+      0.87,
+      0.79,
+      0.08,
+      mat("#242427", 0.7, 0.44),
+      0.04,
+    );
+    rounded(
+      group,
+      0,
+      0.96,
+      0.84,
+      0.76,
+      0.67,
+      0.025,
+      mat("#111114", 0.4, 0.6),
+      0.03,
+    );
+    for (const x of [-0.22, 0.22]) {
+      rounded(group, x, 1.14, 0.875, 0.13, 0.2, 0.03, mat("#5d1023"), 0.02);
+      box(group, x, 1.15, 0.895, 0.035, 0.13, 0.015, glow("#ff3a44"));
+      rounded(group, x, 0.79, 0.88, 0.19, 0.1, 0.02, mat("#050506"), 0.01);
+    }
+    for (const [x, y] of [
+      [-0.37, 0.64],
+      [0.37, 0.64],
+      [-0.37, 1.29],
+      [0.37, 1.29],
+    ])
+      sphere(group, x, y, 0.875, 0.018, brass);
+    label(
+      group,
+      "—  BIG BANG ARCADE  —",
+      0,
+      0.14,
+      0.86,
+      1.9,
+      0.12,
+      "#d7ae62",
+      "#0b0c10",
+      75,
+    );
+    contactShadow(p.x, p.z + 0.25, 3.3, 3);
+    const spill = halo(env, p.x, 0.03, p.z + 1.9, 3.6, 4.2, trim);
+    spill.rotation.x = -Math.PI / 2;
+    if (g.room === "main" && g.slot < 4) point(trim, 3, p.x, 2.3, p.z + 1.4, 5);
+    solid(p.x, p.z, 2.25, 2.2);
+    station(g.id, "SELECT " + g.title, p.x, p.z, 2.3, 2.2, () =>
+      handlers.game(g),
+    );
+    stations[g.id].arrival.z = p.z + (g.room === "lab" ? 2 : 3.4);
+    rounded(env, p.x, 4.14, p.z + 0.2, 2.65, 0.36, 0.08, mat("#0d0f15"), 0.08);
+    label(
+      env,
+      g.genre.toUpperCase(),
+      p.x,
+      4.14,
+      p.z + 0.25,
+      2.5,
+      0.25,
+      g.color,
+      "transparent",
+      95,
+    );
+    halo(env, p.x, 4.14, p.z + 0.19, 3.6, 0.9, g.color);
+  }
+  games.forEach(cabinet);
+  for (let i = 0; i < 4; i++)
+    if (!games.some((g) => g.room === "lab" && g.slot === i)) {
+      const x = [-6, -2, 2, 6][i];
+      box(env, x, 0.13, -26, 2.5, 0.25, 2.3, mat("#243d40"));
+      label(
+        env,
+        `NEXT UP / 0${i + 1}\nNEW GAME IN DEVELOPMENT`,
+        x,
+        1.9,
+        -26,
+        2.45,
+        1.65,
+        "#83ada9",
+        "#152a2d",
+        49,
+      );
+      box(env, x, 0.27, -24.82, 2.5, 0.025, 0.06, glow("#49a399"));
+    }
+  const kiosk = new T.Group();
+  kiosk.position.set(0, 0, -5);
+  env.add(kiosk);
+  rounded(kiosk, 0, 0.57, 0, 2.45, 1.1, 1.2, wood, 0.07);
+  rounded(kiosk, 0, 1.15, 0, 2.5, 0.12, 1.3, brass, 0.05);
+  const table = new T.Group();
+  table.position.set(0, 1.23, 0);
+  table.rotation.x = -Math.PI / 2 + 0.18;
+  kiosk.add(table);
+  rounded(table, 0, 0, 0, 2.3, 1.1, 0.05, mat("#0b0d13"), 0.04);
+  label(
+    table,
+    "★  BIG BOX  ★",
+    0,
+    0.37,
+    0.04,
+    2.1,
+    0.17,
+    "#f5cc81",
+    "transparent",
+    80,
+  );
+  games.slice(0, 4).forEach((g, i) => {
+    const x = ((i % 2) - 0.5) * 1.06,
+      y = 0.04 - Math.floor(i / 2) * 0.32;
+    image(
+      table,
+      g.cab ? `${g.cab}-screen.jpg` : g.poster || g.art,
+      x,
+      y,
+      0.04,
+      0.98,
+      0.28,
+    );
+  });
+  label(
+    kiosk,
+    "THE BIG BOX",
+    0,
+    0.85,
+    0.614,
+    2.12,
+    0.19,
+    "#eaca88",
+    "transparent",
+    75,
+  );
+  for (let x = -1.13; x < 1.2; x += 0.12)
+    box(kiosk, x, 0.4, 0.62, 0.035, 0.6, 0.03, brass);
+  solid(0, -5, 2.5, 1.3);
+  contactShadow(0, -5, 3.5, 2.3);
+  station("bigbox", "BROWSE THE GAMES", 0, -5, 2.5, 1.3, handlers.bigbox, 1.35);
+  function makeJukebox(x, z, id) {
+    const j = new T.Group();
+    j.position.set(x, 0, z);
+    env.add(j);
+    rounded(j, 0, 1.4, 0, 2.0, 2.8, 0.8, wood, 0.2);
+    const profile = new T.Shape();
+    profile.moveTo(-1, 0);
+    profile.lineTo(1, 0);
+    profile.lineTo(1, 2.65);
+    profile.absarc(0, 2.65, 1, 0, Math.PI, false);
+    profile.lineTo(-1, 0);
+    const body = new T.Mesh(
+      new T.ExtrudeGeometry(profile, {
+        depth: 0.75,
+        bevelEnabled: true,
+        bevelThickness: 0.035,
+        bevelSize: 0.035,
+        bevelSegments: 2,
+      }),
+      wood,
+    );
+    body.position.z = -0.4;
+    j.add(body);
+    for (const [r, c] of [
+      [0.92, brass],
+      [0.78, glow("#f452d6")],
+      [0.68, brass],
+    ]) {
+      const arch = new T.Mesh(new T.TorusGeometry(r, 0.05, 8, 40, Math.PI), c);
+      arch.position.set(0, 2.65, 0.48);
+      j.add(arch);
+      for (const dx of [-r, r]) cylinder(j, dx, 1.55, 0.48, 0.05, 2.2, c);
+    }
+    rounded(j, 0, 1.9, 0.44, 1.25, 1.9, 0.08, mat("#17131e", 0.5, 0.3), 0.08);
+    label(j, "♫", 0, 2.66, 0.51, 0.65, 0.65, "#ff6ade", "transparent", 170);
+    label(
+      j,
+      "JUKEBOX",
+      0,
+      2.13,
+      0.52,
+      1.23,
+      0.23,
+      "#ffc4ef",
+      "transparent",
+      100,
+    );
+    const bars = [];
+    for (let i = 0; i < 7; i++) {
+      const o = box(
+        j,
+        -0.48 + i * 0.16,
+        1.3,
+        0.53,
+        0.08,
+        0.65,
+        0.02,
+        glow(i % 2 ? "#e9b969" : "#b85ddc"),
+      );
+      o.userData.animated = true;
+      bars.push(o);
+    }
+    animated.push({ bars });
+    label(
+      j,
+      "BIG BANG MUSIC",
+      0,
+      0.91,
+      0.53,
+      1.35,
+      0.15,
+      "#d7b77e",
+      "transparent",
+      80,
+    );
+    rounded(j, 0, 0.46, 0.49, 1.5, 0.57, 0.09, speaker, 0.03);
+    for (let i = 0; i < 12; i++)
+      box(j, -0.66 + i * 0.12, 0.46, 0.55, 0.022, 0.5, 0.02, brass);
+    halo(j, 0, 2, 0.38, 3.9, 4, "#a9148c");
+    station(id, "PICK A RECORD", x, z, 2.1, 1.3, handlers.jukebox);
+    solid(x, z, 2.1, 1.3);
+    contactShadow(x, z, 3, 2);
+  }
+  makeJukebox(-7.7, -11.5, "lobby-music");
+  makeJukebox(-21, -7.8, "jukebox");
+  for (const [x, z] of [
+    [-23, 3],
+    [-15, 3],
+  ]) {
+    rounded(env, x, 0.5, z, 3.5, 0.5, 1.4, leather, 0.16);
+    rounded(env, x, 0.95, z + 0.6, 3.5, 1, 0.3, leather, 0.12);
+    for (let c = -1; c <= 1; c++)
+      rounded(env, x + c, 0.8, z, 0.95, 0.18, 1.1, leather, 0.08);
+    for (const dx of [-1.65, 1.65])
+      rounded(env, x + dx, 0.85, z, 0.26, 0.5, 1.45, leather, 0.12);
+    contactShadow(x, z, 4, 2.5);
+    solid(x, z, 3.5, 1.7);
+  }
+  box(env, -19, 0.45, 3, 2.4, 0.14, 1.1, mat("#7a6249", 0.3));
+  solid(-19, 3, 2.4, 1.1);
+  for (let i = 0; i < 3; i++) {
+    const x = -18 + i * 2;
+    box(env, x, 2.45, -9.6, 1.5, 1.5, 0.12, mat("#c1a365", 0.65));
+    const a = cylinder(
+      env,
+      x,
+      2.45,
+      -9.48,
+      0.53,
+      0.04,
+      mat("#10141c", 0.8, 0.2),
+    );
+    a.rotation.x = Math.PI / 2;
+    const b = cylinder(
+      env,
+      x,
+      2.45,
+      -9.44,
+      0.17,
+      0.04,
+      mat(["#bb666b", "#c5ad69", "#77aca4"][i]),
+    );
+    b.rotation.x = Math.PI / 2;
+  }
+  const accent = wall.accent,
+    backdrop = wall.backdrop;
+  const mood =
+    wall.style === "neon"
+      ? "#c477ce"
+      : wall.style === "studio"
+        ? "#eac694"
+        : accent;
+  for (let col = 0; col < 3; col++) {
+    const x = 13.5 + col * 4.5;
+    box(env, x, 1.9, -8.9, 3.9, 3.75, 0.3, mat(backdrop));
+    box(env, x, 0.1, -8.2, 4, 0.2, 1.8, mat("#b48b4d", 0.6));
+    for (let row = 0; row < 4; row++) {
+      const y = 0.35 + row * 0.85;
+      box(env, x, y, -8.1, 4, 0.08, 1.55, mat("#c8a56b", 0.7, 0.25));
+      box(env, x, y + 0.07, -7.35, 3.8, 0.025, 0.04, glow(accent));
+    }
+    solid(x, -8.2, 4, 1.8);
+  }
+  function sculpt(p, parent) {
+    const gold = mat("#c69d48", 0.8, 0.22),
+      dark = mat("#1d2330", 0.35, 0.3);
+    if (p.id === "mic") {
+      cylinder(parent, 0, 0.3, 0, 0.065, 0.45, gold);
+      sphere(parent, 0, 0.58, 0, 0.16, mat("#9eaab3", 0.8, 0.35));
+    } else if (p.id === "record") {
+      const a = cylinder(parent, 0, 0.33, 0, 0.31, 0.055, gold);
+      a.rotation.x = Math.PI / 2;
+      const b = cylinder(parent, 0, 0.33, 0.04, 0.11, 0.06, dark);
+      b.rotation.x = Math.PI / 2;
+    } else if (p.id === "ring") {
+      const a = new T.Mesh(new T.TorusGeometry(0.2, 0.07, 8, 24), gold);
+      a.position.y = 0.28;
+      parent.add(a);
+      box(parent, 0, 0.52, 0, 0.17, 0.16, 0.16, mat("#b8dfec", 0.5, 0.1));
+    } else if (p.id === "crown") {
+      cylinder(parent, 0, 0.16, 0, 0.24, 0.2, gold);
+      for (let i = 0; i < 7; i++) {
+        const a = (i * Math.PI * 2) / 7;
+        const spike = new T.Mesh(new T.ConeGeometry(0.085, 0.3, 4), gold);
+        spike.position.set(Math.cos(a) * 0.2, 0.35, Math.sin(a) * 0.2);
+        parent.add(spike);
+      }
+      sphere(parent, 0, 0.25, 0.25, 0.06, mat("#a52e45", 0.5, 0.2));
+    } else if (p.id === "belt") {
+      box(parent, 0, 0.26, 0, 0.95, 0.28, 0.07, dark);
+      const plate = sphere(parent, 0, 0.28, 0.06, 0.23, gold);
+      plate.scale.set(1.25, 0.85, 0.3);
+      label(parent, "BBA", 0, 0.28, 0.15, 0.3, 0.13, "#442c16", "#d1a84f", 90);
+    } else if (p.id === "trophy") {
+      cylinder(parent, 0, 0.15, 0, 0.22, 0.25, gold);
+      sphere(parent, 0, 0.37, 0, 0.17, gold);
+      for (const x of [-0.3, 0.3]) {
+        const h = new T.Mesh(
+          new T.TorusGeometry(0.17, 0.035, 8, 20, Math.PI * 1.5),
+          gold,
+        );
+        h.position.set(x, 0.4, 0);
+        parent.add(h);
+      }
+      box(parent, 0, 0.02, 0, 0.6, 0.09, 0.4, dark);
+    } else if (p.id === "beanie") {
+      const crown = new T.Mesh(
+        new T.SphereGeometry(0.26, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2),
+        mat("#25497e", 0.1, 0.65),
+      );
+      crown.position.set(0, 0.23, 0);
+      parent.add(crown);
+      rounded(parent, 0, 0.23, 0.22, 0.47, 0.035, 0.3, mat("#25497e"), 0.035);
+      label(
+        parent,
+        "★",
+        0,
+        0.35,
+        0.245,
+        0.16,
+        0.16,
+        "#f7ce61",
+        "transparent",
+        90,
+      );
+    } else if (p.id === "shades") {
+      for (const x of [-0.17, 0.17]) {
+        const a = cylinder(parent, x, 0.3, 0, 0.14, 0.05, dark);
+        a.rotation.x = Math.PI / 2;
+      }
+      box(parent, 0, 0.34, 0, 0.14, 0.04, 0.05, gold);
+    } else if (p.id === "hoodie") {
+      const body = mat("#20232a", 0.05, 0.7),
+        sleeve = mat("#b29465", 0.05, 0.7);
+      rounded(parent, 0, 0.3, 0, 0.36, 0.46, 0.19, body, 0.07);
+      for (const x of [-0.23, 0.23]) {
+        const arm = rounded(parent, x, 0.32, 0, 0.16, 0.4, 0.17, sleeve, 0.06);
+        arm.rotation.z = x > 0 ? 0.25 : -0.25;
+        rounded(parent, x * 1.2, 0.13, 0, 0.13, 0.06, 0.17, body, 0.02);
+      }
+      cylinder(parent, 0, 0.54, 0, 0.1, 0.08, sleeve);
+      box(parent, 0, 0.31, 0.105, 0.015, 0.39, 0.014, sleeve);
+      for (let y = 0.16; y < 0.5; y += 0.085)
+        sphere(parent, 0, y, 0.12, 0.012, brass);
+      label(
+        parent,
+        "★",
+        0.1,
+        0.43,
+        0.11,
+        0.13,
+        0.13,
+        "#ecc983",
+        "transparent",
+        90,
+      );
+    } else if (p.id === "boots") {
+      for (const x of [-0.13, 0.13]) {
+        rounded(parent, x, 0.21, 0, 0.18, 0.3, 0.22, dark, 0.04);
+        rounded(parent, x, 0.08, 0.12, 0.19, 0.15, 0.4, mat("#604128"), 0.05);
+        rounded(parent, x, 0.025, 0.12, 0.2, 0.035, 0.42, mat("#c3a477"), 0.01);
+        for (let i = 0; i < 4; i++)
+          box(
+            parent,
+            x,
+            0.19 + i * 0.035,
+            0.125 - i * 0.014,
+            0.13,
+            0.012,
+            0.015,
+            mat("#cfbb8c"),
+          );
+      }
+    } else
+      label(
+        parent,
+        p.icon + "\n" + p.name,
+        0,
+        0.3,
+        0.02,
+        0.75,
+        0.6,
+        accent,
+        backdrop,
+        70,
+      );
+  }
+  for (const p of prizes.filter((p) => p.visible && !p.real)) {
+    const col = p.shelf % 3,
+      row = Math.floor(p.shelf / 3),
+      group = new T.Group();
+    group.position.set(13.5 + col * 4.5, 0.46 + row * 0.85, -8.05);
+    group.rotation.y = T.MathUtils.degToRad(p.rotation);
+    group.scale.setScalar(p.scale);
+    env.add(group);
+    if (p.model)
+      new GLTFLoader().load(
+        p.model,
+        (gltf) => {
+          if (disposed) {
+            gltf.scene.traverse((o) => o.geometry?.dispose());
+            return;
+          }
+          const bounds = new T.Box3().setFromObject(gltf.scene),
+            size = bounds.getSize(new T.Vector3()),
+            center = bounds.getCenter(new T.Vector3());
+          gltf.scene.scale.setScalar(0.65 / Math.max(size.x, size.y, size.z));
+          gltf.scene.position.copy(center).multiplyScalar(-gltf.scene.scale.x);
+          gltf.scene.position.y += 0.35;
+          group.add(gltf.scene);
+        },
+        undefined,
+        () => sculpt(p, group),
+      );
+    else if (p.image) {
+      box(group, 0, 0.35, -0.05, 0.85, 0.65, 0.06, mat("#c9aa70", 0.7));
+      image(group, p.image, 0, 0.35, 0, 0.77, 0.57);
+    } else sculpt(p, group);
+    label(
+      env,
+      p.name.toUpperCase() + " / " + p.cost + " TOKENS",
+      group.position.x,
+      group.position.y - 0.13,
+      -7.3,
+      3.4,
+      0.17,
+      "#e1d7be",
+      backdrop,
+      50,
+    );
+  }
+  // An editable selection is visible from the entrance; the full collection is
+  // through the gallery doorway on the right.
+  const showcase = new T.Group();
+  showcase.position.set(7.7, 0, -11.5);
+  env.add(showcase);
+  rounded(showcase, 0, 1.65, 0, 2.25, 3.3, 0.8, wood, 0.06);
+  rounded(
+    showcase,
+    0,
+    2.2,
+    0.43,
+    2.02,
+    1.92,
+    0.06,
+    mat(wall.backdrop, 0.15, 0.65),
+    0.02,
+  );
+  label(
+    showcase,
+    "PRIZE WALL",
+    0,
+    3.13,
+    0.45,
+    2.05,
+    0.28,
+    wall.accent,
+    "transparent",
+    100,
+  );
+  for (const y of [1.18, 2.09, 2.98]) {
+    box(showcase, 0, y, 0.6, 2.1, 0.06, 0.6, brass);
+    box(showcase, 0, y - 0.04, 0.55, 1.97, 0.02, 0.02, glow(wall.accent));
+    halo(showcase, 0, y - 0.25, 0.47, 2.1, 1.1, wall.accent);
+  }
+  for (const dx of [-0.51, 0.51]) {
+    rounded(showcase, dx, 0.59, 0.44, 0.98, 0.95, 0.06, brass, 0.02);
+    rounded(showcase, dx, 0.59, 0.48, 0.9, 0.86, 0.04, wood, 0.02);
+    sphere(showcase, dx + (dx < 0 ? 0.32 : -0.32), 0.7, 0.52, 0.025, brass);
+  }
+  prizes
+    .filter((p) => p.visible && !p.real)
+    .slice(0, 4)
+    .forEach((p, i) => {
+      const g = new T.Group();
+      g.position.set(
+        ((i % 2) - 0.5) * 0.98,
+        2.15 - Math.floor(i / 2) * 0.91,
+        0.58,
+      );
+      showcase.add(g);
+      if (p.image) image(g, p.image, 0, 0.3, 0, 0.8, 0.6);
+      else sculpt(p, g);
+    });
+  solid(7.7, -11.5, 2.25, 1.2);
+  contactShadow(7.7, -11.5, 3, 2);
+  station(
+    "lobby-prizes",
+    "EXPLORE THE PRIZE GALLERY",
+    7.7,
+    -11.5,
+    2.25,
+    1.2,
+    handlers.prizes,
+  );
+  const galleryLight = new T.PointLight(mood, 24 * wall.lighting, 19, 2);
+  galleryLight.position.set(18, 3, -4);
+  scene.add(galleryLight);
+  station(
+    "prizes",
+    "EXPLORE THE PRIZE GALLERY",
+    18,
+    -8,
+    12,
+    1.8,
+    handlers.prizes,
+  );
+  for (const [id, title, x, z, color] of [
+    ["scores", "HALL OF FAME", -6, 12.9, "#96c9ba"],
+    ["closet", "MY COLLECTION", 6, 12.9, "#e3ba78"],
+    ["credits", "THE PEOPLE BEHIND THE PLAY", -24, 6.5, "#e0b0cf"],
+    ["donate", "KEEP THE LIGHTS ON", 24, 6.5, "#efba78"],
+  ]) {
+    label(env, title, x, 2.2, z, 3.5, 1, color, "#1b2c31", 65).rotation.y =
+      Math.PI;
+    station(id, title, x, z, 3.5, 0.3, handlers[id]);
+    stations[id].arrival = { x, z: z - 2.2 };
+    stations[id].yaw = Math.PI;
+  }
+  // Merge repeated solid architecture, retaining independent screen and artwork meshes.
+  scene.updateMatrixWorld(true);
+  const groups = new Map(),
+    remove = [];
+  env.traverse((o) => {
+    if (o.isMesh && !Array.isArray(o.material) && !o.userData.animated) {
+      const k = o.material.uuid,
+        arr = groups.get(k) || [];
+      const geo = o.geometry.clone();
+      arr.push(
+        (geo.index ? geo.toNonIndexed() : geo).applyMatrix4(o.matrixWorld),
+      );
+      groups.set(k, arr);
+      remove.push(o);
+    }
+  });
+  for (const [k, geoms] of groups) {
+    const m = remove.find((o) => o.material.uuid === k).material,
+      combined = mergeGeometries(geoms, false);
+    if (combined) scene.add(new T.Mesh(combined, m));
+    geoms.forEach((g) => g.dispose());
+  }
+  remove.forEach((o) => {
+    o.parent.remove(o);
+    o.geometry.dispose();
+  });
+  const { createNavigation } = await import("./src/navigation.js");
+  const nav = await createNavigation(obstacles);
+  function resize() {
+    const w = canvas.clientWidth,
+      h = canvas.clientHeight;
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    camera.fov = w / h < 0.8 ? 69 : 55;
+    camera.updateProjectionMatrix();
+  }
   resize();
-  return { stations, render, pick, hfov, vfov: () => fov };
+  const observer = new ResizeObserver(resize);
+  observer.observe(canvas);
+  let lost = false;
+  const onLost = (e) => {
+    e.preventDefault();
+    lost = true;
+    canvas.dispatchEvent(
+      new CustomEvent("room-error", {
+        detail: "Graphics paused. Reload to return to the arcade.",
+      }),
+    );
+  };
+  canvas.addEventListener("webglcontextlost", onLost);
+  const raycaster = new T.Raycaster();
+  const sightWalls = WALLS.map(([x, z, w, d]) => {
+    const wall = new T.Mesh(
+      new T.BoxGeometry(w, 5, d),
+      new T.MeshBasicMaterial({ visible: false }),
+    );
+    wall.position.set(x, 2.5, z);
+    wall.updateMatrixWorld();
+    return wall;
+  });
+  const destination = new T.Mesh(
+    new T.RingGeometry(0.22, 0.27, 32),
+    new T.MeshBasicMaterial({
+      color: "#f3d58f",
+      transparent: true,
+      opacity: 0.65,
+      side: T.DoubleSide,
+      depthWrite: false,
+    }),
+  );
+  destination.rotation.x = -Math.PI / 2;
+  destination.visible = false;
+  scene.add(destination);
+  function render(p, time) {
+    if (lost || disposed) return;
+    camera.position.set(p.x, p.eye || 2.05, p.z);
+    camera.rotation.set(p.pitch || 0, -p.yaw, 0);
+    if (!reducedMotion.matches)
+      for (const a of animated) {
+        if (a.bars)
+          a.bars.forEach(
+            (bar, i) =>
+              (bar.scale.y = 0.52 + Math.sin(time * 1.6 + i * 0.9) * 0.3),
+          );
+        else
+          a.object.material.color.setScalar(
+            0.98 + Math.sin(time * 0.5 + a.phase) * 0.015,
+          );
+      }
+    renderer.render(scene, camera);
+  }
+  function pick(x, y) {
+    const r = canvas.getBoundingClientRect();
+    raycaster.setFromCamera(
+      new T.Vector2(
+        ((x - r.left) / r.width) * 2 - 1,
+        (-(y - r.top) / r.height) * 2 + 1,
+      ),
+      camera,
+    );
+    const hit = raycaster.intersectObjects(pickables, false)[0];
+    if (!hit) return null;
+    const wall = raycaster.intersectObjects(sightWalls, false)[0];
+    return wall && wall.distance < hit.distance
+      ? null
+      : stations[hit.object.userData.station];
+  }
+
+  return {
+    stations,
+    render,
+    pick,
+    setDestination(p) {
+      destination.visible = !!p;
+      if (p) destination.position.set(p.x, 0.04, p.z);
+    },
+    ...nav,
+    getZone: (p) =>
+      p.z < -14 ? "lab" : p.x < -10 ? "lounge" : p.x > 10 ? "gallery" : "main",
+    renderer,
+    dispose() {
+      disposed = true;
+      observer.disconnect();
+      canvas.removeEventListener("webglcontextlost", onLost);
+      nav.dispose();
+      scene.traverse((o) => {
+        o.geometry?.dispose();
+        if (o.material)
+          for (const m of Array.isArray(o.material) ? o.material : [o.material])
+            m.dispose();
+      });
+      textures.forEach((t) => t.dispose());
+      sightWalls.forEach((o) => {
+        o.geometry.dispose();
+        o.material.dispose();
+      });
+      surfaces.dispose();
+      environment.dispose();
+      renderer.dispose();
+    },
+  };
 }
