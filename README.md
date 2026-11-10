@@ -1,8 +1,20 @@
-# Quest of Champions
+# Big Bang Arcade
+
+Free browser games from T1 Entertainment. The arcade home page is `index.html`; each game lives in its own folder under `games/`.
+
+| Game | Folder | Own domain |
+|---|---|---|
+| Quest of Champions | `games/quest-of-champions/` | qoc.t1bang.com |
+
+**Adding a game:** put it in `games/<name>/` (its own `index.html` plus assets), add a 16:9 screenshot to `assets/`, and add one entry to the `GAMES` list at the bottom of the root `index.html`.
+
+---
+
+## Quest of Champions
 
 A T1 side-scrolling beat 'em up starring Tone Da Boss, the Voice of Champions. Fight through the court, the gridiron and HustleMania to the soundtrack of *Gimme My Ring*, *Victory Lap* and *Showtime*.
 
-**Play:** https://t1bang.github.io/quest-of-champions/ (once GitHub Pages is on: Settings → Pages → Deploy from a branch → `main` / root)
+**Play:** https://qoc.t1bang.com
 
 Plays in any browser. On a phone, turn it sideways.
 
@@ -17,7 +29,7 @@ Music, artwork and characters © T1 Entertainment.
 A Tone Da Boss beat 'em up. Everything is one HTML file plus assets; no build step, no libraries.
 
 ### Files
-- `index.html` — the whole game (HTML, CSS and ~1,000 lines of JavaScript). Open it in a browser, or host the folder on any static web host. Phones need landscape.
+- `games/quest-of-champions/index.html` — the whole game (HTML, CSS and ~1,000 lines of JavaScript). Open it in a browser, or host the folder on any static web host. Phones need landscape.
 - `audio/` — `champions.mp3` (menus + intros), `ring.mp3`, `victory.mp3`, `showtime.mp3` (Levels 1–3).
 - `video/victory_lap.mp4` — plays on the Level 2 win screen.
 - `sprites/` — painted character frames, cut from the sprite sheets and sized so a standing pose is 200 px tall.
