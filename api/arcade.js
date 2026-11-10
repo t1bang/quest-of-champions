@@ -1,7 +1,29 @@
 // Big Bang Arcade online database: players, tokens, closet, leaderboards, comments.
-// Storage: Upstash Redis when its env vars are present, otherwise Vercel Blob.
+// Storage: configured Upstash Redis or Vercel Blob; otherwise the T1Bang Supabase arcade.
 import { createHash, randomBytes } from 'node:crypto';
 import { PRIZES, REWARDS, REAL_PRIZES_LIVE } from '../prizes.js';
+
+const SB_URL = "https://fspcfzxtohaaeoudrack.supabase.co";
+const SB_KEY = "sb_publishable_GoAREk7bfAgNZbKY7DsHrw_X6JSb3Jd";
+async function supabaseAction(action, body, game) {
+  const r = await fetch(`${SB_URL}/rest/v1/rpc/bba_arcade`, {
+    method: "POST",
+    headers: { apikey: SB_KEY, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      p_action: action,
+      p_body: body,
+      p_game: game || null,
+    }),
+    signal: AbortSignal.timeout(10000),
+  });
+  const data = await r.json();
+  if (!r.ok)
+    throw fail(
+      data.code === "28000" ? 401 : 400,
+      data.message || "The arcade is unavailable.",
+    );
+  return data;
+}
 
 const GAMES = ['quest', 'vendetta', 'guerilla', 'gamerboy'];
 const R_URL = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
@@ -146,9 +168,18 @@ export default async function handler(req, res) {
   try {
     const q = req.query || {};
     const b = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : req.body || {};
+    if (!['GET', 'POST'].includes(req.method)) throw fail(405, 'Method not allowed');
+    if (req.method !== 'POST' && !['board', 'comments'].includes(q.a)) throw fail(405, 'Use POST for this action');
+    if (JSON.stringify(b).length > 32768) throw fail(413, 'Request too large');
     const fn = actions[q.a];
     if (!fn) throw fail(404, 'Unknown action');
     res.setHeader('Cache-Control', 'no-store');
+    // Preserve configured legacy stores. The T1Bang deployment uses the existing
+    // Supabase RPC when neither Redis nor Blob is connected.
+    if (!R_URL && !process.env.BLOB_READ_WRITE_TOKEN) {
+      if (q.a === 'uncomment') throw fail(501, 'Comment moderation is not available on this storage backend');
+      return res.status(200).json(await supabaseAction(q.a, b, q.game));
+    }
     res.status(200).json(await fn(b, q));
   } catch (e) {
     res.status(e.status || 500).json({ error: e.status ? e.message : 'The arcade database is not reachable right now' });
