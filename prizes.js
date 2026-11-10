@@ -14,8 +14,11 @@ export const PRIZES = [
   { id: 'belt', name: 'Title Belt', icon: '🏆', cost: 160 },
   { id: 'crown', name: 'Arcade Crown', icon: '👑', cost: 250 },
   // real prizes
+  { id: 'real-stickers', name: 'Sticker Pack', icon: '🏷️', cost: 15, real: true },
   { id: 'real-tone-tee', name: 'Tone Da Boss T-Shirt', icon: '👕', cost: 40, real: true },
+  { id: 'real-hat', name: 'T1 Hat', icon: '🧢', cost: 45, real: true },
   { id: 'real-stevie-tickets', name: 'Stevie Stone Tickets', icon: '🎟️', cost: 60, real: true },
+  { id: 'real-hoodie', name: 'T1 Hoodie', icon: '🧥', cost: 80, real: true },
   // song downloads (10 tokens each)
   { id: 'song-ring', name: 'Gimme My Ring', icon: '🎵', cost: 10, file: 'games/quest-of-champions/audio/ring.mp3' },
   { id: 'song-champions', name: 'Champions', icon: '🎵', cost: 10, file: 'games/quest-of-champions/audio/champions.mp3' },
