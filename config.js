@@ -25,14 +25,15 @@ export const GAMES = [
     play: '', trailer: '' },
 ];
 
-// Background music for the room (the 32-bit arcade version of Spongebob Ready).
-export const BGM = 'assets/audio/spongebob-ready-32bit.mp3';
+// Background music for the room. Temporary arcade loop until the real
+// arcade version of Spongebob Ready is ready; then point this at that file.
+export const BGM = 'assets/audio/arcade-loop.mp3';
 
 // Jukebox. "link" opens the song on a streaming site.
 // Add "file" (an MP3 address) and the song plays inside the arcade instead.
 const yt = q => 'https://www.youtube.com/results?search_query=' + encodeURIComponent('Tone Da Boss ' + q);
 export const SONGS = [
-  { title: 'Spongebob Ready (32-Bit)', link: yt('Spongebob Ready'), file: BGM },
+  { title: 'Spongebob Ready (32-Bit)', link: yt('Spongebob Ready'), file: '' },
   { title: 'Polo', link: yt('Polo'), file: '' },
   { title: 'Iowa City', link: yt('Iowa City'), file: '' },
   { title: 'Vodka Sam', link: yt('Vodka Sam'), file: '' },

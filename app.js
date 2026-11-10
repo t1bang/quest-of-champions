@@ -100,7 +100,7 @@ function frame(now) {
   }
   if (moving) walkT += dt * 11;
   P.eye = 300 + Math.sin(walkT) * (moving ? 5 : 0);
-  if (room && (panel.hidden || true)) room.render(P, now / 1000);
+  if (room && !window.__skip) room.render(P, now / 1000);
   let best = null, bd = 1e9;
   if (room) for (const s of Object.values(stations)) {
     const d = Math.hypot(s.x - P.x, s.z - P.z), a = Math.atan2(s.x - P.x, -(s.z - P.z));
