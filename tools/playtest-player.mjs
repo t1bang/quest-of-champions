@@ -38,7 +38,7 @@ async function context({signed=false,mobile=false,owner=false,enabled=false}={})
   if(signed)await c.addInitScript(({jwt,uid})=>{
     if(sessionStorage.getItem('qa-initialized'))return;
     sessionStorage.setItem('qa-initialized','1');
-    localStorage.setItem('sb-fspcfzxtohaaeoudrack-auth-token',JSON.stringify({access_token:jwt,refresh_token:'qa-refresh-token',token_type:'bearer',expires_in:3600,expires_at:Math.floor(Date.now()/1000)+3600,user:{id:uid,email:'qa@example.invalid',app_metadata:{provider:'google'},user_metadata:{},aud:'authenticated'}}));
+    localStorage.setItem('sb-tdjvnhuygpobdcmhlcms-auth-token',JSON.stringify({access_token:jwt,refresh_token:'qa-refresh-token',token_type:'bearer',expires_in:3600,expires_at:Math.floor(Date.now()/1000)+3600,user:{id:uid,email:'qa@example.invalid',app_metadata:{provider:'google'},user_metadata:{},aud:'authenticated'}}));
     localStorage.setItem('blankman-save-v1',JSON.stringify({stage:1,score:1500,best:1500,unlocked:1,cleared:[0]}));
   },{jwt,uid});
   const p=await c.newPage();p.on('pageerror',e=>errors.push(e.message));
@@ -110,7 +110,7 @@ try {
   ok('Whole-site visits and library interactions reach the site activity endpoint');
   await p.click('#library-account');await p.uncheck('#activity-optin');await p.click('#save-preferences');
   assert.ok(calls.some(x=>x.action==='preferences'&&x.body.analytics===false));
-  await p.click('#signout-player');await p.waitForFunction(()=>!localStorage.getItem('sb-fspcfzxtohaaeoudrack-auth-token'));
+  await p.click('#signout-player');await p.waitForFunction(()=>!localStorage.getItem('sb-tdjvnhuygpobdcmhlcms-auth-token'));
   await p.waitForFunction(()=>localStorage.getItem('blankman-save-v1')===null&&localStorage.getItem('qoc_save')===null);ok('Opt-out and sign-out controls work; shared-device account/save data clears');
   await c.close();
   const m=await context({signed:true,mobile:true});await m.p.waitForFunction(()=>document.querySelector('#who').textContent==='QA Player');

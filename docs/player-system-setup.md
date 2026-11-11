@@ -1,16 +1,20 @@
 # Big Bang Arcade player services — platform setup
 
-Implemented November 10, 2026. This uses the arcade's existing Supabase project, `t1-vendetta` (`fspcfzxtohaaeoudrack`). No project, paid branch, analytics subscription, or billing upgrade was created.
+Implemented November 10, 2026. The arcade runs on its own Supabase project, `big-bang-arcade` (`tdjvnhuygpobdcmhlcms`), in the t1bang organization on the Free plan. It was moved there from the shared `t1-vendetta` project on November 10, 2026; players, tokens, closets, scores and the published arcade content were copied across. Sign-in accounts were not copied, so owners and linked players sign up again in this project.
+
+**Owners:** the owner list is the table `bba_private.owners`. After an owner signs up, add them in the SQL editor with `insert into bba_private.owners(user_id) select id from auth.users where email = 'OWNER EMAIL';`
+
+**Rebuilding the database:** run the files in `supabase/migrations/` in date order on an empty project.
 
 ## Activate Google and Facebook
 
 The owner chose to connect provider credentials in Supabase. The app reads Supabase's enabled-provider settings and hides providers that are off. Do not paste client secrets into this repository or the browser app.
 
-1. Open [Supabase Authentication / Providers](https://supabase.com/dashboard/project/fspcfzxtohaaeoudrack/auth/providers).
+1. Open [Supabase Authentication / Providers](https://supabase.com/dashboard/project/tdjvnhuygpobdcmhlcms/auth/providers).
 2. For Google, create or use a Web application OAuth client in your Google Cloud project. Configure the consent screen for Big Bang Arcade, add the client ID and secret to Supabase's Google provider, then enable it. Use minimal identity scopes; no contacts or unrelated account access.
-3. In Google's OAuth client, add the redirect URI `https://fspcfzxtohaaeoudrack.supabase.co/auth/v1/callback`. Use `https://bigbangarcade.com` as the arcade origin if requested.
+3. In Google's OAuth client, add the redirect URI `https://tdjvnhuygpobdcmhlcms.supabase.co/auth/v1/callback`. Use `https://bigbangarcade.com` as the arcade origin if requested.
 4. For Facebook, configure Facebook Login for a Meta developer app, add the same Supabase callback URI, and enter the app ID and secret in Supabase's Facebook provider. Complete Meta's production-access requirements; development apps may only admit app roles/test users. Supabase's Facebook guide requires the email permission.
-5. In [Supabase URL configuration](https://supabase.com/dashboard/project/fspcfzxtohaaeoudrack/auth/url-configuration), **add** `https://bigbangarcade.com/?account=return` to the redirect allow-list. Keep the existing T1 Vendetta redirect URLs and default site URL; this is a shared project. The arcade passes its redirect explicitly.
+5. In [Supabase URL configuration](https://supabase.com/dashboard/project/tdjvnhuygpobdcmhlcms/auth/url-configuration), **add** `https://bigbangarcade.com/?account=return` to the redirect allow-list. The project's site URL is `https://bigbangarcade.com`.
 6. Reload the arcade, enter, then click your player name / **Sign In**. The new buttons appear automatically. Complete the adult account setup, choose a nickname, and optionally claim the legacy guest profile on that browser.
 7. Test with a non-admin account, sign out, and sign back in on another browser. Verify that tokens and the cloud save belong to the same player. Test private browsing, declined permission, and logout.
 
@@ -20,7 +24,7 @@ Apple, Discord, Microsoft and LinkedIn buttons are also prepared and appear only
 
 ## The main platform is BigBangArcade.com
 
-The account, player ID, privacy choices, token balance, library, leaderboard access, lobbies and owner dashboard belong to **Big Bang Arcade**. Blankman is one catalog entry. The database project still has its historical `t1-vendetta` label; that does not limit the platform to one game, and no data migration or new billable project is necessary.
+The account, player ID, privacy choices, token balance, library, leaderboard access, lobbies and owner dashboard belong to **Big Bang Arcade**. Blankman is one catalog entry. The database project is `big-bang-arcade` in the t1bang organization.
 
 **My Arcade** lists Quest of Champions, T1 Versus, Gorilla City 2032, Gamer Boyz and Blankman, with personal scores and the correct save capability for each. The lobby shortcut opens this whole-site library. The simple entrance stays unchanged.
 
@@ -46,7 +50,7 @@ The main-site identity does not silently sign a player into an independently hos
 - All five cabinet launches can be counted for opted-in players. Existing score/level messages are accepted only from the active game's iframe and configured origin.
 - Blankman adds ready, level start/completion, pause/resume, lives lost, helper calls, equipment changes, victory and game-over events. Active time is estimated from visible, unpaused play with recent keyboard, touch or gamepad input. Other games need their own adapter for comparable active-time and detailed-event coverage.
 - Private lobbies use 12-character invite codes, allow eight recent members, and expire after 24 hours. They show nicknames and a common game selection. No lobby chat or synchronized multiplayer was added.
-- The owner-only **Arcade Pulse** dashboard shows player counts, linked accounts, opt-ins, cloud saves and 30-day gameplay/event totals. Existing `t1_private.control_owners` membership controls access; no extra owner was added.
+- The owner-only **Arcade Pulse** dashboard shows player counts, linked accounts, opt-ins, cloud saves and 30-day gameplay/event totals. Existing `bba_private.owners` membership controls access; no extra owner was added.
 - Players can export their arcade data, turn off activity sharing, and sign out on a shared device. Full Auth-user deletion and parent-managed child accounts remain separate follow-up work.
 
 ## Data and access

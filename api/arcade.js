@@ -3,8 +3,8 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { PRIZES, REWARDS, REAL_PRIZES_LIVE, BAR } from '../prizes.js';
 
-const SB_URL = "https://fspcfzxtohaaeoudrack.supabase.co";
-const SB_KEY = "sb_publishable_GoAREk7bfAgNZbKY7DsHrw_X6JSb3Jd";
+const SB_URL = "https://tdjvnhuygpobdcmhlcms.supabase.co";
+const SB_KEY = "sb_publishable_hQBcSsJqxa9vLTCAwx2W-w_ZlZDVMxy";
 async function supabaseAction(action, body, game, authorization) {
   const r = await fetch(`${SB_URL}/rest/v1/rpc/bba_arcade`, {
     method: "POST",

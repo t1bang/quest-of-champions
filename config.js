@@ -57,7 +57,7 @@ export const VAULT = [
 ];
 
 // Sign in with Google / Facebook (Supabase Auth). Turn the providers on in the Supabase project first.
-export const SOCIAL_AUTH = { url: 'https://fspcfzxtohaaeoudrack.supabase.co', key: 'sb_publishable_GoAREk7bfAgNZbKY7DsHrw_X6JSb3Jd' };
+export const SOCIAL_AUTH = { url: 'https://tdjvnhuygpobdcmhlcms.supabase.co', key: 'sb_publishable_hQBcSsJqxa9vLTCAwx2W-w_ZlZDVMxy' };
 
 // Original ElevenLabs 8-bit lobby theme, take 1.
 export const BGM = 'assets/audio/big-bang-elevenlabs-take-1.mp3';

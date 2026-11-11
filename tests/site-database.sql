@@ -37,7 +37,7 @@ begin
   if exists(select 1 from jsonb_array_elements(result->'games')g where g->>'save_revision' is not null or g->>'best_score' is not null) then raise exception 'Another player read private library records';end if;
   rejected:=false;begin perform public.bba_site('site_dashboard');exception when insufficient_privilege then rejected:=true;end;
   if not rejected then raise exception 'Regular player accessed site dashboard';end if;
-  perform set_config('request.jwt.claim.sub',(select user_id::text from t1_private.control_owners limit 1),true);
+  perform set_config('request.jwt.claim.sub',(select user_id::text from bba_private.owners limit 1),true);
   result:=public.bba_site('site_dashboard');
   if (result->'site'->>'visits')::int<1 then raise exception 'Owner site metrics missing';end if;
   perform set_config('request.jwt.claim.sub',a::text,true);perform set_config('request.jwt.claims',jsonb_build_object('sub',a,'role','authenticated')::text,true);
