@@ -32,13 +32,17 @@ export const GAMES = [
     play: 'games/blankman/', trailer: '', cab: 'assets/cabs/blankman', frontArt: 'assets/cabs/blankman-front.jpg',
     art: 'assets/cabs/blankman-side.jpg',
     shots: ['assets/cabs/blankman-screen.jpg', 'assets/cabs/blankman-play.jpg', 'assets/cabs/blankman-cabinet.jpg'] },
+  { id: 'cruizin', title: 'Cruizin IA', genre: 'Racing', color: '#ff7a1a', style: 'racer', hallSlot: 0,   // twin sit-down racer, in the hallway
+    blurb: 'Cedar Rapids in 3D. Run the I-380 S-curve sprint, then take the exit and roam downtown on wheels, on foot or on a board. Desktop keyboard for now.',
+    play: 'https://cruizin.chucksi.com/', trailer: '',
+    art: 'assets/cruizin-cover.jpg',
+    shots: ['assets/cruizin-cover.jpg'] },
 ];
 
 // Coming-soon games in the hallway. "file" = the song that plays when a player walks up
 // (an MP3 address); "art" = the song artwork used as the cover for now.
 export const SOON = [
-  { id: 'cruizin', title: 'Cruizin IA', color: '#ff7a1a', song: 'Send It', file: 'assets/audio/send-it.mp3', art: 'assets/cruizin-cover.jpg', style: 'racer' },   // twin sit-down racer
-  { id: 'bslam', title: 'Basketball Slam', color: '#ffd23e', song: 'Slam', file: 'assets/audio/slam.mp3', art: 'assets/slam-cover.jpg' },
+  { hallSlot: 1, id: 'bslam', title: 'Basketball Slam', color: '#ffd23e', song: 'Slam', file: 'assets/audio/slam.mp3', art: 'assets/slam-cover.jpg' },
   { hallSlot: 3, id: 'toptier', title: 'Top Tier Wrestling', color: '#ff2a3c', song: 'Everything Top Tier, Everything Critical', file: '', art: '' },
   // East Wing machines. "style" picks the cabinet shape (see cabs.js): racer, golf, dance, pinball, claw.
   // The titles are working names: change them here and every sign updates.
