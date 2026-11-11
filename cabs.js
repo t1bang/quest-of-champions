@@ -5,7 +5,8 @@
 export function customCabinets(kit) {
   const { box, quad, tri, sphere, tex, mat, solid, neon, glow, light, add, text, fitText, BIG, PIX, handlers } = kit;
   const soonLabel = g => 'COMING SOON: ' + g.title.toUpperCase();
-  const station = (g, T, w, depth, h) => add(g.id, soonLabel(g), T, w, depth, h, () => handlers.soon(g));
+  // a custom cabinet becomes playable as soon as its config.js entry has a `play` address
+  const station = (g, T, w, depth, h) => g.play ? add(g.id, 'PLAY ' + g.title.toUpperCase(), T, w, depth, h, () => handlers.game(g)) : add(g.id, soonLabel(g), T, w, depth, h, () => handlers.soon(g));
   const RAINBOW = ['#ff2a3c', '#ff7a1a', '#ffd23e', '#35e06f', '#3ea8ff', '#b06cff'];
   const TAU = Math.PI * 2;
 
@@ -48,7 +49,7 @@ export function customCabinets(kit) {
       const gr = x.createLinearGradient(0, 0, w, h); gr.addColorStop(0, '#12081d'); gr.addColorStop(1, k ? '#10306a' : '#6a1020'); x.fillStyle = gr; x.fillRect(0, 0, w, h);
       for (let i = 0; i < 16; i++) for (let j = 0; j < 2; j++) { x.fillStyle = (i + j) % 2 ? '#fff' : '#111'; x.fillRect(i * 32, j * 32, 32, 32); x.fillRect(i * 32, h - 64 + j * 32, 32, 32); }
       x.save(); x.translate(w / 2, h / 2 - 70); x.rotate(-0.07); fitText(x, g.title.toUpperCase(), 0, 0, 120, w - 50, '#ffd23e', '#000'); x.restore();
-      text(x, 'T1 RACING', w / 2, h / 2 + 24, `26px ${PIX}`, '#fff', '#000'); fitText(x, 'COMING SOON', w / 2, h / 2 + 104, 44, w - 70, '#fff', '#000', PIX);
+      text(x, 'T1 RACING', w / 2, h / 2 + 24, `26px ${PIX}`, '#fff', '#000'); fitText(x, g.play ? 'INSERT COIN' : 'COMING SOON', w / 2, h / 2 + 104, 44, w - 70, '#fff', '#000', PIX);
     }), { emis: 1, spec: 0.6 });
     const wheelM = mat(tex(256, 256, (x, w) => {
       x.fillStyle = '#0a0a0e'; x.fillRect(0, 0, w, w); x.lineWidth = 9; x.strokeStyle = '#b06cff'; x.beginPath(); x.arc(128, 128, 96, 0, TAU); x.stroke();
