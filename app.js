@@ -722,8 +722,8 @@ document.addEventListener('visibilitychange', applyVol);
 // coming-soon cabinets play their song when you walk up
 const prox = new Audio(); prox.loop = true; let proxId = null;
 setInterval(() => {
-  let hit = null;
-  if (started && !muted && $('#gf').hidden) for (const g of SOON) { const st = stations[g.id]; if (g.file && st && st.x != null && Math.hypot(st.x - P.x, st.z - P.z) < 430) hit = g; }
+  // the cabinet you are standing in front of
+  const hit = started && !muted && $('#gf').hidden && near ? SOON.find(g => g.file && g.id === near.id) || null : null;
   const id = hit ? hit.id : null; if (id === proxId) return; proxId = id;
   if (hit) { prox.src = hit.file; prox.play().catch(() => {}); pauseBgm(true); toast('NOW PLAYING: ' + hit.song.toUpperCase()); } else { prox.pause(); pauseBgm(false); }
 }, 500);
