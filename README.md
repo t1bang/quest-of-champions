@@ -72,6 +72,15 @@ A Tone Da Boss beat 'em up. Everything is one HTML file plus assets; no build st
 ## Shipping it as an app
 The game is a plain static site, so it wraps directly with Capacitor (iOS/Android) or can be added to a phone's home screen from the browser. High scores and the mute setting are stored in `localStorage` on the device.
 
+## Floor plan
+
+The arcade has four areas: the main floor, the coming-soon hallway (back doorway), the lounge (front doorway) and the East Wing (right-wall doorway). The sizes live in one place, `DIMS` at the top of `room.js`, and `app.js` reads the same numbers for walking and map routes.
+
+- **Cabinet slots:** six on the main back wall, four in the hallway, eight in the East Wing. Games fill the back wall first (centre out) and overflow into the wing.
+- **Put a game in the East Wing:** add `room: 'east'` to its entry in `config.js`. `hallSlot` still pins a cabinet to the hallway.
+- **Custom cabinet shapes:** add `style: 'racer'`, `'golf'`, `'dance'`, `'pinball'` or `'claw'` to a game's entry. The shapes are drawn in `cabs.js`. The golf bay takes two wing slots.
+- Free wing slots show as lit "OPEN SLOT" floor pads until a game takes them.
+
 ## Lounge, avatars and live players
 
 - The lounge (through the doorway at the front of the room) has a bar, couches, darts, pool, air hockey and bowling. The four games are simple timing mini-games.

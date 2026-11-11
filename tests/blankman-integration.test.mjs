@@ -8,7 +8,7 @@ test('all cabinets occupy unique slots and Blankman assets resolve locally', () 
   assert.equal(GAMES.length, 5);
   const ids = [...GAMES, ...SOON].map(g => g.id);
   assert.equal(new Set(ids).size, ids.length);
-  const slots = [...GAMES.filter(g => g.hallSlot != null).map(g => g.hallSlot), ...SOON.map((g, i) => g.hallSlot ?? i)];
+  const slots = [...GAMES.filter(g => g.hallSlot != null).map(g => g.hallSlot), ...SOON.filter(g => g.room !== 'east').map((g, i) => g.hallSlot ?? i)]; // East Wing machines take wing slots, not hallway ones
   assert.deepEqual(slots.sort(), [0, 1, 2, 3]);
   const g = GAMES.find(g => g.id === 'blankman');
   for (const file of [g.art, ...g.shots, ...['side','screen','marquee','panel','coin','base','front'].map(k => `${g.cab}-${k}.jpg`), g.play + 'index.html']) {

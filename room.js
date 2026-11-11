@@ -1,5 +1,7 @@
 // Big Bang Arcade — real-time 3D room (WebGL, no libraries).
 // Lit 3D cabinets, coloured point lights, glossy reflective floor, neon glow.
+import { customCabinets } from './cabs.js';
+
 const VS = `attribute vec3 aP;attribute vec3 aN;attribute vec2 aU;uniform mat4 uVP;uniform mat4 uM;varying vec3 vP;varying vec3 vN;varying vec2 vU;
 void main(){vec4 w=uM*vec4(aP,1.);vP=w.xyz;vN=mat3(uM)*aN;vU=aU;gl_Position=uVP*w;}`;
 const FS = `precision highp float;varying vec3 vP;varying vec3 vN;varying vec2 vU;uniform sampler2D uT;uniform vec3 uEye;uniform vec3 uLP[18];uniform vec3 uLC[18];
@@ -7,7 +9,7 @@ uniform vec3 uTint;uniform float uEmis;uniform float uSpec;uniform float uAlpha;
 void main(){if(uMirror>0.5&&vP.y<0.)discard;vec4 t=texture2D(uT,vU);if(t.a<0.04)discard;vec3 n=normalize(vN);vec3 v=normalize(uEye-vP);if(dot(n,v)<0.)n=-n;
 vec3 lit=vec3(.2,.17,.27);vec3 sp=vec3(0.);
 for(int i=0;i<18;i++){vec3 d=uLP[i]-vP;float r2=dot(d,d);vec3 l=d*inversesqrt(r2);float a=1./(1.+r2/160000.);lit+=uLC[i]*max(dot(n,l),0.)*a;sp+=uLC[i]*pow(max(dot(n,normalize(l+v)),0.),48.)*a;}
-vec3 c=t.rgb*uTint*mix(lit,vec3(1.),uEmis)+sp*uSpec;float f=smoothstep(700.,2300.,length(uEye-vP))*.55;c=mix(c,vec3(.05,.02,.09),f*(1.-uEmis*.7));
+vec3 c=t.rgb*uTint*mix(lit,vec3(1.),uEmis)+sp*uSpec;float f=smoothstep(1000.,3400.,length(uEye-vP))*.55;c=mix(c,vec3(.05,.02,.09),f*(1.-uEmis*.7));
 gl_FragColor=vec4(c,t.a*uAlpha);}`;
 
 const mul = (a, b) => { const o = new Float32Array(16); for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) o[c * 4 + r] = a[r] * b[c * 4] + a[4 + r] * b[c * 4 + 1] + a[8 + r] * b[c * 4 + 2] + a[12 + r] * b[c * 4 + 3]; return o; };
@@ -16,6 +18,10 @@ const rotY = a => { const c = Math.cos(a), s = Math.sin(a); return new Float32Ar
 const rotX = a => { const c = Math.cos(a), s = Math.sin(a); return new Float32Array([1, 0, 0, 0, 0, c, s, 0, 0, -s, c, 0, 0, 0, 0, 1]); };
 const trans = (x, y, z) => { const m = ident(); m[12] = x; m[13] = y; m[14] = z; return m; };
 const persp = (fov, asp, n, f) => { const t = 1 / Math.tan(fov / 2); return new Float32Array([t / asp, 0, 0, 0, 0, t, 0, 0, 0, 0, (f + n) / (n - f), -1, 0, 0, 2 * f * n / (n - f), 0]); };
+
+// Floor plan, shared with app.js (movement and routes): main room half-width, back wall, front wall, Big Box,
+// then the East Wing doorway half-width + centre, far wall, back wall and front wall.
+export const DIMS = { HW: 1200, HD: 1100, ZF: 900, BZ: -100, WD: 200, WZ: -100, WX: 2800, WZ0: -900, WZ1: 700 };
 
 export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = []) {
   const gl = canvas.getContext('webgl', { antialias: true, alpha: false, powerPreference: 'high-performance' });
@@ -69,10 +75,10 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = []) {
     quad(f.top || m, T, [x0, y1, z0], [x1, y1, z0], [x1, y1, z1], [x0, y1, z1]);
   }
   const glow = (c, T, cx, cy, z, w, h) => quad(glowM(c), T, [cx - w / 2, cy + h / 2, z], [cx + w / 2, cy + h / 2, z], [cx + w / 2, cy - h / 2, z], [cx - w / 2, cy - h / 2, z]);
-  const lights = []; const light = (T, p, c, k = 1) => { if (lights.length < 18) lights.push({ p: tf(T, p), c: rgb(c).map(v => v * k) }); };
+  const lights = []; const light = (T, p, c, k = 1) => { lights.push({ p: tf(T, p), c: rgb(c).map(v => v * k), d: 0 }); };
 
   // ---------- room shell ----------
-  const O = { x: 0, z: 0 }, HW = 800, HD = 700, ZF = 900, CH = 560;
+  const O = { x: 0, z: 0 }, { HW, HD, ZF, BZ, WD, WZ, WX, WZ0, WZ1 } = DIMS, CH = 560, LW = 800; // LW = lounge half-width
   const floorT = tex(512, 512, (x, w) => {
     x.fillStyle = '#0d0716'; x.fillRect(0, 0, w, w);
     for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) { x.fillStyle = (i + j) % 2 ? '#1b1030' : '#120a22'; x.fillRect(i * 128 + 3, j * 128 + 3, 122, 122); }
@@ -87,22 +93,19 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = []) {
   }, true);
   const ceilT = tex(256, 256, (x, w) => { x.fillStyle = '#0a0612'; x.fillRect(0, 0, w, w); x.strokeStyle = '#1d1230'; x.lineWidth = 4; x.strokeRect(2, 2, w - 4, w - 4); x.fillStyle = '#fff3d6'; x.fillRect(48, 104, 160, 48); }, true);
   const floorM = mat(floorT, { floor: true, spec: 0.5 }), wallM = mat(wallT, { spec: 0.1 }), ceilM = mat(ceilT, { emis: 0.55, spec: 0 });
-  quad(floorM, O, [-HW, 0, -HD], [HW, 0, -HD], [HW, 0, ZF], [-HW, 0, ZF], [0, 0, 8, 8]);
-  quad(ceilM, O, [-HW, CH, ZF], [HW, CH, ZF], [HW, CH, -HD], [-HW, CH, -HD], [0, 0, 4, 4]);
-  const DW = 150, CW = 350, CZ = -1500; // doorway half-width, hallway half-width, hallway end
-  quad(wallM, O, [-HW, CH, -HD], [-DW, CH, -HD], [-DW, 0, -HD], [-HW, 0, -HD], [0, 0, 1.625, 1]);
-  quad(wallM, O, [DW, CH, -HD], [HW, CH, -HD], [HW, 0, -HD], [DW, 0, -HD], [0, 0, 1.625, 1]);
-  quad(wallM, O, [-CW, CH, -HD], [-CW, CH, CZ], [-CW, 0, CZ], [-CW, 0, -HD], [0, 0, 2, 1]);
-  quad(wallM, O, [CW, CH, CZ], [CW, CH, -HD], [CW, 0, -HD], [CW, 0, CZ], [0, 0, 2, 1]);
-  quad(wallM, O, [-CW, CH, CZ], [CW, CH, CZ], [CW, 0, CZ], [-CW, 0, CZ], [0, 0, 1.75, 1]);
+  quad(floorM, O, [-HW, 0, -HD], [HW, 0, -HD], [HW, 0, ZF], [-HW, 0, ZF], [0, 0, HW / 100, (ZF + HD) / 200]);
+  quad(ceilM, O, [-HW, CH, ZF], [HW, CH, ZF], [HW, CH, -HD], [-HW, CH, -HD], [0, 0, HW / 200, (ZF + HD) / 400]);
+  const DW = 150, CW = 350, CZ = -HD - 800; // doorway half-width, hallway half-width, hallway end
+  const wall = (x0, z0, x1, z1) => quad(wallM, O, [x0, CH, z0], [x1, CH, z1], [x1, 0, z1], [x0, 0, z0], [0, 0, Math.hypot(x1 - x0, z1 - z0) / 400, 1]);
+  wall(-HW, -HD, -DW, -HD); wall(DW, -HD, HW, -HD);                 // back wall, with the hallway doorway
+  wall(-CW, -HD, -CW, CZ); wall(CW, CZ, CW, -HD); wall(-CW, CZ, CW, CZ); // hallway
   quad(floorM, O, [-CW, 0, CZ], [CW, 0, CZ], [CW, 0, -HD], [-CW, 0, -HD], [0, 0, 3.5, 4]);
   quad(ceilM, O, [-CW, CH, -HD], [CW, CH, -HD], [CW, CH, CZ], [-CW, CH, CZ], [0, 0, 1.75, 2]);
-  light(O, [0, 430, -1050], '#ffffff', 0.5);
-  quad(wallM, O, [HW, CH, ZF], [DW, CH, ZF], [DW, 0, ZF], [HW, 0, ZF], [0, 0, 1.625, 1]);
-  quad(wallM, O, [-DW, CH, ZF], [-HW, CH, ZF], [-HW, 0, ZF], [-DW, 0, ZF], [0, 0, 1.625, 1]);
-  quad(wallM, O, [-HW, CH, ZF], [-HW, CH, -HD], [-HW, 0, -HD], [-HW, 0, ZF], [0, 0, 4, 1]);
-  quad(wallM, O, [HW, CH, -HD], [HW, CH, ZF], [HW, 0, ZF], [HW, 0, -HD], [0, 0, 4, 1]);
-  light(O, [0, 500, 520], '#ffffff', 0.55);
+  light(O, [0, 430, -HD - 350], '#ffffff', 0.5);
+  wall(HW, ZF, DW, ZF); wall(-DW, ZF, -HW, ZF);                     // front wall, with the lounge doorway
+  wall(-HW, ZF, -HW, -HD);                                          // left wall
+  wall(HW, -HD, HW, WZ - WD); wall(HW, WZ + WD, HW, ZF);            // right wall, with the East Wing doorway
+  light(O, [0, 500, 520], '#ffffff', 0.55); light(O, [-650, 500, -420], '#ffffff', 0.45); light(O, [650, 500, -420], '#ffffff', 0.45);
 
   const stations = {};
   const add = (id, label, T, w, depth, h, open) => { const p = tf(T, [0, 0, depth / 2]), r = Math.max(w, depth) / 2 + 10; stations[id] = { id, label, x: T.x, z: T.z, w, depth, T, open, min: [p[0] - r, 0, p[2] - r], max: [p[0] + r, h, p[2] + r] }; };
@@ -124,6 +127,7 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = []) {
   const PARTS = [[[0, 0], [150, 0], [150, 205], [0, 205]], [[0, 205], [150, 205], [205, 225], [205, 238], [125, 262], [0, 262]], [[0, 262], [125, 262], [95, 400], [0, 400]], [[0, 400], [95, 400], [150, 405], [150, 470], [20, 470], [0, 445]]];
   const coinT = imgTex('assets/cabs/versus-coin.jpg', 256, 256);
   function cabinet(g, T, soon) {
+    if (g.style && CUSTOM[g.style]) return CUSTOM[g.style](g, T); // custom shapes live in cabs.js
     const c = g.cab, trimC = g.trim || g.color;
     const scr = imgTex(c ? c + '-screen.jpg' : g.art, 512, 512);
     const screen = mat(c ? scr : withImg(g.art, 512, 512, (x, w, h, e) => { x.fillStyle = '#000'; x.fillRect(0, 0, w, h); if (e.ok) { x.save(); x.scale(1, h / (w * 0.75)); x.globalAlpha = .35; drawFit(x, e, 0, 0, w, w * .75, true); x.globalAlpha = 1; x.fillStyle = 'rgba(0,0,0,.45)'; x.fillRect(0, 0, w, w * .75); drawFit(x, e, 0, 0, w, w * .75, false); x.restore(); } }), { emis: 1, spec: 0.7 });
@@ -150,15 +154,28 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = []) {
       sphere(solid(k < 3 ? '#ffcf24' : '#ef2638', .5, .9), T, bx, by + 4, bz, 7);
     }
     glow(g.color, T, 0, 330, 135, 420, 330); glow(g.color, T, 0, 438, 160, 420, 150);
+    if (soon === 'open') return;
     if (soon) { quad(neon('COMING SOON', '#ffffff', 512, 128), T, [-96, 390, 102], [96, 390, 102], [96, 344, 111.5], [-96, 344, 111.5]); add(g.id, 'COMING SOON: ' + g.title.toUpperCase(), T, 250, 205, 470, () => handlers.soon(g)); return; }
     quad(neon(g.genre.toUpperCase(), g.color), T, [-150, 550, 5], [150, 550, 5], [150, 488, 5], [-150, 488, 5]);
     glow(g.color, T, 0, 518, 12, 460, 150);
     light(T, [0, 290, 270], g.color, 1.15);
     add(g.id, 'PLAY ' + g.title.toUpperCase(), T, 250, 205, 470, () => handlers.game(g));
   }
-  const hallPosition = i => ({ x: i % 2 ? CW - 2 : 2 - CW, z: i < 2 ? -930 : -1260, th: i % 2 ? -Math.PI / 2 : Math.PI / 2 });
-  GAMES.forEach((g, i) => cabinet(g, g.hallSlot == null ? { x: [-600, -320, 320, 600][i], z: -698, th: 0 } : hallPosition(g.hallSlot)));
-  SOON.forEach((g, i) => cabinet(g, hallPosition(g.hallSlot ?? i), true));
+  const hallPosition = i => ({ x: i % 2 ? CW - 2 : 2 - CW, z: -HD - (i < 2 ? 230 : 560), th: i % 2 ? -Math.PI / 2 : Math.PI / 2 });
+  // Cabinet slots: six on the back wall (filled from the centre out), then eight in the East Wing.
+  // `style` in config.js swaps the upright cabinet for a custom shape from cabs.js.
+  // A game with `room: 'east'` in config.js goes straight to the wing; `hallSlot` still pins one to the hallway.
+  const CUSTOM = customCabinets({ box, quad, tri, sphere, tex, mat, solid, neon, glow, light, add, text, fitText, BIG, PIX, handlers });
+  const BACK = [-700, -400, 400, 700, -960, 960].map(x => ({ x, z: 2 - HD, th: 0 }));
+  const WING = [1500, 1830, 2170, 2500].flatMap(x => [{ x, z: WZ0 + 2, th: 0 }, { x, z: WZ1 - 2, th: Math.PI }]);
+  const takeWing = g => { // the golf bay is two slots wide: it takes the middle pair on the wing's back wall
+    const i = WING.findIndex(s => s.x === 1830 && !s.th), j = WING.findIndex(s => s.x === 2170 && !s.th);
+    if (g.style === 'golf' && i >= 0 && j > i) { WING.splice(j, 1); WING.splice(i, 1); return { x: 2000, z: WZ0 + 2, th: 0 }; }
+    return WING.shift();
+  };
+  const place = g => g.hallSlot != null ? hallPosition(g.hallSlot) : (g.room !== 'east' && BACK.shift()) || takeWing(g) || hallPosition(0);
+  GAMES.forEach(g => cabinet(g, place(g)));
+  SOON.forEach((g, i) => cabinet(g, g.room === 'east' ? place(g) : hallPosition(g.hallSlot ?? i), true));
   // hallway banner + vault door
   { const B = { x: 0, z: -HD, th: 0 }, bn = neon('BLANKMAN  ←  NOW PLAYING', '#ffcf24', 1024, 128);
     quad(bn, B, [-DW, 545, 2], [DW, 545, 2], [DW, 470, 2], [-DW, 470, 2]); glow('#ff4fd8', B, 0, 508, 8, 420, 170);
@@ -172,7 +189,7 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = []) {
     light(V, [0, 300, 240], '#3ea8ff', 1.1); add('vault', 'OPEN THE BIG BANG VAULT', V, 430, 20, 470, handlers.vault); }
 
   // ---------- Big Box ----------
-  const BB = { x: 0, z: 150, th: 0 };
+  const BB = { x: 0, z: BZ, th: 0 };
   const bbT = tex(512, 512, (x, w, h) => {
     x.fillStyle = '#0b0b12'; x.fillRect(0, 0, w, h); x.strokeStyle = '#ffc93a'; x.lineWidth = 14; x.strokeRect(7, 7, w - 14, h - 14);
     fitText(x, 'BIG BANG BOX', w / 2, 60, 60, w - 50, '#ffc93a');
@@ -186,30 +203,30 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = []) {
   light(BB, [0, 330, 260], '#ffc93a', 0.9);
   const spinM = mat(tex(512, 128, (x, w, h) => { x.fillStyle = '#ffc93a'; x.fillRect(0, 0, w, h); fitText(x, '★ BIG BANG BOX ★', w / 2, h / 2 + 4, 58, w - 24, '#0b0612'); }), { emis: 1, spec: 0, dyn: 'spin' });
   { const S = { x: 0, z: 0 }; box(spinM, S, -80, 80, -24, 24, -80, 80); }
-  stations.bigbox = { id: 'bigbox', label: 'OPEN THE BIG BANG BOX', x: 0, z: 280, w: 260, depth: 0, T: { x: 0, z: 280, th: 0 }, open: handlers.bigbox, min: [-140, 0, 10], max: [140, 300, 290] };
+  stations.bigbox = { id: 'bigbox', label: 'OPEN THE BIG BANG BOX', x: 0, z: BZ + 130, w: 260, depth: 0, T: { x: 0, z: BZ + 130, th: 0 }, open: handlers.bigbox, min: [-140, 0, BZ - 140], max: [140, 300, BZ + 140] };
 
   // ---------- other stations ----------
   const panel = (w, h, color, draw) => mat(tex(512, 512, (x, W, H) => { x.fillStyle = '#0c0c14'; x.fillRect(0, 0, W, H); x.strokeStyle = color; x.lineWidth = 16; x.strokeRect(8, 8, W - 16, H - 16); draw(x, W, H); }), { emis: 0.85, spec: 0.3 });
   const emoji = (x, s, cx, cy, size) => text(x, s, cx, cy, `${size}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`, '#fff');
-  const L = z => ({ x: -798, z, th: Math.PI / 2 }), R = z => ({ x: 798, z, th: -Math.PI / 2 }), F = x => ({ x, z: ZF - 2, th: Math.PI });
+  const L = z => ({ x: 2 - HW, z, th: Math.PI / 2 }), R = z => ({ x: HW - 2, z, th: -Math.PI / 2 }), F = x => ({ x, z: ZF - 2, th: Math.PI });
 
-  let T = L(-230);
+  let T = L(-620);
   box(solid('#1a0a1c', 0, 0.6), T, -125, 125, 0, 400, 0, 110, { front: panel(250, 400, '#ff4fd8', (x, W) => { x.fillStyle = '#ff4fd8'; x.beginPath(); x.arc(W / 2, 190, 150, Math.PI, 0); x.fill(); x.fillStyle = '#0c0c14'; x.beginPath(); x.arc(W / 2, 190, 118, Math.PI, 0); x.fill(); emoji(x, '🎵', W / 2, 140, 96); text(x, 'JUKEBOX', W / 2, 270, `66px ${BIG}`, '#ff4fd8'); for (let i = 0; i < 8; i++) { x.fillStyle = i % 2 ? '#ffc93a' : '#3ea8ff'; x.fillRect(70 + i * 48, 330, 36, 90); } text(x, 'BIG BANG MUSIC', W / 2, 462, `16px ${PIX}`, '#fff'); }) });
   for (const sx of [-131, 131]) box(solid('#ff4fd8', 1, 0), T, sx - 6, sx + 6, 0, 400, 100, 116);
   glow('#ff4fd8', T, 0, 220, 130, 480, 520); light(T, [0, 260, 240], '#ff4fd8'); add('jukebox', 'OPEN THE JUKEBOX', T, 260, 110, 400, handlers.jukebox);
 
-  T = L(330);
+  T = L(480);
   box(solid('#0e1a2c', 0, 0.5), T, -135, 135, 0, 440, 0, 30, { front: panel(270, 440, '#3ea8ff', (x, W) => { x.fillStyle = '#16304f'; x.fillRect(60, 60, 392, 392); x.fillStyle = '#0c0c14'; x.fillRect(250, 60, 6, 392); emoji(x, '👕', 160, 200, 90); emoji(x, '🧢', 350, 200, 90); text(x, 'MY CLOSET', W / 2, 330, `58px ${BIG}`, '#3ea8ff'); text(x, 'YOUR PRIZES LIVE HERE', W / 2, 400, `14px ${PIX}`, '#fff'); x.fillStyle = '#ffc93a'; x.beginPath(); x.arc(232, 256, 9, 0, 7); x.arc(274, 256, 9, 0, 7); x.fill(); }) });
   glow('#3ea8ff', T, 0, 230, 50, 460, 540); light(T, [0, 260, 220], '#3ea8ff', 0.8); add('closet', 'OPEN MY CLOSET', T, 270, 60, 440, handlers.closet);
 
-  T = R(-200);
+  T = R(-640);
   box(solid('#1c1608', 0, 0.4), T, -290, 290, 50, 480, 0, 18);
   for (const sy of [150, 290]) box(solid('#ffc93a', 0.35, 1), T, -280, 280, sy - 10, sy, 18, 100);
   PRIZES.filter(p => !p.real).slice(0, 10).forEach((p, i) => { const em = mat(tex(128, 128, (x, w) => { x.clearRect(0, 0, w, w); emoji(x, p.icon, 64, 70, 96); }), { emis: 1, spec: 0, blend: true }), cx = -224 + (i % 5) * 112, y = i < 5 ? 290 : 150; quad(em, T, [cx - 46, y + 96, 60], [cx + 46, y + 96, 60], [cx + 46, y + 4, 60], [cx - 46, y + 4, 60]); });
   quad(neon('PRIZE WALL', '#ffc93a'), T, [-190, 478, 22], [190, 478, 22], [190, 396, 22], [-190, 396, 22]);
   glow('#ffc93a', T, 0, 440, 40, 560, 200); light(T, [0, 300, 260], '#ffc93a', 1.1); add('prizes', 'SHOP THE PRIZE WALL', T, 560, 100, 480, handlers.prizes);
 
-  T = R(400);
+  T = R(480);
   box(metal, T, -160, 160, 110, 450, 0, 30, { front: panel(320, 340, '#35e06f', (x, W) => { emoji(x, '🏆', W / 2, 96, 84); text(x, 'HIGH SCORES', W / 2, 190, `52px ${BIG}`, '#35e06f'); ['1ST', '2ND', '3RD', '4TH'].forEach((s, i) => { text(x, `${s}  ......  ?`, W / 2, 262 + i * 46, `20px ${PIX}`, i ? '#fff' : '#ffc93a'); }); text(x, 'WHO RUNS THE ARCADE?', W / 2, 462, `14px ${PIX}`, '#35e06f'); }) });
   glow('#35e06f', T, 0, 280, 50, 520, 480); light(T, [0, 280, 220], '#35e06f', 0.8); add('scores', 'SEE THE LEADERBOARD', T, 320, 60, 450, handlers.scores);
 
@@ -225,7 +242,7 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = []) {
   T = F(0);
   quad(neon('BIG BANG ARCADE', '#ff2a3c', 1024, 128), T, [-330, 520, 4], [330, 520, 4], [330, 436, 4], [-330, 436, 4]); glow('#ff2a3c', T, 0, 478, 10, 860, 220);
   GAMES.filter(g => g.poster).forEach((g, i) => {
-    const P = { x: -798, z: 55 + i * 275, th: Math.PI / 2 }, pm = mat(withImg(g.poster, 1024, 512, (x, w, h, e) => { x.fillStyle = '#000'; x.fillRect(0, 0, w, h); drawFit(x, e, 0, 0, w, h, true); }), { emis: 0.8, spec: 0.3 });
+    const P = { x: 2 - HW, z: -150 + i * 275, th: Math.PI / 2 }, pm = mat(withImg(g.poster, 1024, 512, (x, w, h, e) => { x.fillStyle = '#000'; x.fillRect(0, 0, w, h); drawFit(x, e, 0, 0, w, h, true); }), { emis: 0.8, spec: 0.3 });
     const hw = 105, y0 = 190, hh = hw * 0.5625;
     box(solid(g.color, 1, 0), P, -hw - 6, hw + 6, y0 - 6, y0 + hh * 2 + 6, 0, 6); quad(pm, P, [-hw, y0 + hh * 2, 8], [hw, y0 + hh * 2, 8], [hw, y0, 8], [-hw, y0, 8]);
   });
@@ -234,11 +251,11 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = []) {
   {
     const LE = 1900, woodT = tex(256, 256, (x, w) => { x.fillStyle = '#3a2416'; x.fillRect(0, 0, w, w); for (let i = 0; i < 8; i++) { x.fillStyle = i % 2 ? '#46301d' : '#33200f'; x.fillRect(0, i * 32, w, 30); x.fillStyle = 'rgba(0,0,0,.35)'; x.fillRect((i * 97) % 200, i * 32, 3, 30); } }, true);
     const woodF = mat(woodT, { floor: true, spec: 0.35 }), wood = mat(woodT, { spec: 0.4 });
-    quad(woodF, O, [-HW, 0, ZF], [HW, 0, ZF], [HW, 0, LE], [-HW, 0, LE], [0, 0, 8, 5]);
-    quad(ceilM, O, [-HW, CH, LE], [HW, CH, LE], [HW, CH, ZF], [-HW, CH, ZF], [0, 0, 4, 2.5]);
-    quad(wallM, O, [-HW, CH, LE], [-HW, CH, ZF], [-HW, 0, ZF], [-HW, 0, LE], [0, 0, 2.5, 1]);
-    quad(wallM, O, [HW, CH, ZF], [HW, CH, LE], [HW, 0, LE], [HW, 0, ZF], [0, 0, 2.5, 1]);
-    quad(wallM, O, [HW, CH, LE], [-HW, CH, LE], [-HW, 0, LE], [HW, 0, LE], [0, 0, 4, 1]);
+    quad(woodF, O, [-LW, 0, ZF], [LW, 0, ZF], [LW, 0, LE], [-LW, 0, LE], [0, 0, 8, 5]);
+    quad(ceilM, O, [-LW, CH, LE], [LW, CH, LE], [LW, CH, ZF], [-LW, CH, ZF], [0, 0, 4, 2.5]);
+    quad(wallM, O, [-LW, CH, LE], [-LW, CH, ZF], [-LW, 0, ZF], [-LW, 0, LE], [0, 0, 2.5, 1]);
+    quad(wallM, O, [LW, CH, ZF], [LW, CH, LE], [LW, 0, LE], [LW, 0, ZF], [0, 0, 2.5, 1]);
+    quad(wallM, O, [LW, CH, LE], [-LW, CH, LE], [-LW, 0, LE], [LW, 0, LE], [0, 0, 4, 1]);
     const D2 = { x: 0, z: ZF, th: Math.PI }; quad(neon('LOUNGE + BAR', '#ffb400', 1024, 128), D2, [-DW, 430, 3], [DW, 430, 3], [DW, 372, 3], [-DW, 372, 3]);
     light(O, [0, 480, 1350], '#ffe2b0', 0.8);
     const reg = (id, label, x, z, th, w, lo, hi, open, pitch) => { stations[id] = { id, label, x, z, w, depth: 0, pitch, T: { x, z, th }, open, min: lo, max: hi }; };
@@ -281,14 +298,41 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = []) {
     light(O, [690, 260, 1650], '#3ea8ff', 0.7);
   }
 
+  // ---------- the East Wing (through the doorway in the right wall) ----------
+  {
+    const VI = '#b06cff';
+    quad(floorM, O, [HW, 0, WZ0], [WX, 0, WZ0], [WX, 0, WZ1], [HW, 0, WZ1], [0, 0, (WX - HW) / 200, (WZ1 - WZ0) / 200]);
+    quad(ceilM, O, [HW, CH, WZ1], [WX, CH, WZ1], [WX, CH, WZ0], [HW, CH, WZ0], [0, 0, (WX - HW) / 400, (WZ1 - WZ0) / 400]);
+    wall(HW, WZ0, WX, WZ0); wall(WX, WZ0, WX, WZ1); wall(WX, WZ1, HW, WZ1);
+    const D3 = { x: HW, z: WZ, th: -Math.PI / 2 }; quad(neon('EAST WING  →', VI, 1024, 128), D3, [-WD, 520, 3], [WD, 520, 3], [WD, 442, 3], [-WD, 442, 3]); glow(VI, D3, 0, 480, 10, 560, 190);
+    const E = { x: WX - 2, z: WZ, th: -Math.PI / 2 };
+    quad(neon('EAST WING', VI, 1024, 128), E, [-330, 530, 4], [330, 530, 4], [330, 440, 4], [-330, 440, 4]); glow(VI, E, 0, 484, 10, 860, 230);
+    box(solid('#140c22', 0, 0.5), E, -230, 230, 90, 410, 0, 16, { front: panel(460, 320, VI, (x, W) => { emoji(x, '🕹️', W / 2, 120, 120); text(x, 'NEW GAMES', W / 2, 262, `66px ${BIG}`, VI); text(x, 'LAND HERE', W / 2, 336, `66px ${BIG}`, '#ffc93a'); text(x, 'MORE CABINETS ON THE WAY', W / 2, 430, `14px ${PIX}`, '#fff'); }) });
+    light(E, [0, 300, 300], VI, 1); light(O, [(HW + WX) / 2, 500, WZ], '#ffffff', 0.6); light(O, [HW + 250, 420, WZ], VI, 0.5);
+    add('eastwing', 'EAST WING: NEW GAMES SOON', E, 660, 16, 530, handlers.eastwing);
+    // a marked floor pad wherever a wing slot is still free
+    const padE = solid(VI, 1, 0), padF = solid('#161022', 0, 0.6), openM = neon('OPEN SLOT', VI);
+    for (const T of WING) {
+      box(padF, T, -125, 125, 0, 8, 0, 205);
+      for (const [a, b, c, d] of [[-125, -119, 0, 205], [119, 125, 0, 205], [-125, 125, 199, 205]]) box(padE, T, a, b, 0, 10, c, d);
+      quad(openM, T, [-110, 335, 4], [110, 335, 4], [110, 275, 4], [-110, 275, 4]); glow(VI, T, 0, 305, 10, 380, 210);
+    }
+  }
+
   const sprM = mat(white, { emis: 0.75, spec: 0 }); sprM.sprite = true; quad(sprM, O, [-0.5, 1, 0], [0.5, 1, 0], [0.5, 0, 0], [-0.5, 0, 0]);
   // ---------- upload ----------
   const buf = gl.createBuffer(); let total = 0; for (const m of mats) { m.start = total; m.n = m.v.length / 8; total += m.n; }
   const data = new Float32Array(total * 8); for (const m of mats) { data.set(m.v, m.start * 8); m.v = null; }
   gl.bindBuffer(gl.ARRAY_BUFFER, buf); gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
   [[0, 3, 0], [1, 3, 12], [2, 2, 24]].forEach(([i, n, o]) => { gl.enableVertexAttribArray(A[i]); gl.vertexAttribPointer(A[i], n, gl.FLOAT, false, 32, o); });
-  gl.uniform3fv(U.uLP, new Float32Array(18 * 3).map((_, i) => (lights[i / 3 | 0] || { p: [0, 0, 0] }).p[i % 3]));
-  gl.uniform3fv(U.uLC, new Float32Array(18 * 3).map((_, i) => (lights[i / 3 | 0] || { c: [0, 0, 0] }).c[i % 3]));
+  // the shader takes 18 lights; each frame it gets the 18 nearest the player
+  const LP = new Float32Array(54), LC = new Float32Array(54);
+  function setLights(P) {
+    for (const l of lights) l.d = (l.p[0] - P.x) ** 2 + (l.p[2] - P.z) ** 2;
+    lights.sort((a, b) => a.d - b.d); LP.fill(0); LC.fill(0);
+    for (let i = 0; i < 18 && i < lights.length; i++) { LP.set(lights[i].p, i * 3); LC.set(lights[i].c, i * 3); }
+    gl.uniform3fv(U.uLP, LP); gl.uniform3fv(U.uLC, LC);
+  }
   gl.uniform1i(U.uT, 0); gl.enable(gl.DEPTH_TEST); gl.clearColor(0.03, 0.015, 0.06, 1);
   const I = ident();
   let fov = 1, asp = 1;
@@ -300,7 +344,7 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = []) {
   const drawSet = (pred, time, mirror) => {
     for (const m of mats) {
       if (!m.n || m.sprite || !pred(m)) continue;
-      gl.uniformMatrix4fv(U.uM, false, m.dyn ? mul(trans(0, 400 + Math.sin(time * 1.6) * 8, 150), rotY(time * 0.7)) : I);
+      gl.uniformMatrix4fv(U.uM, false, m.dyn ? mul(trans(0, 400 + Math.sin(time * 1.6) * 8, BZ), rotY(time * 0.7)) : I);
       gl.bindTexture(gl.TEXTURE_2D, m.t); gl.uniform3fv(U.uTint, m.tint);
       gl.uniform1f(U.uEmis, m.emis * (m.emis === 1 && !m.glow ? 0.94 + 0.06 * Math.sin(time * 9 + m.start) : 1)); gl.uniform1f(U.uSpec, m.spec);
       gl.drawArrays(gl.TRIANGLES, m.start, m.n);
@@ -310,9 +354,9 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = []) {
   function render(P, time, spr) {
     sprites = spr || [];
     resize();
-    const view = mul(mul(rotX(-P.pitch), rotY(P.yaw)), trans(-P.x, -P.eye, -P.z)), proj = persp(fov, asp, 8, 5000);
+    const view = mul(mul(rotX(-P.pitch), rotY(P.yaw)), trans(-P.x, -P.eye, -P.z)), proj = persp(fov, asp, 8, 8000);
     const flip = ident(); flip[5] = -1;
-    gl.uniform3f(U.uEye, P.x, P.eye, P.z); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    gl.uniform3f(U.uEye, P.x, P.eye, P.z); setLights(P); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     const pass = (vp, mirror) => {
       gl.uniformMatrix4fv(U.uVP, false, vp); gl.uniform1f(U.uMirror, mirror ? 1 : 0); gl.uniform1f(U.uAlpha, 1);
       gl.disable(gl.BLEND); gl.depthMask(true); drawSet(m => !m.glow && !m.floor && !m.blend, time);
