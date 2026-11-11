@@ -5,10 +5,10 @@ import { PRIZES, REWARDS, REAL_PRIZES_LIVE, BAR } from '../prizes.js';
 
 const SB_URL = "https://fspcfzxtohaaeoudrack.supabase.co";
 const SB_KEY = "sb_publishable_GoAREk7bfAgNZbKY7DsHrw_X6JSb3Jd";
-async function supabaseAction(action, body, game) {
+async function supabaseAction(action, body, game, authorization) {
   const r = await fetch(`${SB_URL}/rest/v1/rpc/bba_arcade`, {
     method: "POST",
-    headers: { apikey: SB_KEY, "Content-Type": "application/json" },
+    headers: { apikey: SB_KEY, "Content-Type": "application/json", ...(/^Bearer [A-Za-z0-9._-]+$/.test(authorization || '') ? { Authorization: authorization } : {}) },
     body: JSON.stringify({
       p_action: action,
       p_body: body,
@@ -220,7 +220,7 @@ export default async function handler(req, res) {
     // Supabase RPC when neither Redis nor Blob is connected.
     if (!R_URL && !process.env.BLOB_READ_WRITE_TOKEN) {
       if (q.a === 'uncomment') throw fail(501, 'Comment moderation is not available on this storage backend');
-      return res.status(200).json(await supabaseAction(q.a, b, q.game));
+      return res.status(200).json(await supabaseAction(q.a, b, q.game, req.headers?.authorization));
     }
     res.status(200).json(await fn(b, q));
   } catch (e) {

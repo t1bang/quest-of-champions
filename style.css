@@ -83,3 +83,9 @@ body:has(#gate:not([hidden])) #featured,body:has(#panel:not([hidden])) #featured
 #gate{background:radial-gradient(ellipse at 50% 35%,#381e52e8,#0b0612f5 75%)}.gbox{max-height:96dvh;overflow:auto}#genter{box-shadow:4px 4px 0 #ef2638;border-radius:2px}#gf .gfbar{border-bottom:3px solid #ffcf24}#gf iframe{background:#090a12}
 @media(max-width:600px){#featured{top:76px;font-size:14px;padding:7px 10px}#featured span{font-size:7px}}
 @media(prefers-reduced-motion:reduce){.stage img{animation:none}}
+.passport-check{display:flex;align-items:flex-start;gap:12px;margin:18px 0;line-height:1.6;text-align:left}
+.passport-check input{width:22px;height:22px;flex:none;accent-color:#ffc93a;margin-top:3px}
+.passport-login{display:grid;gap:14px;margin:18px 0}.passport-login label{display:grid;gap:8px}
+.passport-login input,.passport-login select{width:100%;padding:14px;background:#141624;color:#fff;border:2px solid #59637e;border-radius:5px;font:inherit}
+.passport-metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.passport-metrics p{padding:14px;background:#16192a;border-left:4px solid #ffc93a}.passport-metrics b{display:block;font-size:2rem;color:#ffc93a}

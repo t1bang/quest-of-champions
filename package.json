@@ -4,9 +4,16 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "@supabase/supabase-js": "2.119.0",
     "@vercel/blob": "^1.0.0"
   },
   "scripts": {
-    "test": "node --test tests/*.test.mjs"
+    "test": "node --test tests/*.test.mjs",
+    "build:player": "node tools/build-player-vendor.mjs",
+    "test:browser": "node tools/playtest-player.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "playwright": "1.65.0"
   }
 }

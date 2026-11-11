@@ -1,0 +1,2 @@
+# Generated client contains intentional whitespace inside template literals.
+vendor/supabase.js whitespace=-blank-at-eol

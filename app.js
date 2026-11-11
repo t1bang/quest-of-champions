@@ -2,6 +2,7 @@ import { GAMES, SONGS, MUSIC_PAGES, DONATE, SOCIALS, CLAIM_HELP, BGM, SOON, VAUL
 import { PRIZES, REWARDS, REAL_PRIZES_LIVE, BAR } from './prizes.js';
 import { COVERS, playTrailer } from './art.js';
 import { buildRoom, DIMS } from './room.js';
+import { supabase, authHeaders, playerCall, enabledProviders, escapeHtml, cleanBlankmanSave, createActivityTracker } from './player-services.js';
 
 const $ = s => document.querySelector(s);
 const view = $('#view'), panel = $('#panel'), pbody = $('#pbody');
@@ -12,14 +13,19 @@ const store = { get(k) { try { return JSON.parse(localStorage.getItem(k)); } cat
 
 // ---------------- online database ----------------
 let auth = store.get('bba-auth') || {}, me = null;
+const activity = createActivityTracker();
+setInterval(() => activity.flush(), 30000);
+addEventListener('pagehide',()=>activity.stop());
+addEventListener('pointerdown', () => activity.input());
+addEventListener('keydown', () => activity.input());
 async function api(a, body, q = '') {
-  const r = await fetch(`/api/arcade?a=${a}${q}`, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...auth, ...body }) } : undefined);
+  const r = await fetch(`/api/arcade?a=${a}${q}`, body ? { method: 'POST', headers: { 'Content-Type': 'application/json', ...await authHeaders() }, body: JSON.stringify({ ...auth, ...body }) } : undefined);
   const j = await r.json().catch(() => ({ error: 'The arcade database is not reachable right now' }));
   if (!r.ok) throw new Error(j.error || 'Something went wrong');
   return j;
 }
 function setMe(p) {
-  me = p; if (p && p.avatar && !store.get('bba-av')) myAv = cleanAv(p.avatar);
+  me = p; activity.enabled(!!p?.linked && !!p?.analytics); if (p && p.avatar && !store.get('bba-av')) myAv = cleanAv(p.avatar);
   $('#tok b').textContent = p ? p.tokens : 0;
   const icon = p && (PRIZES.find(x => x.id === p.badge) || {}).icon;
   $('#who').textContent = p ? (icon ? icon + ' ' : '') + p.name : 'SIGN IN';
@@ -29,9 +35,10 @@ async function earn(why, game, score) {
   try { const r = await api('earn', { why, game, score }); setMe(r.player); if (r.gained) toast(`+${r.gained} TOKENS`); } catch {}
 }
 async function join(name) {
-  const r = await api('join', { name });
-  auth = { pid: r.pid, key: r.key }; store.set('bba-auth', auth); setMe(r.player);
-  earn('daily');
+  name = String(name).replace(/[^A-Za-z0-9 _-]/g, '').trim().slice(0,16);
+  if (name.length < 2) throw new Error('Pick a nickname of 2–16 characters');
+  store.set('bba-guest-name', name);
+  setMe({ local:true, name, tokens:0, earned:0, closet:[], badge:'' });
 }
 
 // ---------------- the 3D room ----------------
@@ -184,15 +191,15 @@ stick.addEventListener('pointerup', stickEnd); stick.addEventListener('pointerca
 $('#act').onclick = () => near && near.open();
 
 // ---------------- panels ----------------
-let cleanup = null;
-function closePanel() { if (cleanup) { cleanup(); cleanup = null; } panel.hidden = true; pbody.innerHTML = ''; $('#act').hidden = !near; }
+let cleanup = null, panelVersion = 0;
+function closePanel() { panelVersion++; if (cleanup) { cleanup(); cleanup = null; } panel.hidden = true; pbody.innerHTML = ''; $('#act').hidden = !near; }
 function show(html, color) { closePanel(); pbody.innerHTML = html; panel.hidden = false; $('#act').hidden = true; panel.firstElementChild.style.borderColor = color || ''; panel.firstElementChild.scrollTop = 0; }
 panel.querySelector('.x').onclick = closePanel;
 panel.addEventListener('pointerdown', e => { if (e.target === panel) closePanel(); });
 const link = (label, url, cls = '') => url ? `<a class="btn ${cls}" href="${url}" target="_blank" rel="noopener">${label}</a>` : `<button class="btn off ${cls}" data-soon="1">${label}</button>`;
 pbody.addEventListener('click', e => { if (e.target.closest('[data-soon]')) toast('COMING SOON'); });
-const needMe = () => { if (auth.pid) return true; openProfile(); toast('PICK A PLAYER NAME FIRST'); return false; };
-const rows = (list, unit) => list.length ? list.map((r, i) => `<li><span>${i + 1}. ${r.badge || ''} ${r.name}</span><b>${r.score.toLocaleString()}${unit}</b></li>`).join('') : '<li class="dim">No scores yet. Be the first.</li>';
+const needMe = () => { if (auth.pid) return true; openProfile(); toast('CONNECT A PLAYER ACCOUNT TO SAVE ONLINE'); return false; };
+const rows = (list, unit) => list.length ? list.map((r, i) => `<li><span>${i + 1}. ${escapeHtml(r.badge || '')} ${escapeHtml(r.name)}</span><b>${Number(r.score).toLocaleString()}${unit}</b></li>`).join('') : '<li class="dim">No scores yet. Be the first.</li>';
 
 function openGame(g) {
   show(`<span class="tag" style="--c:${g.color}">${g.genre.toUpperCase()}</span><h2>${g.title}</h2>
@@ -212,11 +219,13 @@ function openGame(g) {
   timer = setTimeout(trailer, 2600);
   cleanup = () => { clearTimeout(timer); if (stop) stop(); };
   $('#gtrail').onclick = () => { clearTimeout(timer); if (stop) stop(); stop = null; stage.innerHTML = cover(g); timer = setTimeout(trailer, 1200); };
-  $('#gplay').onclick = () => {
+  $('#gplay').onclick = async () => {
     if (!g.play) return toast('PLAYABLE BUILD COMING SOON');
     earn('play', g.id); closePanel();
+    activity.start(g.id, g.id === 'blankman' ? '8.0' : 'unknown');
+    if (me?.linked && g.id === 'blankman') prepareCloudSave().catch(() => {});
     const gf = $('#gf'); gf.hidden = false; gf.dataset.game = g.id; gf.querySelector('b').textContent = g.title.toUpperCase();
-    gf.querySelector('a').href = g.play; const frame = gf.querySelector('iframe'); frame.title = g.title; frame.onload = () => frame.focus(); frame.src = g.play; pauseBgm(true);
+    gf.querySelector('a').href = g.play; const frame = gf.querySelector('iframe'); frame.title = g.title; frame.onload = () => { frame.focus(); if (g.id !== 'blankman') activity.event({ kind:'game_ready' }); }; frame.src = g.play; pauseBgm(true);
     clearInterval(playTimer); playTimer = setInterval(() => { if (!gf.hidden && !document.hidden) earn('minute', g.id); }, 60000);
   };
   api('board', null, '&game=' + g.id).then(r => { const o = $('#grank'); if (o) o.innerHTML = rows(r.rows, ''); }).catch(() => { const o = $('#grank'); if (o) o.innerHTML = '<li class="dim">Leaderboard is offline.</li>'; });
@@ -233,14 +242,17 @@ function openGame(g) {
   };
 }
 let playTimer;
-$('#gf button').onclick = () => { const gf = $('#gf'); clearInterval(playTimer); gf.hidden = true; gf.querySelector('iframe').src = 'about:blank'; pauseBgm(false); };
+$('#gf button').onclick = () => { const gf = $('#gf'); clearInterval(playTimer); activity.stop(); gf.hidden = true; gf.querySelector('iframe').src = 'about:blank'; pauseBgm(false); };
 // Games report scores with: parent.postMessage({ bba: 'score', score: 1234 }, '*')
 // and events with: parent.postMessage({ bba: 'level' }, '*')  or  { bba: 'fatality' }
 addEventListener('message', e => {
   const gf = $('#gf'), d = e.data, frame = gf.querySelector('iframe');
   if (gf.hidden || !d || e.source !== frame.contentWindow || e.origin !== new URL(frame.src, location.href).origin || (d.game && d.game !== gf.dataset.game)) return;
   if (d.bba === 'score' && (!Number.isFinite(d.score) || d.score < 0 || d.score > 1e9)) return;
-  if (d.bba === 'score') earn('score', gf.dataset.game, d.score);
+  if (d.bba === 'score') { earn('score', gf.dataset.game, d.score); activity.event({ kind:'score_reported', score:d.score }); }
+  if (d.bba === 'activity' && d.v === 1 && d.game === gf.dataset.game) activity.event(d.event);
+  if (d.bba === 'status' && d.v === 1 && d.game === gf.dataset.game) { activity.playing(d.playing === true); if (d.input === true) activity.input(); }
+  if (d.bba === 'save' && d.v === 1 && d.game === 'blankman') queueCloudSave(d.data);
   if (d.bba === 'level' || d.bba === 'fatality') earn(d.bba, gf.dataset.game);
 });
 
@@ -278,7 +290,7 @@ function openPrizes() {
     ${real.length ? `<h3>REAL PRIZES</h3><div class="grid">${real.map(card).join('')}</div>` : ''}
     ${songs.length ? `<h3>SONG DOWNLOADS</h3><div class="grid">${songs.map(card).join('')}</div>` : ''}
     <h3>CLOSET GEAR</h3><div class="grid">${gear.map(card).join('')}</div>
-    <h3>HOW TO WIN TOKENS</h3><p class="dim">Every minute you play +${REWARDS.minute} · Beat a Quest of Champions level +${REWARDS.level} · T1 Versus fatality +${REWARDS.fatality} · Google or Facebook sign-in +${REWARDS.social} (one time) · Daily visit +${REWARDS.daily} · Game scores up to +${REWARDS.scoreMax} a run</p>`, '#ffc93a');
+    <h3>HOW TO WIN TOKENS</h3><p class="dim">Every minute you play +${REWARDS.minute} · Beat a Quest of Champions level +${REWARDS.level} · T1 Versus fatality +${REWARDS.fatality} · Daily visit +${REWARDS.daily} · Game scores up to +${REWARDS.scoreMax} a run</p>`, '#ffc93a');
   pbody.onclick = async e => {
     const b = e.target.closest('[data-buy]'); if (!b || !needMe()) return;
     try { const r = await api('buy', { id: b.dataset.buy }); setMe(r.player); if (r.code || b.dataset.buy.startsWith('song-')) openCloset(); else { toast('ADDED TO YOUR CLOSET'); openPrizes(); } } catch (err) { toast(err.message.toUpperCase()); }
@@ -392,7 +404,7 @@ function openAvatar() {
     <div>${rows.map(([k, label]) => `<ul class="list"><li><span>${label}</span><button class="btn" data-av="${k}">CHANGE ▶</button></li></ul>`).join('')}<button class="btn go" id="avsave">SAVE AVATAR</button></div></div>`, '#3ea8ff');
   const paint = () => drawAvatar($('#avc').getContext('2d'), 240, 320, myAv, me ? me.name : ''); paint();
   pbody.onclick = e => { const b = e.target.closest('[data-av]'); if (!b) return; const [, , n] = rows.find(r => r[0] === b.dataset.av); myAv[b.dataset.av] = (myAv[b.dataset.av] + 1) % n; paint(); };
-  $('#avsave').onclick = async () => { store.set('bba-av', myAv); try { await api('avatar', { av: myAv }); } catch {} closePanel(); toast('AVATAR SAVED'); };
+  $('#avsave').onclick = async () => { store.set('bba-av', myAv); if (auth.pid) { try { const r = await api('avatar', { av: myAv }); setMe(r.player); } catch { toast('AVATAR SAVED ON THIS DEVICE; CLOUD UNAVAILABLE'); return; } } closePanel(); toast('AVATAR SAVED'); };
   cleanup = () => { pbody.onclick = null; };
 }
 // Other players: positions are shared live through a Supabase Realtime channel.
@@ -415,11 +427,20 @@ function peerSprites(dt) {
   }
   return out;
 }
+let presenceStarted=false;
 async function startPresence() {
+  if(presenceStarted)return;presenceStarted=true;
   try {
     const c = await sb(), ch = c.channel('bba-arcade-room', { config: { broadcast: { self: false } } });
     ch.on('broadcast', { event: 'pos' }, m => peerSeen(m.payload));
-    ch.subscribe(st => { if (st === 'SUBSCRIBED') setInterval(() => { if (!document.hidden && auth.pid && me) ch.send({ type: 'broadcast', event: 'pos', payload: { id: sid, n: me.name, av: myAv, x: Math.round(P.x), z: Math.round(P.z), s: sitting ? 1 : 0 } }); }, 700); });
+    let timer, previous = '', sentAt = 0;
+    ch.subscribe(st => { clearInterval(timer); if (st === 'SUBSCRIBED') timer = setInterval(() => {
+      if (document.hidden || !$('#gf').hidden || !auth.pid || !me) return;
+      const payload = { id:sid, n:me.name, av:myAv, x:Math.round(P.x), z:Math.round(P.z), s:sitting ? 1 : 0 }, next = JSON.stringify(payload);
+      if (next === previous && Date.now()-sentAt < 4000) return;
+      previous = next; sentAt = Date.now(); ch.send({ type:'broadcast', event:'pos', payload });
+    }, 700); });
+    addEventListener('pagehide', () => { clearInterval(timer); c.removeChannel(ch); }, { once:true });
   } catch {}
 }
 
@@ -439,33 +460,195 @@ function openVault() {
   };
   cleanup = () => { pbody.onclick = null; pauseBgm(false); };
 }
-// Google / Facebook sign-in through Supabase Auth; gives a one-time token bonus.
-let sbClient;
-async function sb() {
-  if (!sbClient) { const m = await import('https://esm.sh/@supabase/supabase-js@2'); sbClient = m.createClient(SOCIAL_AUTH.url, SOCIAL_AUTH.key); }
-  return sbClient;
+// Player Passport: optional account features live inside the arcade, not the gate.
+const sb = async () => supabase;
+let availableProviders = [], accountSession = null, accountOwner = false, restoring = false;
+let cloudRevision = 0, cloudReady = false, cloudBusy = false, cloudPending = null, cloudPlayer = null, cloudNote = '';
+enabledProviders().then(p => { availableProviders = p; });
+function saveAccountSetup() {
+  if (!$('#account-adult')?.checked) throw new Error('Adult accounts are available first. Everyone can play as a guest.');
+  const setup = { adult:true, name: me?.name || store.get('bba-guest-name') || 'Player', claim_guest: !!$('#claim-guest')?.checked };
+  sessionStorage.setItem('bba-account-setup', JSON.stringify(setup));
+  return setup;
 }
 async function socialSignIn(provider) {
-  try { const c = await sb(), r = await c.auth.signInWithOAuth({ provider, options: { redirectTo: location.origin + location.pathname } }); if (r.error) throw r.error; }
-  catch { toast(provider.toUpperCase() + ' SIGN-IN IS NOT SET UP YET'); }
-}
-async function socialReturn() { // runs after Google/Facebook sends the player back
-  if (!/access_token=|code=/.test(location.hash + location.search)) return;
   try {
-    const c = await sb(), { data } = await c.auth.getSession(); if (!data.session) return;
-    const u = data.session.user, nm = (u.user_metadata && (u.user_metadata.full_name || u.user_metadata.name)) || 'Player';
-    if (!auth.pid) await join(nm);
-    const r = await api('social', { token: data.session.access_token }); setMe(r.player);
-    toast(r.gained ? `SIGNED IN +${r.gained} TOKENS` : 'SIGNED IN'); history.replaceState(null, '', location.pathname);
-  } catch {}
+    if (!availableProviders.some(([id]) => id === provider)) throw new Error('This connection is not available yet');
+    saveAccountSetup();
+    const { error } = await supabase.auth.signInWithOAuth({ provider, options: { redirectTo: location.origin + '/?account=return' } });
+    if (error) throw error;
+  } catch (err) { toast(err.message); }
 }
-const socialBtns = `<h3>OR SIGN IN FOR +${REWARDS.social} TOKENS</h3><button class="btn" data-social="google">CONTINUE WITH GOOGLE</button><button class="btn" data-social="facebook">CONTINUE WITH FACEBOOK</button>`;
+async function restoreAccount() {
+  if (restoring) return; restoring = true;
+  try {
+    const { data } = await supabase.auth.getSession(); accountSession = data.session;
+    if (accountSession) {
+      let setup = {}; try { setup = JSON.parse(sessionStorage.getItem('bba-account-setup') || '{}'); } catch {}
+      try {
+        const r = await playerCall('account', { ...auth, ...setup });
+        if (auth.key && r.pid !== auth.pid) store.set('bba-previous-guest', auth);
+        auth = { pid:r.pid }; store.set('bba-auth', auth); accountOwner = !!r.owner; setMe(r.player);
+        sessionStorage.removeItem('bba-account-setup'); gname.hidden = true; earn('daily');
+        if (new URLSearchParams(location.search).has('account')) { history.replaceState(null,'',location.pathname); toast('PLAYER PASSPORT CONNECTED'); }
+      } catch (err) { cloudNote = err.message; if (!me) await restoreGuest(); }
+    } else await restoreGuest();
+  } finally { restoring = false; }
+}
+async function restoreGuest() {
+  accountOwner = false;
+  if (auth.pid && auth.key) {
+    try { const response = await fetch('/api/arcade?a=me',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(auth)}); const r=await response.json(); if(!response.ok)throw new Error(r.error); setMe(r.player); gname.hidden = true; if(!accountSession)earn('daily'); return; } catch {}
+  }
+  auth = {}; store.set('bba-auth', auth);
+  const name = store.get('bba-guest-name'); if (name) { await join(name); gname.value = name; }
+  gname.hidden = false;
+}
+supabase.auth.onAuthStateChange((event) => {
+  // Auth callbacks run under a client lock: defer further Auth calls.
+  if (event === 'SIGNED_IN') setTimeout(() => restoreAccount(),0);
+  if (event === 'SIGNED_OUT') {
+    activity.enabled(false); cloudReady=false; cloudPending=null; cloudPlayer=null; accountSession=null; accountOwner=false;
+    // Also clear this tab when another tab signs out or its session is revoked.
+    if (me?.linked) {
+      if (!$('#gf').hidden) $('#gf button').click();
+      for (const key of ['bba-auth','bba-av','bba-guest-name','blankman-save-v1','bba-blankman-local-backup']) localStorage.removeItem(key);
+      auth={};myAv=cleanAv({});setMe(null);gname.hidden=false;gname.value='';closePanel();
+    }
+  }
+});
+async function signOutPlayer() {
+  await activity.stop(); cloudReady = false; cloudPending = null; cloudPlayer = null;
+  const { error } = await supabase.auth.signOut({scope:'local'});
+  if (error) return toast('SIGN OUT FAILED. PLEASE TRY AGAIN.');
+  for (const key of ['bba-auth','bba-av','bba-guest-name','blankman-save-v1','bba-blankman-local-backup']) localStorage.removeItem(key);
+  auth = {}; accountSession = null; accountOwner = false; me = null; myAv = cleanAv({});
+  const gf = $('#gf'); if (!gf.hidden) $('#gf button').click();
+  gname.hidden = false; gname.value = ''; setMe(null); openProfile(); toast('SIGNED OUT ON THIS DEVICE');
+}
 function openProfile() {
-  const wire = () => { pbody.onclick = e => { const b = e.target.closest('[data-go]'), so = e.target.closest('[data-social]'); if (b) goTo(b.dataset.go); if (so) socialSignIn(so.dataset.social); }; cleanup = () => { pbody.onclick = null; }; };
-  if (me) { show(`<h2>${me.name}</h2><p>🪙 ${me.tokens} tokens · ${me.earned} won all time · ${me.closet.length} prizes</p><button class="btn go" data-go="closet">MY CLOSET</button><button class="btn" data-go="prizes">PRIZE WALL</button><button class="btn" id="pav">EDIT AVATAR</button>${socialBtns}`); wire(); $('#pav').onclick = openAvatar; return; }
-  show(`<h2>SIGN IN</h2><p>Pick a player name to win tokens, reach the prize wall, post scores and comment.</p><form class="cf" id="pform"><input maxlength="16" placeholder="PLAYER NAME"><button class="btn go">SAVE</button></form>${socialBtns}`);
-  wire();
-  $('#pform').onsubmit = async e => { e.preventDefault(); try { await join(e.target.querySelector('input').value); toast('WELCOME, ' + me.name.toUpperCase()); openAvatar(); } catch (err) { toast(err.message.toUpperCase()); } };
+  const linked = !!me?.linked;
+  show(`<span class="tag">PLAYER PASSPORT</span><h2>${escapeHtml(me?.name || 'WELCOME, PLAYER')}</h2>
+    <p>${linked ? 'One player across the arcade.' : auth.key ? 'Your original guest profile is safe on this browser.' : 'Guest play stays on this device. No account needed.'}</p>
+    ${me ? `<p>🪙 ${me.tokens} tokens · ${me.earned} earned · ${me.closet.length} prizes</p><button class="btn" id="pav">EDIT AVATAR</button><button class="btn" data-go="closet">MY CLOSET</button>` : '<form class="cf" id="pform"><input maxlength="16" placeholder="YOUR NICKNAME" aria-label="Your nickname"><button class="btn go">PLAY AS GUEST</button></form>'}
+    ${linked ? `<button class="btn go" id="cloud-panel">BLANKMAN CLOUD SAVE</button><button class="btn" id="lobby-panel">PLAY WITH FRIENDS</button>
+      <h3>YOUR PRIVACY</h3><p>Optionally share games played, level progress and approximate active play time to help improve the arcade. No recordings, chat text, or advertising tracking.</p>
+      <label class="passport-check"><input type="checkbox" id="activity-optin" ${me.analytics ? 'checked' : ''}> Share gameplay activity (optional)</label>
+      <p class="dim">Activity is kept for up to 90 days. Turning this off also deletes your activity history. Cloud saves and scores stay separate.</p>
+      <button class="btn" id="save-preferences">SAVE PRIVACY CHOICE</button><button class="btn" id="export-player">DOWNLOAD MY ARCADE DATA</button>
+      ${accountOwner ? '<button class="btn go" id="owner-stats">OWNER DASHBOARD</button>' : ''}<button class="btn" id="signout-player">SIGN OUT</button>` : `
+      <h3>SAVE YOUR PLAYER ACROSS DEVICES</h3><p>Account features are launching for adults first. Players of every age can keep playing as guests.</p>
+      <label class="passport-check"><input type="checkbox" id="account-adult"> I am 18 or older.</label>
+      ${auth.key ? '<label class="passport-check"><input type="checkbox" id="claim-guest"> Connect this browser’s existing tokens and scores to my account.</label>' : ''}
+      ${availableProviders.length ? availableProviders.map(([id,label]) => `<button class="btn go" data-social="${id}">CONTINUE WITH ${label.toUpperCase()}</button>`).join('') : '<p class="dim">Social sign-in is being connected. Guest play is ready now.</p>'}
+      ${accountSession ? '<button class="btn go" id="finish-account">FINISH ACCOUNT SETUP</button><button class="btn" id="signout-player">SIGN OUT</button>' : '<details><summary>Already have an arcade account?</summary><form id="account-login" class="passport-login"><label>Email<input type="email" name="email" autocomplete="username" required></label><label>Password<input type="password" name="password" autocomplete="current-password" required></label><button class="btn">SIGN IN</button></form></details>'}`}
+    <p class="dim"><a href="/privacy.html" target="_blank" rel="noopener">Player privacy and data choices</a></p>`, '#ffc93a');
+  pbody.onclick = e => { const g=e.target.closest('[data-go]'), s=e.target.closest('[data-social]'); if (g) goTo(g.dataset.go); if (s) socialSignIn(s.dataset.social); };
+  cleanup = () => { pbody.onclick = null; };
+  if ($('#pav')) $('#pav').onclick = openAvatar;
+  if ($('#pform')) $('#pform').onsubmit = async e => { e.preventDefault(); try { await join(e.target.querySelector('input').value); openProfile(); } catch(err) { toast(err.message); } };
+  if ($('#account-login')) $('#account-login').onsubmit = async e => {
+    e.preventDefault(); const f = e.currentTarget, button=f.querySelector('button');
+    try { saveAccountSetup(); button.disabled=true;
+      const { error } = await supabase.auth.signInWithPassword({ email:f.email.value, password:f.password.value });
+      f.password.value=''; if (error) throw error; await restoreAccount(); openProfile();
+    } catch (err) { toast(err.message); } finally { button.disabled=false; }
+  };
+  if ($('#finish-account')) $('#finish-account').onclick = async () => { try { saveAccountSetup(); await restoreAccount(); openProfile(); } catch(err) { toast(err.message); } };
+  if ($('#signout-player')) $('#signout-player').onclick = signOutPlayer;
+  if ($('#save-preferences')) $('#save-preferences').onclick = async () => { try { const r=await playerCall('preferences',{analytics:$('#activity-optin').checked}); setMe(r.player); toast('PRIVACY CHOICE SAVED'); } catch(err) { toast(err.message); } };
+  if ($('#cloud-panel')) $('#cloud-panel').onclick = openCloudSave;
+  if ($('#lobby-panel')) $('#lobby-panel').onclick = () => openLobby();
+  if ($('#owner-stats')) $('#owner-stats').onclick = openDashboard;
+  if ($('#export-player')) $('#export-player').onclick = async () => {
+    try { const data=await playerCall('export'); const url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));
+      const a=document.createElement('a'); a.href=url; a.download='big-bang-arcade-my-data.json'; a.click(); setTimeout(()=>URL.revokeObjectURL(url),1000);
+    } catch(err) { toast(err.message); }
+  };
+}
+async function prepareCloudSave() {
+  cloudReady=false; cloudPlayer=auth.pid;
+  if (!me?.linked || !store.get('bba-cloud-'+auth.pid)) return;
+  const owner=auth.pid, {save}=await playerCall('save_get',{game:'blankman'});
+  if (owner!==auth.pid) return;
+  cloudRevision=save?.revision || 0;
+  const local=cleanBlankmanSave(store.get('blankman-save-v1'));
+  cloudReady=!save || JSON.stringify(cleanBlankmanSave(save.data))===JSON.stringify(local);
+  cloudNote=cloudReady ? 'Cloud saving is ready.' : 'A different cloud save is waiting. Choose which progress to use in Player Passport.';
+}
+async function queueCloudSave(data) {
+  if (!me?.linked || !cloudReady || cloudPlayer!==auth.pid) return;
+  const save=cleanBlankmanSave(data); if (!save) return;
+  cloudPending=save; if (cloudBusy) return;
+  cloudBusy=true;
+  try {
+    while (cloudPending && cloudReady && cloudPlayer===auth.pid) {
+      const next=cloudPending, owner=auth.pid; cloudPending=null;
+      const r=await playerCall('save_put',{game:'blankman',revision:cloudRevision,data:next});
+      if (owner!==auth.pid) break;
+      cloudRevision=r.save.revision; cloudNote='Progress saved to your player account.';
+    }
+  } catch(err) { cloudReady=false; cloudNote=err.message; toast('LOCAL PROGRESS IS SAFE. CHECK PLAYER PASSPORT FOR CLOUD SAVE.'); }
+  finally { cloudBusy=false; }
+}
+async function openCloudSave() {
+  show('<h2>YOUR SAVE SLOT</h2><p>Checking Blankman progress…</p>');
+  const version=panelVersion;
+  try {
+    const owner=auth.pid, {save}=await playerCall('save_get',{game:'blankman'}); if (owner!==auth.pid || version!==panelVersion) return;
+    const local=cleanBlankmanSave(store.get('blankman-save-v1')), cloud=cleanBlankmanSave(save?.data);
+    show(`<h2>BLANKMAN SAVE SLOT</h2><p>Your cloud save is separate from leaderboard scores.</p>
+      <ul class="list"><li><span>THIS DEVICE</span><b>${local ? 'STAGE '+(local.stage+1) : 'NO SAVE YET'}</b></li><li><span>CLOUD</span><b>${cloud ? 'STAGE '+(cloud.stage+1) : 'EMPTY SLOT'}</b></li></ul>
+      <p class="dim">${escapeHtml(cloudNote)} Restoring reloads the game. Saving replaces the cloud slot with this device’s progress.</p>
+      ${local ? '<button class="btn go" id="cloud-upload">USE THIS DEVICE + ENABLE CLOUD SAVING</button>' : ''}
+      ${cloud ? '<button class="btn" id="cloud-restore">RESTORE CLOUD SAVE TO THIS DEVICE</button>' : ''}
+      <button class="btn" id="cloud-off">KEEP SAVES ON THIS DEVICE ONLY</button><button class="btn" id="passport-back">BACK TO MY PLAYER</button>`);
+    $('#passport-back').onclick=openProfile;
+    $('#cloud-off').onclick=()=>{store.set('bba-cloud-'+auth.pid,false);cloudReady=false;toast('AUTOMATIC CLOUD SAVING OFF');};
+    if ($('#cloud-upload')) $('#cloud-upload').onclick=async()=>{try {
+      if (cloudBusy) return toast('A SAVE IS STILL FINISHING');
+      if (cloud && !confirm('Replace the cloud save with progress from this device?')) return;
+      const r=await playerCall('save_put',{game:'blankman',revision:save?.revision||0,data:local});
+      cloudRevision=r.save.revision;cloudPlayer=auth.pid;cloudReady=true;store.set('bba-cloud-'+auth.pid,true);toast('CLOUD SAVE CONNECTED');openProfile();
+    } catch(err){toast(err.message);}};
+    if ($('#cloud-restore')) $('#cloud-restore').onclick=()=>{
+      if (!confirm('Restore the cloud save and reload Blankman? Current progress will be backed up on this device.')) return;
+      if (local) store.set('bba-blankman-local-backup',local);
+      store.set('blankman-save-v1',cloud);cloudRevision=save.revision;cloudPlayer=auth.pid;cloudReady=true;store.set('bba-cloud-'+auth.pid,true);
+      const frame=$('#gf iframe');if (!$('#gf').hidden && $('#gf').dataset.game==='blankman') frame.src=frame.src;
+      toast('CLOUD PROGRESS RESTORED');openProfile();
+    };
+  } catch(err){toast(err.message);openProfile();}
+}
+async function openLobby(code=store.get('bba-lobby') || '') {
+  show(`<h2>BRING YOUR CREW</h2><p>Private, eight-player gathering rooms. Pick the same game and compare scores. The games still run individually.</p>
+    <label class="passport-login">CHOOSE A GAME<select id="lobby-game">${GAMES.map(g=>`<option value="${g.id}">${escapeHtml(g.title)}</option>`).join('')}</select></label>
+    <button class="btn go" id="lobby-create">CREATE PRIVATE LOBBY</button>
+    <form class="cf" id="lobby-join"><input placeholder="12-CHARACTER INVITE CODE" aria-label="Lobby invite code" maxlength="12" value="${escapeHtml(code)}"><button class="btn">JOIN</button></form>
+    <div id="lobby-state"></div><button class="btn" id="passport-back">BACK TO MY PLAYER</button>`);
+  let poll, current='', active=true; cleanup=()=>{active=false;clearInterval(poll);};
+  $('#passport-back').onclick=openProfile;
+  const render = r => {
+    const box=$('#lobby-state'); if(!active || !box)return;
+    current=r.code;store.set('bba-lobby',r.code);
+    box.innerHTML=`<h3>INVITE CODE: ${escapeHtml(r.code)}</h3><p>Expires after 24 hours. Share this code only with your friends.</p><ul class="list">${r.members.map(m=>`<li>${escapeHtml(m.name)}${m.host?' · HOST':''}</li>`).join('')}</ul><button class="btn go" id="lobby-play">OPEN ${escapeHtml(GAMES.find(g=>g.id===r.game)?.title || r.game)}</button><button class="btn" id="lobby-leave">LEAVE LOBBY</button>`;
+    $('#lobby-play').onclick=()=>openGame(GAMES.find(g=>g.id===r.game));
+    $('#lobby-leave').onclick=async()=>{try{await playerCall('lobby_leave',{code:current});store.set('bba-lobby','');openLobby('');}catch(err){toast(err.message);}};
+  };
+  const begin = async (action, body) => { try { const r=await playerCall(action,body);if(!active)return;render(r);clearInterval(poll);poll=setInterval(async()=>{if(document.hidden)return;try{render(await playerCall('lobby_get',{code:current}));}catch{clearInterval(poll);const box=$('#lobby-state');if(box)box.textContent='This lobby has closed.';}},15000); } catch(err){toast(err.message);} };
+  $('#lobby-create').onclick=()=>begin('lobby_create',{game:$('#lobby-game').value});
+  $('#lobby-join').onsubmit=e=>{e.preventDefault();begin('lobby_join',{code:e.currentTarget.querySelector('input').value.trim().toUpperCase()});};
+}
+async function openDashboard() {
+  show('<h2>ARCADE PULSE</h2><p>Loading owner statistics…</p>');
+  const version=panelVersion;
+  try { const d=await playerCall('dashboard');if(version!==panelVersion)return;
+    show(`<span class="tag">OWNER ONLY · LAST 30 DAYS</span><h2>ARCADE PULSE</h2><div class="passport-metrics"><p><b>${d.players}</b>Player profiles</p><p><b>${d.linked}</b>Linked accounts</p><p><b>${d.opted_in}</b>Sharing activity</p><p><b>${d.saves}</b>Cloud saves</p></div>
+      <h3>GAMES PLAYED</h3><ul class="list">${d.games.map(g=>`<li><span>${escapeHtml(GAMES.find(x=>x.id===g.game)?.title || g.game)}</span><span>${g.launches} launches · ${g.players} players · ${Math.round(g.active_seconds/60)} active minutes</span></li>`).join('') || '<li>Activity will appear when signed-in players choose to share it.</li>'}</ul>
+      <h3>LEVELS + MOMENTS</h3><ul class="list">${d.events.map(e=>`<li><span>${escapeHtml(e.game)} · ${escapeHtml(e.kind.replaceAll('_',' '))}${e.stage == null ? '' : ' · stage '+(e.stage+1)}</span><b>${e.total}</b></li>`).join('') || '<li>No shared gameplay events yet.</li>'}</ul>
+      <p class="dim">These figures cover opted-in adult accounts only. Active time is an estimate from visible gameplay and recent input. Browser-reported events and scores are not verified for competitive prizes.</p><button class="btn" id="passport-back">BACK TO MY PLAYER</button>`, '#35e06f');
+    $('#passport-back').onclick=openProfile;
+  } catch(err){toast(err.message);openProfile();}
 }
 $('#map').onclick = openMap; $('#who').onclick = openProfile; $('#tok').onclick = () => goTo('prizes');
 
@@ -497,8 +680,7 @@ const enter = async () => {
   startPresence();
 };
 $('#genter').onclick = enter; gname.addEventListener('keydown', e => { if (e.key === 'Enter') enter(); });
-if (auth.pid) { gname.hidden = true; api('me', {}).then(r => { setMe(r.player); earn('daily'); }).catch(() => { auth = {}; gname.hidden = false; }); }
 setMe(null);
-socialReturn();
+restoreAccount();
 
 $('#featured').onclick = () => goTo('blankman');
