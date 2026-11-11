@@ -33,7 +33,7 @@ export const GAMES = [
     art: 'assets/cabs/blankman-side.jpg',
     shots: ['assets/cabs/blankman-screen.jpg', 'assets/cabs/blankman-play.jpg', 'assets/cabs/blankman-cabinet.jpg'] },
   { id: 'cruizin', title: 'Cruizin IA', genre: 'Racing', color: '#ff7a1a', style: 'racer', hallSlot: 0,   // twin sit-down racer, in the hallway
-    blurb: 'Cedar Rapids in 3D. Run the I-380 S-curve sprint, then take the exit and roam downtown on wheels, on foot or on a board. Desktop keyboard for now.',
+    blurb: 'Cedar Rapids in 3D. Run the I-380 S-curve sprint, then take the exit and roam downtown on wheels, on foot or on a board. Keyboard on a computer, touch controls on a phone (turn it sideways).',
     play: 'https://cruizin.chucksi.com/', trailer: '',
     art: 'assets/cruizin-cover.jpg',
     shots: ['assets/cruizin-cover.jpg'] },
