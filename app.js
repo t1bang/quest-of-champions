@@ -271,20 +271,24 @@ function openBigBox() {
 }
 
 function openJukebox() {
-  siteActivity.event('music_open');
-  const pl = ((JUKEBOX_PLAYLIST || '').match(/[?&]list=([\w-]+)/) || [])[1];
-  show(`<h2>JUKEBOX</h2><p>Big Bang music. Pick a record.</p>${pl ? `<div class="stage" style="--c:#ff4fd8"><iframe src="https://www.youtube.com/embed/videoseries?list=${pl}&playsinline=1" allow="autoplay; fullscreen" allowfullscreen></iframe></div>` : ''}<ul class="list"${pl ? ' hidden' : ''}>${SONGS.map((s, i) => `<li><span>${i + 1}. ${s.title}</span><button class="btn go" data-song="${i}">▶ PLAY</button></li>`).join('')}</ul>
+  const pl = ((JUKEBOX_PLAYLIST || '').match(/[?&]list=([\w-]+)/) || [])[1], ids = SONGS.map(s => s.yt).filter(Boolean);
+  const player = src => `<iframe src="${src}" allow="autoplay; fullscreen; encrypted-media" allowfullscreen></iframe>`;
+  show(`<h2>JUKEBOX</h2><p>Big Bang music. Pick a record and it plays right here.</p><div class="stage" id="jstage" style="--c:#ff4fd8" ${pl ? '' : 'hidden'}>${pl ? player(`https://www.youtube.com/embed/videoseries?list=${pl}&playsinline=1`) : ''}</div>
+    <ul class="list">${SONGS.map((s, i) => `<li><span>${i + 1}. ${s.title}</span><button class="btn go" data-song="${i}">▶ PLAY</button></li>`).join('')}</ul>
     <h3>ARCADE MUSIC</h3><button class="btn" id="jbgm">${muted ? 'TURN MUSIC ON' : 'TURN MUSIC OFF'}</button>
     <h3>MORE MUSIC</h3>${MUSIC_PAGES.map(([n, u]) => link(n, u)).join('')}`, '#ff4fd8');
+  if (pl) pauseBgm(true);
   pbody.onclick = e => {
     const b = e.target.closest('[data-song]'); if (!b) return;
-    const s = SONGS[b.dataset.song], a = $('#song'); earn('song');
-    if (s.file) { a.src = s.file; a.play(); pauseBgm(true); a.onended = () => pauseBgm(false); toast('NOW PLAYING: ' + s.title.toUpperCase()); }
+    const i = +b.dataset.song, s = SONGS[i], a = $('#song'), st = $('#jstage'); earn('song');
+    if (s.yt) { // play this song, then carry on through the rest of the list
+      const rest = [...ids.slice(ids.indexOf(s.yt) + 1), ...ids.slice(0, ids.indexOf(s.yt))];
+      st.hidden = false; st.innerHTML = player(`https://www.youtube.com/embed/${s.yt}?autoplay=1&playsinline=1&playlist=${rest.join(',')}`); pauseBgm(true); panel.firstElementChild.scrollTop = 0; toast('NOW PLAYING: ' + s.title.toUpperCase());
+    } else if (s.file) { a.src = s.file; a.play(); pauseBgm(true); a.onended = () => pauseBgm(false); toast('NOW PLAYING: ' + s.title.toUpperCase()); }
     else if (s.link) window.open(s.link, '_blank', 'noopener'); else toast('COMING SOON');
   };
   $('#jbgm').onclick = () => { toggleMute(); openJukebox(); };
-  if (pl) pauseBgm(true);
-  cleanup = () => { pbody.onclick = null; if (pl) pauseBgm(false); };
+  cleanup = () => { pbody.onclick = null; pauseBgm(false); };
 }
 
 function openPrizes() {

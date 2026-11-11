@@ -50,10 +50,10 @@ export const SOON = [
 
 // Big Bang Vault videos. Paste each YouTube link; until then the button opens a YouTube search.
 export const VAULT = [
-  { title: 'Big Bang - Spongebob Ready', link: '' },
-  { title: 'Big Bang - Polo', link: '' },
-  { title: 'Big Bang - Hustlin Everyday featuring Wiz Khalifa', link: '' },
-  { title: 'Big Bang - Holster featuring Young Buck', link: '' },
+  { title: 'Big Bang - Spongebob Ready', link: 'https://www.youtube.com/watch?v=1AdMNkB8_qo' },
+  { title: 'Big Bang - Polo', link: 'https://www.youtube.com/watch?v=ihnmObSXUAY' },
+  { title: 'Big Bang - Hustlin Everyday featuring Wiz Khalifa', link: 'https://www.youtube.com/watch?v=gQofUolJ0Xs' },
+  { title: 'Big Bang - Holster featuring Young Buck', link: 'https://www.youtube.com/watch?v=88MDfkaVc2E' },
 ];
 
 // Sign in with Google / Facebook (Supabase Auth). Turn the providers on in the Supabase project first.
@@ -66,18 +66,17 @@ export const BGM = 'assets/audio/big-bang-elevenlabs-take-1.mp3';
 // plays the real songs in a built-in player.
 export const JUKEBOX_PLAYLIST = '';
 
-// Jukebox. "link" opens the song on a streaming site.
-// Add "file" (an MP3 address) and the song plays inside the arcade instead.
+// Jukebox. "yt" is the YouTube video id of each song; they play inside the arcade.
 const yt = q => 'https://www.youtube.com/results?search_query=' + encodeURIComponent('Tone Da Boss ' + q);
 export const SONGS = [
-  { title: 'Spongebob Ready (32-Bit)', link: yt('Spongebob Ready'), file: '' },
-  { title: 'Polo', link: yt('Polo'), file: '' },
-  { title: 'Iowa City', link: yt('Iowa City'), file: '' },
-  { title: 'Vodka Sam', link: yt('Vodka Sam'), file: '' },
-  { title: 'Gimme My Ring', link: yt('Gimme My Ring'), file: 'games/quest-of-champions/audio/ring.mp3' },
-  { title: 'Champions', link: yt('Champions'), file: 'games/quest-of-champions/audio/champions.mp3' },
-  { title: 'Victory Lap', link: yt('Victory Lap'), file: 'games/quest-of-champions/audio/victory.mp3' },
-  { title: 'Showtime', link: yt('Showtime'), file: 'games/quest-of-champions/audio/showtime.mp3' },
+  { title: 'Spongebob Ready', yt: '1AdMNkB8_qo' },
+  { title: 'Polo', yt: 'ihnmObSXUAY' },
+  { title: 'Iowa City', yt: '4LPmJ98cW1Y' },
+  { title: 'Vodka Sam', yt: 'SkN7nG0uYos' },
+  { title: 'Gimme My Ring', yt: 'begAKL1vLKQ' },
+  { title: 'Champions', yt: 'aKII61tbGk4' },
+  { title: 'Victory Lap', yt: '5ffjcVkjQiI' },
+  { title: 'Showtime', yt: '_beib350hDc' },
 ];
 export const MUSIC_PAGES = [
   ['Spotify', 'https://open.spotify.com/artist/0INF89wwzGt2GtRrUKrhii'],
