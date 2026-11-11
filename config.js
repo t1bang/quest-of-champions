@@ -1,6 +1,8 @@
 // BIG BANG ARCADE — everything you may want to change lives in this file.
 // Leave a value as '' and the site shows that slot as "coming soon".
 
+// Where a cabinet stands: by default the main back wall (six slots), then the East Wing.
+// Add  room: 'east'  to put a game in the East Wing, or  hallSlot: 0-3  to pin it to the hallway.
 export const GAMES = [
   { id: 'quest', title: 'Quest of Champions', genre: 'Action', color: '#ff2a3c',
     blurb: 'Grab the mic, collect the records and fight your way to the ring. The main event.',

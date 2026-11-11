@@ -1,7 +1,7 @@
 import { GAMES, SONGS, MUSIC_PAGES, DONATE, SOCIALS, CLAIM_HELP, BGM, SOON, VAULT, SOCIAL_AUTH, JUKEBOX_PLAYLIST } from './config.js';
 import { PRIZES, REWARDS, REAL_PRIZES_LIVE, BAR } from './prizes.js';
 import { COVERS, playTrailer } from './art.js';
-import { buildRoom } from './room.js';
+import { buildRoom, DIMS } from './room.js';
 
 const $ = s => document.querySelector(s);
 const view = $('#view'), panel = $('#panel'), pbody = $('#pbody');
@@ -41,24 +41,31 @@ const soonCard = g => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 
 SOON.forEach(g => { g.art = g.art || svgUrl(soonCard(g)); });
 const cover = g => `<img src="${g.art}" alt="${g.title} cover art">`;
 await Promise.race([Promise.all([document.fonts.load('40px Bungee'), document.fonts.load('16px "Press Start 2P"')]).catch(() => {}), new Promise(r => setTimeout(r, 1800))]);
-const handlers = { game: g => openGame(g), bigbox: () => openBigBox(), jukebox: () => openJukebox(), closet: () => openCloset(), prizes: () => openPrizes(), scores: () => openBoard('all'), donate: () => openDonate(), credits: () => openCredits(), soon: g => openSoon(g), vault: () => openVault(), bar: () => openBar(), sit: id => sitDown(id), mini: k => openMini(k) };
+const handlers = { game: g => openGame(g), bigbox: () => openBigBox(), jukebox: () => openJukebox(), closet: () => openCloset(), prizes: () => openPrizes(), scores: () => openBoard('all'), donate: () => openDonate(), credits: () => openCredits(), soon: g => openSoon(g), vault: () => openVault(), bar: () => openBar(), sit: id => sitDown(id), mini: k => openMini(k), eastwing: () => toast('EAST WING: NEW GAMES LAND HERE SOON') };
 const room = buildRoom(view, GAMES, PRIZES, handlers, SOON);
 const stations = room ? room.stations : Object.fromEntries([...GAMES.map(g => [g.id, { id: g.id, label: 'PLAY ' + g.title.toUpperCase(), open: () => openGame(g) }]),
   ...SOON.map(g => [g.id, { id: g.id, label: 'COMING SOON: ' + g.title.toUpperCase(), open: () => openSoon(g) }]),
   ...[['darts', 'PLAY DARTS'], ['pool', 'PLAY POOL'], ['hockey', 'PLAY AIR HOCKEY'], ['bowling', 'GO BOWLING']].map(([id, label]) => [id, { id, label, open: () => openMini(id) }]),
-  ...[['bar', 'VISIT THE BAR'], ['vault', 'OPEN THE BIG BANG VAULT'], ['bigbox', 'OPEN THE BIG BANG BOX'], ['jukebox', 'OPEN THE JUKEBOX'], ['closet', 'OPEN MY CLOSET'], ['prizes', 'SHOP THE PRIZE WALL'], ['scores', 'SEE THE LEADERBOARD'], ['donate', 'DONATE'], ['credits', 'CREDITS + SOCIALS']].map(([id, label]) => [id, { id, label, open: handlers[id] }])]);
+  ...[['bar', 'VISIT THE BAR'], ['vault', 'OPEN THE BIG BANG VAULT'], ['eastwing', 'EAST WING: NEW GAMES SOON'], ['bigbox', 'OPEN THE BIG BANG BOX'], ['jukebox', 'OPEN THE JUKEBOX'], ['closet', 'OPEN MY CLOSET'], ['prizes', 'SHOP THE PRIZE WALL'], ['scores', 'SEE THE LEADERBOARD'], ['donate', 'DONATE'], ['credits', 'CREDITS + SOCIALS']].map(([id, label]) => [id, { id, label, open: handlers[id] }])]);
 if (!room) { $('#hint').textContent = 'YOUR BROWSER CANNOT SHOW THE 3D ROOM. USE THE MAP BUTTON.'; $('#stick').hidden = true; }
 
 // ---------------- movement + controls ----------------
 const P = { x: 0, z: 780, yaw: 0, pitch: 0, eye: 300 }, keys = {}, joy = { x: 0, y: 0 };
 let goal = null, near = null, walkT = 0;
-const BZ = 150, BR = 215, ZMIN = -380, ZMAX = 790; // Big Box position + walkable depth
+const { HW, HD, ZF, BZ, WD, WZ, WX, WZ0, WZ1 } = DIMS; // floor plan from room.js
+const BR = 215, ZMIN = 320 - HD, ZMAX = ZF - 110, XMAX = HW - 110; // Big Box half-size + walkable main floor
 const angDiff = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b));
-const LANE = 120, HEND = -1400, inHall = p => p.z < ZMIN; // the coming-soon hallway behind the cabinets
+const LANE = 120, HEND = -HD - 700, inHall = p => p.z < ZMIN; // the coming-soon hallway behind the cabinets
 const LZ0 = 960, LZ1 = 1850, inLounge = p => p.z > ZMAX;      // the lounge past the front doorway
 const SOLID = [[-490, 1090, -290, 1390], [290, 1090, 490, 1390], [-350, 1680, 350, 1900], [600, 1240, 780, 1900], [-800, 1590, -695, 1890], [-740, 1795, -400, 1900]]; // lounge furniture
+const WLANE = WD - 50, WXA = HW + 110, WXB = WX - 110, WZA = WZ0 + 320, WZB = WZ1 - 320, inWing = p => p.x > XMAX; // the East Wing past the right-wall doorway
 let sitting = false;
 function collide() {
+  if (inWing(P)) {
+    if (P.x < WXA) { if (Math.abs(P.z - WZ) > WLANE) { if (P.x < XMAX + 60) P.x = XMAX; else if (P.x > WXA - 60) P.x = WXA; else P.z = WZ + Math.sign(P.z - WZ) * WLANE; } }
+    else { P.x = Math.min(WXB, P.x); P.z = Math.max(WZA, Math.min(WZB, P.z)); }
+    if (inWing(P)) return;
+  }
   if (inHall(P)) {
     if (Math.abs(P.x) > LANE) { if (P.z > ZMIN - 40) P.z = ZMIN; else P.x = Math.sign(P.x) * LANE; }
     P.z = Math.max(HEND, P.z); if (inHall(P)) return;
@@ -69,7 +76,7 @@ function collide() {
     for (const [x0, z0, x1, z1] of SOLID) { const m = 30; if (P.x > x0 - m && P.x < x1 + m && P.z > z0 - m && P.z < z1 + m) { const d = [P.x - x0 + m, x1 + m - P.x, P.z - z0 + m, z1 + m - P.z], k = d.indexOf(Math.min(...d)); if (k === 0) P.x = x0 - m; else if (k === 1) P.x = x1 + m; else if (k === 2) P.z = z0 - m; else P.z = z1 + m; } }
     if (inLounge(P)) return;
   }
-  P.x = Math.max(-690, Math.min(690, P.x));
+  P.x = Math.max(-XMAX, Math.min(XMAX, P.x));
   const dx = P.x, dz = P.z - BZ;
   if (Math.abs(dx) < BR && Math.abs(dz) < BR) { if (Math.abs(dx) > Math.abs(dz)) P.x = Math.sign(dx || 1) * BR; else P.z = Math.sign(dz || 1) * BR + BZ; }
 }
@@ -96,18 +103,21 @@ function goTo(id) {
   if (!room) return s.open();
   const d = (s.depth || 0) + Math.max(190, Math.min(410, Math.max((s.w / 2) / Math.tan(room.hfov() / 2) * 1.15, (s.max[1] / 2) / Math.tan(room.vfov() / 2))));
   let to = { x: s.x + Math.sin(s.T.th) * d, z: s.z + Math.cos(s.T.th) * d };
-  const zone = p => p.z < -700 ? 'hall' : p.z > 900 ? 'lounge' : 'main', tz = zone(s), pz = inHall(P) ? 'hall' : inLounge(P) ? 'lounge' : 'main';
+  const zone = p => p.x > HW ? 'wing' : p.z < -HD ? 'hall' : p.z > ZF ? 'lounge' : 'main', tz = zone(s), pz = inWing(P) ? 'wing' : inHall(P) ? 'hall' : inLounge(P) ? 'lounge' : 'main';
   to = tz === 'hall' ? { x: Math.max(-LANE + 10, Math.min(LANE - 10, to.x)), z: Math.max(HEND, Math.min(ZMIN - 60, to.z)) }
     : tz === 'lounge' ? { x: Math.max(-730, Math.min(730, to.x)), z: Math.max(LZ0 + 20, Math.min(LZ1, to.z)) }
-    : { x: Math.max(-690, Math.min(690, to.x)), z: Math.max(ZMIN, Math.min(ZMAX, to.z)) };
+    : tz === 'wing' ? { x: Math.max(WXA + 20, Math.min(WXB, to.x)), z: Math.max(WZA, Math.min(WZB, to.z)) }
+    : { x: Math.max(-XMAX, Math.min(XMAX, to.x)), z: Math.max(ZMIN, Math.min(ZMAX, to.z)) };
   collide();
-  const doorH = { x: 0, z: ZMIN + 10 }, doorL = { x: 0, z: ZMAX - 10 }, path = []; let cur = P;
+  const doorH = { x: 0, z: ZMIN + 10 }, doorL = { x: 0, z: ZMAX - 10 }, doorW = { x: XMAX - 10, z: WZ }, inW = { x: WXA + 10, z: WZ }, path = []; let cur = P;
   if (pz !== tz || pz === 'lounge') {
     if (pz === 'hall') { path.push(doorH); cur = doorH; }
     if (pz === 'lounge') { path.push({ x: 0, z: P.z }); cur = { x: 0, z: P.z }; if (tz !== 'lounge') { path.push(doorL); cur = doorL; } }
+    if (pz === 'wing') { path.push(inW, doorW); cur = doorW; }
   }
   if (tz === 'main') path.push(...(pz === 'main' || cur !== P ? route(cur, to) : [to]));
   else if (tz === 'hall') { if (pz !== 'hall') path.push(...route(cur, doorH)); path.push(to); }
+  else if (tz === 'wing') { if (pz !== 'wing') path.push(...route(cur, doorW), inW); path.push(to); }
   else { if (pz !== 'lounge') path.push(...route(cur, doorL)); path.push({ x: 0, z: to.z }, to); }
   goal = { path, yaw: -s.T.th, pitch: s.pitch || 0, id, t: 0 };
 }
