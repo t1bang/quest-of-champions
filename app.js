@@ -460,7 +460,7 @@ async function startPresence() {
 
 function openSoon(g) {
   show(`<span class="tag" style="--c:${g.color}">COMING SOON</span><h2>${g.title}</h2><div class="stage" style="--c:${g.color};aspect-ratio:1/1;max-width:340px">${cover(g)}</div>
-    <p>This game is on the way.${g.song ? ` Soundtrack: <b style="color:var(--gold)">${g.song}</b>.` : ''}</p>${g.song && !g.file ? '<p class="dim">The song will play here once it is added.</p>' : ''}`, g.color);
+    <p>This game is on the way.${g.song ? ` Soundtrack: <b style="color:var(--gold)">${g.song}</b>.` : ''}</p>${g.song && !g.file ? '<p class="dim">The song will play here once it is added.</p>' : g.file ? '<p class="dim">Playing now while you stand at this cabinet.</p>' : ''}`, g.color);
 }
 const ytId = u => ((u || '').match(/(?:v=|youtu\.be\/|shorts\/|embed\/)([\w-]{11})/) || [])[1];
 function openVault() {

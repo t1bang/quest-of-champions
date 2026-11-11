@@ -37,8 +37,8 @@ export const GAMES = [
 // Coming-soon games in the hallway. "file" = the song that plays when a player walks up
 // (an MP3 address); "art" = the song artwork used as the cover for now.
 export const SOON = [
-  { id: 'cruizin', title: 'Cruizin IA', color: '#ff7a1a', song: 'Send It', file: '', art: '', style: 'racer' },   // twin sit-down racer
-  { id: 'bslam', title: 'Basketball Slam', color: '#ffd23e', song: 'Slam', file: '', art: '' },
+  { id: 'cruizin', title: 'Cruizin IA', color: '#ff7a1a', song: 'Send It', file: 'assets/audio/send-it.mp3', art: '', style: 'racer' },   // twin sit-down racer
+  { id: 'bslam', title: 'Basketball Slam', color: '#ffd23e', song: 'Slam', file: 'assets/audio/slam.mp3', art: '' },
   { hallSlot: 3, id: 'toptier', title: 'Top Tier Wrestling', color: '#ff2a3c', song: 'Everything Top Tier, Everything Critical', file: '', art: '' },
   // East Wing machines. "style" picks the cabinet shape (see cabs.js): racer, golf, dance, pinball, claw.
   // The titles are working names: change them here and every sign updates.
