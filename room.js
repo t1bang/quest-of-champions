@@ -1,5 +1,7 @@
 // Big Bang Arcade — real-time 3D room (WebGL, no libraries).
 // Lit 3D cabinets, coloured point lights, glossy reflective floor, neon glow.
+import { customCabinets } from './cabs.js';
+
 const VS = `attribute vec3 aP;attribute vec3 aN;attribute vec2 aU;uniform mat4 uVP;uniform mat4 uM;varying vec3 vP;varying vec3 vN;varying vec2 vU;
 void main(){vec4 w=uM*vec4(aP,1.);vP=w.xyz;vN=mat3(uM)*aN;vU=aU;gl_Position=uVP*w;}`;
 const FS = `precision highp float;varying vec3 vP;varying vec3 vN;varying vec2 vU;uniform sampler2D uT;uniform vec3 uEye;uniform vec3 uLP[18];uniform vec3 uLC[18];
@@ -125,6 +127,7 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = []) {
   const PARTS = [[[0, 0], [150, 0], [150, 205], [0, 205]], [[0, 205], [150, 205], [205, 225], [205, 238], [125, 262], [0, 262]], [[0, 262], [125, 262], [95, 400], [0, 400]], [[0, 400], [95, 400], [150, 405], [150, 470], [20, 470], [0, 445]]];
   const coinT = imgTex('assets/cabs/versus-coin.jpg', 256, 256);
   function cabinet(g, T, soon) {
+    if (g.style && CUSTOM[g.style]) return CUSTOM[g.style](g, T); // custom shapes live in cabs.js
     const c = g.cab, trimC = g.trim || g.color;
     const scr = imgTex(c ? c + '-screen.jpg' : g.art, 512, 512);
     const screen = mat(c ? scr : withImg(g.art, 512, 512, (x, w, h, e) => { x.fillStyle = '#000'; x.fillRect(0, 0, w, h); if (e.ok) { x.save(); x.scale(1, h / (w * 0.75)); x.globalAlpha = .35; drawFit(x, e, 0, 0, w, w * .75, true); x.globalAlpha = 1; x.fillStyle = 'rgba(0,0,0,.45)'; x.fillRect(0, 0, w, w * .75); drawFit(x, e, 0, 0, w, w * .75, false); x.restore(); } }), { emis: 1, spec: 0.7 });
@@ -160,10 +163,17 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = []) {
   }
   const hallPosition = i => ({ x: i % 2 ? CW - 2 : 2 - CW, z: -HD - (i < 2 ? 230 : 560), th: i % 2 ? -Math.PI / 2 : Math.PI / 2 });
   // Cabinet slots: six on the back wall (filled from the centre out), then eight in the East Wing.
+  // `style` in config.js swaps the upright cabinet for a custom shape from cabs.js.
   // A game with `room: 'east'` in config.js goes straight to the wing; `hallSlot` still pins one to the hallway.
+  const CUSTOM = customCabinets({ box, quad, tri, sphere, tex, mat, solid, neon, glow, light, add, text, fitText, BIG, PIX, handlers });
   const BACK = [-700, -400, 400, 700, -960, 960].map(x => ({ x, z: 2 - HD, th: 0 }));
   const WING = [1500, 1830, 2170, 2500].flatMap(x => [{ x, z: WZ0 + 2, th: 0 }, { x, z: WZ1 - 2, th: Math.PI }]);
-  const place = g => g.hallSlot != null ? hallPosition(g.hallSlot) : (g.room !== 'east' && BACK.shift()) || WING.shift() || hallPosition(0);
+  const takeWing = g => { // the golf bay is two slots wide: it takes the middle pair on the wing's back wall
+    const i = WING.findIndex(s => s.x === 1830 && !s.th), j = WING.findIndex(s => s.x === 2170 && !s.th);
+    if (g.style === 'golf' && i >= 0 && j > i) { WING.splice(j, 1); WING.splice(i, 1); return { x: 2000, z: WZ0 + 2, th: 0 }; }
+    return WING.shift();
+  };
+  const place = g => g.hallSlot != null ? hallPosition(g.hallSlot) : (g.room !== 'east' && BACK.shift()) || takeWing(g) || hallPosition(0);
   GAMES.forEach(g => cabinet(g, place(g)));
   SOON.forEach((g, i) => cabinet(g, g.room === 'east' ? place(g) : hallPosition(g.hallSlot ?? i), true));
   // hallway banner + vault door
@@ -297,7 +307,7 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = []) {
     const D3 = { x: HW, z: WZ, th: -Math.PI / 2 }; quad(neon('EAST WING  →', VI, 1024, 128), D3, [-WD, 520, 3], [WD, 520, 3], [WD, 442, 3], [-WD, 442, 3]); glow(VI, D3, 0, 480, 10, 560, 190);
     const E = { x: WX - 2, z: WZ, th: -Math.PI / 2 };
     quad(neon('EAST WING', VI, 1024, 128), E, [-330, 530, 4], [330, 530, 4], [330, 440, 4], [-330, 440, 4]); glow(VI, E, 0, 484, 10, 860, 230);
-    box(solid('#140c22', 0, 0.5), E, -230, 230, 90, 410, 0, 16, { front: panel(460, 320, VI, (x, W) => { emoji(x, '🕹️', W / 2, 120, 120); text(x, 'NEW GAMES', W / 2, 262, `66px ${BIG}`, VI); text(x, 'LAND HERE', W / 2, 336, `66px ${BIG}`, '#ffc93a'); text(x, 'EIGHT OPEN CABINET SLOTS', W / 2, 430, `14px ${PIX}`, '#fff'); }) });
+    box(solid('#140c22', 0, 0.5), E, -230, 230, 90, 410, 0, 16, { front: panel(460, 320, VI, (x, W) => { emoji(x, '🕹️', W / 2, 120, 120); text(x, 'NEW GAMES', W / 2, 262, `66px ${BIG}`, VI); text(x, 'LAND HERE', W / 2, 336, `66px ${BIG}`, '#ffc93a'); text(x, 'MORE CABINETS ON THE WAY', W / 2, 430, `14px ${PIX}`, '#fff'); }) });
     light(E, [0, 300, 300], VI, 1); light(O, [(HW + WX) / 2, 500, WZ], '#ffffff', 0.6); light(O, [HW + 250, 420, WZ], VI, 0.5);
     add('eastwing', 'EAST WING: NEW GAMES SOON', E, 660, 16, 530, handlers.eastwing);
     // a marked floor pad wherever a wing slot is still free

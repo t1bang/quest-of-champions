@@ -78,6 +78,7 @@ The arcade has four areas: the main floor, the coming-soon hallway (back doorway
 
 - **Cabinet slots:** six on the main back wall, four in the hallway, eight in the East Wing. Games fill the back wall first (centre out) and overflow into the wing.
 - **Put a game in the East Wing:** add `room: 'east'` to its entry in `config.js`. `hallSlot` still pins a cabinet to the hallway.
+- **Custom cabinet shapes:** add `style: 'racer'`, `'golf'`, `'dance'`, `'pinball'` or `'claw'` to a game's entry. The shapes are drawn in `cabs.js`. The golf bay takes two wing slots.
 - Free wing slots show as lit "OPEN SLOT" floor pads until a game takes them.
 
 ## Lounge, avatars and live players
