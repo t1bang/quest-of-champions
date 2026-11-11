@@ -25,6 +25,19 @@ async function supabaseAction(action, body, game, authorization) {
   return data;
 }
 
+// Live stats (who is in the arcade, what is being played, launch counts) for every visitor.
+async function supabaseLive(action, body) {
+  const r = await fetch(`${SB_URL}/rest/v1/rpc/bba_live`, {
+    method: "POST",
+    headers: { apikey: SB_KEY, "Content-Type": "application/json" },
+    body: JSON.stringify({ p_action: action, p_body: { sid: body.sid, game: body.game, pid: body.pid, key: body.key } }),
+    signal: AbortSignal.timeout(10000),
+  });
+  const data = await r.json();
+  if (!r.ok) throw fail(400, data.message || "Live stats are unavailable.");
+  return data;
+}
+
 const GAMES = ['quest', 'vendetta', 'guerilla', 'gamerboy', 'blankman'];
 const R_URL = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
 const R_TOK = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
@@ -211,8 +224,13 @@ export default async function handler(req, res) {
     const q = req.query || {};
     const b = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : req.body || {};
     if (!['GET', 'POST'].includes(req.method)) throw fail(405, 'Method not allowed');
-    if (req.method !== 'POST' && !['board', 'comments'].includes(q.a)) throw fail(405, 'Use POST for this action');
+    if (req.method !== 'POST' && !['board', 'comments', 'live'].includes(q.a)) throw fail(405, 'Use POST for this action');
     if (JSON.stringify(b).length > 32768) throw fail(413, 'Request too large');
+    if (q.a === 'pulse' || q.a === 'live') {
+      if (R_URL || process.env.BLOB_READ_WRITE_TOKEN) throw fail(501, 'Live stats are not available on this storage backend');
+      res.setHeader('Cache-Control', 'no-store');
+      return res.status(200).json(await supabaseLive(q.a, b));
+    }
     const fn = actions[q.a];
     if (!fn) throw fail(404, 'Unknown action');
     res.setHeader('Cache-Control', 'no-store');

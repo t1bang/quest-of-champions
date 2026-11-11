@@ -33,6 +33,11 @@ function setMe(p) {
   const icon = p && (PRIZES.find(x => x.id === p.badge) || {}).icon;
   $('#who').textContent = p ? (icon ? icon + ' ' : '') + p.name : 'SIGN IN';
 }
+// Live stats: tell the arcade this visit is here and which game it is in. No name is sent;
+// the server shows a name only when this browser already has an online player profile.
+let liveGame = '';
+async function pulse() { if (document.hidden || !gate.hidden) return; try { await api('pulse', { sid, game: liveGame }); } catch {} }
+setInterval(pulse, 30000);
 async function earn(why, game, score) {
   if (!auth.pid) return;
   try { const r = await api('earn', { why, game, score }); setMe(r.player); if (r.gained) toast(`+${r.gained} TOKENS`); } catch {}
@@ -226,7 +231,7 @@ function openGame(g) {
   $('#gplay').onclick = async () => {
     if (!g.play) return toast('PLAYABLE BUILD COMING SOON');
     earn('play', g.id); closePanel();
-    siteActivity.event('game_launch',g.id);
+    siteActivity.event('game_launch',g.id); liveGame = g.id; pulse();
     activity.start(g.id, GAME_SERVICES[g.id]?.build || 'unknown');
     if (me?.linked && saveFor(g.id)) prepareCloudSave(g.id).catch(() => {});
     const gf = $('#gf'); gf.hidden = false; gf.dataset.game = g.id; gf.querySelector('b').textContent = g.title.toUpperCase();
@@ -247,7 +252,7 @@ function openGame(g) {
   };
 }
 let playTimer;
-$('#gf button').onclick = () => { const gf = $('#gf'); clearInterval(playTimer); siteActivity.event('game_exit',gf.dataset.game); activity.stop(); gf.hidden = true; gf.querySelector('iframe').src = 'about:blank'; pauseBgm(false); };
+$('#gf button').onclick = () => { const gf = $('#gf'); clearInterval(playTimer); siteActivity.event('game_exit',gf.dataset.game); activity.stop(); liveGame = ''; pulse(); gf.hidden = true; gf.querySelector('iframe').src = 'about:blank'; pauseBgm(false); };
 // Games report scores with: parent.postMessage({ bba: 'score', score: 1234 }, '*')
 // and events with: parent.postMessage({ bba: 'level' }, '*')  or  { bba: 'fatality' }
 addEventListener('message', e => {
@@ -324,8 +329,16 @@ function openCloset() {
 
 function openBoard(which) {
   siteActivity.event('leaderboard_view',which==='all'?undefined:which);
-  const tabs = [['all', 'TOP TOKEN EARNERS'], ...GAMES.map(g => [g.id, g.title.toUpperCase()])];
+  const tabs = [['live', '● PLAYING NOW'], ['plays', 'MOST PLAYED'], ['all', 'TOP TOKEN EARNERS'], ...GAMES.map(g => [g.id, g.title.toUpperCase()])];
   show(`<h2>LEADERBOARD</h2><div class="tabs">${tabs.map(([id, n]) => `<button class="btn ${id === which ? 'on' : ''}" data-tab="${id}">${n}</button>`).join('')}</div><ol class="rank" id="brank"><li class="dim">Loading…</li></ol>`, '#35e06f');
+  if (which === 'live' || which === 'plays') {
+    const title = id => (GAMES.find(g => g.id === id) || { title: id }).title, item = (l, r) => `<li><span>${escapeHtml(l)}</span><b>${escapeHtml(String(r))}</b></li>`;
+    api('live').then(d => {
+      const o = $('#brank'); if (!o) return;
+      if (which === 'live') o.innerHTML = item('IN THE ARCADE RIGHT NOW', d.online) + GAMES.map(g => item('Playing ' + g.title, d.now[g.id] || 0)).join('') + d.names.map(n => item(n.name, n.game ? 'in ' + title(n.game) : 'walking the floor')).join('');
+      else o.innerHTML = [...GAMES].sort((x, y) => (d.all[y.id] || 0) - (d.all[x.id] || 0)).map(g => item(g.title, `${d.today[g.id] || 0} today · ${d.week[g.id] || 0} this week · ${d.all[g.id] || 0} all time`)).join('');
+    }).catch(() => { const o = $('#brank'); if (o) o.innerHTML = '<li class="dim">Live stats are offline.</li>'; });
+  } else
   api('board', null, '&game=' + which).then(r => { const o = $('#brank'); if (o) o.innerHTML = rows(r.rows, which === 'all' ? ' 🪙' : ''); }).catch(() => { const o = $('#brank'); if (o) o.innerHTML = '<li class="dim">Leaderboard is offline.</li>'; });
   pbody.onclick = e => { const t = e.target.closest('[data-tab]'); if (t) openBoard(t.dataset.tab); };
   cleanup = () => { pbody.onclick = null; };
@@ -735,7 +748,7 @@ const enter = async () => {
   const name = gname.value.trim();
   gate.hidden = true;
   if (!auth.pid && name) { try { await join(name); toast('WELCOME, ' + me.name.toUpperCase()); if (!store.get('bba-av')) openAvatar(); } catch (err) { toast(err.message.toUpperCase()); } }
-  startPresence();
+  startPresence(); pulse();
 };
 $('#genter').onclick = enter; gname.addEventListener('keydown', e => { if (e.key === 'Enter') enter(); });
 setMe(null);
