@@ -9,7 +9,7 @@ export async function authHeaders() {
   return data.session ? { Authorization: `Bearer ${data.session.access_token}` } : {};
 }
 export async function playerCall(action, body = {}) {
-  const r = await fetch(`/api/player?a=${action}`, { method: 'POST', keepalive: action==='run_end' || action==='run_events',
+  const r = await fetch(`/api/player?a=${action}`, { method: 'POST', keepalive: action==='run_end' || action==='run_events' || action==='site_events',
     headers: { 'Content-Type': 'application/json', ...await authHeaders() }, body: JSON.stringify(body),
   });
   const data = await r.json();
@@ -42,12 +42,7 @@ export function cleanEvent(event) {
   if (details.has(event.detail)) out.detail = event.detail;
   return out;
 }
-export function cleanBlankmanSave(data) {
-  if (!data || typeof data !== 'object' || !Number.isInteger(data.stage) || data.stage < 0 || data.stage > 7) return null;
-  const bounded = (n, max) => Number.isFinite(n) ? Math.max(0, Math.min(max, Math.floor(n))) : 0;
-  return { stage: data.stage, score: bounded(data.score,1e9), best: bounded(data.best,1e9), unlocked: bounded(data.unlocked,7),
-    cleared: [...new Set((Array.isArray(data.cleared) ? data.cleared : []).filter(n => Number.isInteger(n) && n >= 0 && n < 8))] };
-}
+export { cleanBlankmanSave } from './game-services.js';
 
 export function createActivityTracker(call = playerCall) {
   let run = null, queue = [], busy = false, pending = Promise.resolve(), lastInput = 0, playing = false, enabled = false, epoch = 0, launch = 0;

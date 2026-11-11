@@ -1,6 +1,7 @@
 import { SOCIAL_AUTH } from '../config.js';
 
-const actions = new Set(['account','preferences','avatar','save_get','save_put','run_start','run_events','run_end','lobby_create','lobby_join','lobby_get','lobby_leave','dashboard','export','erase_activity']);
+const siteActions = new Set(['library','site_events','site_dashboard']);
+const actions = new Set([...siteActions,'account','preferences','avatar','save_get','save_put','run_start','run_events','run_end','lobby_create','lobby_join','lobby_get','lobby_leave','dashboard','export','erase_activity']);
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   try {
@@ -16,7 +17,7 @@ export default async function handler(req, res) {
     if (!/^Bearer [A-Za-z0-9._-]+$/.test(authorization || '')) return res.status(401).json({ error: 'Sign in first' });
     // Forward the player's JWT, never a service-role key. PostgREST verifies the
     // signature and the private function checks ownership on every operation.
-    const r = await fetch(`${SOCIAL_AUTH.url}/rest/v1/rpc/bba_player`, {
+    const r = await fetch(`${SOCIAL_AUTH.url}/rest/v1/rpc/${siteActions.has(action) ? 'bba_site' : 'bba_player'}`, {
       method: 'POST', headers: { apikey: SOCIAL_AUTH.key, Authorization: authorization, 'Content-Type': 'application/json' },
       body: JSON.stringify({ p_action: action, p_body: body }), signal: AbortSignal.timeout(10000),
     });

@@ -12,7 +12,7 @@ const jwt='eyJhbGciOiJIUzI1NiJ9.'+Buffer.from(JSON.stringify({sub:uid,role:'auth
 async function context({signed=false,mobile=false,owner=false,enabled=false}={}) {
   const c=await browser.newContext({viewport:mobile?{width:390,height:844}:{width:1440,height:1000},isMobile:mobile,hasTouch:mobile});
   const calls=[], player={name:'QA Player',tokens:45,earned:45,closet:[],badge:'',avatar:{},linked:true,adult:true,analytics:false};
-  let save=null, conflict=false;
+  const saves=new Map();let conflict=false;
   await c.route('**/auth/v1/**',route=>{const url=route.request().url();return route.fulfill({json:url.includes('/settings')?{external:{google:enabled,facebook:enabled}}:url.includes('/logout')?{}:{id:uid,email:'qa@example.invalid'}});});
   if (c.routeWebSocket) await c.routeWebSocket('**/realtime/**',ws=>ws.close());
   await c.route('**/api/arcade?**',route=>route.fulfill({json:{player,rows:[],gained:0}}));
@@ -22,14 +22,17 @@ async function context({signed=false,mobile=false,owner=false,enabled=false}={})
     let json={ok:true};
     if(action==='account')json={pid:'a'.repeat(16),player,owner};
     else if(action==='preferences'){player.analytics=body.analytics;json={player};}
-    else if(action==='save_get')json={save};
+    else if(action==='save_get')json={save:saves.get(body.game)||null};
     else if(action==='save_put'){
+      const save=saves.get(body.game)||null;
       if(conflict || body.revision!==(save?.revision||0))return route.fulfill({status:409,json:{error:'Cloud save changed. Reload before saving.'}});
-      save={game:'blankman',data:body.data,revision:(save?.revision||0)+1};json={save};
+      const next={game:body.game,data:body.data,revision:(save?.revision||0)+1};saves.set(body.game,next);json={save:next};
     } else if(action==='run_start')json={id:body.id};
     else if(action.startsWith('lobby_'))json={code:'ABCDEF123456',game:'blankman',members:[{name:'QA Player',host:true}]};
-    else if(action==='dashboard')json={players:19,linked:1,opted_in:1,saves:1,games:[{game:'blankman',launches:3,players:1,active_seconds:120}],events:[{game:'blankman',kind:'level_complete',stage:0,total:2}]};
-    else if(action==='export')json={profile:player,saves:[save]};
+    else if(action==='library')json={games:['quest','vendetta','guerilla','gamerboy','blankman'].map(game=>({game,best_score:null,launches:0,save_revision:saves.get(game)?.revision||null}))};
+    else if(action==='site_events')json={accepted:body.events.length};
+    else if(action==='site_dashboard')json={players:19,linked:1,opted_in:1,saves:1,site:{visits:4,players:1,actions:[{kind:'library_view',total:3}]},games:[{game:'blankman',launches:3,players:1,active_seconds:120}],events:[{game:'blankman',kind:'level_complete',stage:0,total:2}]};
+    else if(action==='export')json={profile:player,saves:[...saves.values()]};
     await route.fulfill({json});
   });
   if(signed)await c.addInitScript(({jwt,uid})=>{
@@ -52,7 +55,7 @@ try {
     assert.match(await p.locator('#pbody').innerText(),/Guest play stays on this device/);
     assert.equal(await p.locator('[data-social]').count(),0);assert.equal(calls.length,0);
     assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
-    await p.screenshot({path:`${out}/guest-${mobile?'mobile':'desktop'}.png`});ok(`${mobile?'Mobile':'Desktop'} entrance stays simple; guest name stays local; disabled providers hidden`);
+    await p.click('#my-arcade');await p.locator('[data-library-game]').first().waitFor();assert.equal(await p.locator('[data-library-game]').count(),5);assert.equal(calls.length,0);await p.screenshot({path:`${out}/guest-${mobile?'mobile':'desktop'}.png`});ok(`${mobile?'Mobile':'Desktop'} entrance stays simple; guest name stays local; disabled providers hidden`);
     await c.close();
   }
   const {c,p,calls,conflict}=await context({signed:true,owner:true,enabled:true});
@@ -62,16 +65,16 @@ try {
   await p.click('#owner-stats');await p.locator('.passport-metrics').waitFor();
   assert.match(await p.locator('#pbody').innerText(),/3 launches/);await p.screenshot({path:`${out}/owner-dashboard.png`});
   ok('Linked player restores, analytics defaults off, opt-in saves, and owner dashboard renders');
-  await p.click('#passport-back');await p.click('#cloud-panel');await p.locator('#cloud-upload').waitFor();
-  await p.click('#cloud-upload');await p.locator('#cloud-panel').waitFor();
+  await p.click('#passport-back');await p.click('#my-arcade');await p.locator('[data-library-game=blankman]').waitFor();assert.equal(await p.locator('[data-library-game]').count(),5);ok('My Arcade includes all five games under one account');await p.click('[data-library-save=blankman]');await p.locator('#cloud-upload').waitFor();
+  await p.click('#cloud-upload');await p.locator('[data-library-game=blankman]').waitFor();
   assert.ok(calls.some(x=>x.action==='save_put' && x.body.data.stage===1));ok('Blankman local progress uploads with a revision and enables cloud saving');
-  await p.click('#cloud-panel');await p.locator('#cloud-upload').waitFor();conflict();
+  await p.click('[data-library-save=blankman]');await p.locator('#cloud-upload').waitFor();conflict();
   p.on('dialog',d=>d.accept());await p.click('#cloud-upload');await p.waitForTimeout(150);
   assert.match(await p.locator('#toast').innerText(),/Cloud save changed/);conflict(false);
   ok('A conflicting cloud save is reported without replacing progress');
-  await p.click('#cloud-restore');await p.locator('#cloud-panel').waitFor();
+  await p.click('#cloud-restore');await p.locator('[data-library-game=blankman]').waitFor();
   assert.equal(await p.evaluate(()=>JSON.parse(localStorage.getItem('blankman-save-v1')).stage),1);
-  await p.click('#lobby-panel');await p.click('#lobby-create');await p.locator('#lobby-play').waitFor();
+  await p.click('#library-account');await p.click('#lobby-panel');await p.click('#lobby-create');await p.locator('#lobby-play').waitFor();
   assert.match(await p.locator('#lobby-state').innerText(),/ABCDEF123456/);ok('Private lobby create, invite code and member list render');
   await p.click('#lobby-play');await p.click('#gplay');
   const frame=p.frameLocator('#gf iframe');await frame.locator('#press-start').waitFor({timeout:30000});
@@ -91,15 +94,29 @@ try {
   assert.ok(calls.some(x=>x.action==='run_start'&&x.body.game==='blankman'));
   assert.ok(calls.some(x=>x.action==='run_events'&&x.body.events.some(e=>e.kind==='level_start')));
   assert.ok(calls.some(x=>x.action==='run_end'));ok('Blankman plays, emits opted-in progression, rejects forged parent messages, and closes its session');
-  await p.click('#who');await p.uncheck('#activity-optin');await p.click('#save-preferences');
+  await p.click('#featured');await p.locator('[data-library-play=quest]').waitFor();await p.click('[data-library-play=quest]');await p.click('#gplay');
+  await p.waitForFunction(()=>document.querySelector('#gf iframe').contentWindow?.questArcade);
+  const quest=p.frames().find(f=>f.url().includes('/games/quest-of-champions/'));
+  await quest.waitForFunction(()=>window.questArcade);await quest.evaluate(()=>{startLevel(1,false);beginPlay();});await p.waitForTimeout(1200);
+  assert.equal(await quest.evaluate(()=>window.questArcade.state().playing),true);
+  await p.click('#gf button');await p.waitForTimeout(200);assert.ok(calls.some(x=>x.action==='run_start'&&x.body.game==='quest'));
+  ok('Quest of Champions plays through the same arcade account and activity system');
+  await p.click('#featured');await p.locator('[data-library-game=quest]').waitFor();
+  await p.evaluate(()=>localStorage.setItem('qoc_save',JSON.stringify({unlocked:2,beaten:{1:true},scores:[]})));
+  await p.click('[data-library-save=quest]');await p.locator('#cloud-upload').waitFor();await p.click('#cloud-upload');await p.locator('[data-library-game=quest]').waitFor();
+  assert.ok(calls.some(x=>x.action==='save_put'&&x.body.game==='quest'&&x.body.data.unlocked===2));
+  await p.screenshot({path:`${out}/all-games-library.png`});ok('Quest and Blankman have separate cloud slots in the common game library');
+  await p.waitForTimeout(10500);assert.ok(calls.some(x=>x.action==='site_events'&&x.body.events.some(e=>e.kind==='library_view')));
+  ok('Whole-site visits and library interactions reach the site activity endpoint');
+  await p.click('#library-account');await p.uncheck('#activity-optin');await p.click('#save-preferences');
   assert.ok(calls.some(x=>x.action==='preferences'&&x.body.analytics===false));
   await p.click('#signout-player');await p.waitForFunction(()=>!localStorage.getItem('sb-fspcfzxtohaaeoudrack-auth-token'));
-  await p.waitForFunction(()=>localStorage.getItem('blankman-save-v1')===null);ok('Opt-out and sign-out controls work; shared-device account/save data clears');
+  await p.waitForFunction(()=>localStorage.getItem('blankman-save-v1')===null&&localStorage.getItem('qoc_save')===null);ok('Opt-out and sign-out controls work; shared-device account/save data clears');
   await c.close();
   const m=await context({signed:true,mobile:true});await m.p.waitForFunction(()=>document.querySelector('#who').textContent==='QA Player');
   await m.p.click('#genter');await m.p.click('#who');assert.equal(await m.p.locator('#owner-stats').count(),0);
   assert.equal(await m.p.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
-  await m.p.screenshot({path:`${out}/passport-mobile.png`});ok('Mobile player passport fits and hides owner controls from regular players');await m.c.close();
+  await m.p.click('#my-arcade');await m.p.locator('[data-library-game]').first().waitFor();assert.equal(await m.p.locator('[data-library-game]').count(),5);assert.equal(await m.p.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);await m.p.screenshot({path:`${out}/passport-mobile.png`});ok('Mobile player passport fits and hides owner controls from regular players');await m.c.close();
   assert.deepEqual(errors,[]);ok('No browser runtime errors');
   writeFileSync(`${out}/results.json`,JSON.stringify({base,checks,errors,auth:'Mocked browser accounts; real database isolation tested separately with rolled-back fixtures.'},null,2));
 } finally { await browser.close(); }

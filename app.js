@@ -2,7 +2,8 @@ import { GAMES, SONGS, MUSIC_PAGES, DONATE, SOCIALS, CLAIM_HELP, BGM, SOON, VAUL
 import { PRIZES, REWARDS, REAL_PRIZES_LIVE, BAR } from './prizes.js';
 import { COVERS, playTrailer } from './art.js';
 import { buildRoom, DIMS } from './room.js';
-import { supabase, authHeaders, playerCall, enabledProviders, escapeHtml, cleanBlankmanSave, createActivityTracker } from './player-services.js';
+import { supabase, authHeaders, playerCall, enabledProviders, escapeHtml, createActivityTracker } from './player-services.js';
+import { GAME_SERVICES, saveFor, createSiteTracker } from './game-services.js';
 
 const $ = s => document.querySelector(s);
 const view = $('#view'), panel = $('#panel'), pbody = $('#pbody');
@@ -14,8 +15,10 @@ const store = { get(k) { try { return JSON.parse(localStorage.getItem(k)); } cat
 // ---------------- online database ----------------
 let auth = store.get('bba-auth') || {}, me = null;
 const activity = createActivityTracker();
+const siteActivity = createSiteTracker(playerCall);
+setInterval(()=>siteActivity.flush(),10000);
 setInterval(() => activity.flush(), 30000);
-addEventListener('pagehide',()=>activity.stop());
+addEventListener('pagehide',()=>{activity.stop();siteActivity.flush();});
 addEventListener('pointerdown', () => activity.input());
 addEventListener('keydown', () => activity.input());
 async function api(a, body, q = '') {
@@ -25,7 +28,7 @@ async function api(a, body, q = '') {
   return j;
 }
 function setMe(p) {
-  me = p; activity.enabled(!!p?.linked && !!p?.analytics); if (p && p.avatar && !store.get('bba-av')) myAv = cleanAv(p.avatar);
+  me = p; activity.enabled(!!p?.linked && !!p?.analytics); siteActivity.enabled(!!p?.linked && !!p?.analytics); if (p && p.avatar && !store.get('bba-av')) myAv = cleanAv(p.avatar);
   $('#tok b').textContent = p ? p.tokens : 0;
   const icon = p && (PRIZES.find(x => x.id === p.badge) || {}).icon;
   $('#who').textContent = p ? (icon ? icon + ' ' : '') + p.name : 'SIGN IN';
@@ -202,6 +205,7 @@ const needMe = () => { if (auth.pid) return true; openProfile(); toast('CONNECT 
 const rows = (list, unit) => list.length ? list.map((r, i) => `<li><span>${i + 1}. ${escapeHtml(r.badge || '')} ${escapeHtml(r.name)}</span><b>${Number(r.score).toLocaleString()}${unit}</b></li>`).join('') : '<li class="dim">No scores yet. Be the first.</li>';
 
 function openGame(g) {
+  siteActivity.event('cabinet_view',g.id);
   show(`<span class="tag" style="--c:${g.color}">${g.genre.toUpperCase()}</span><h2>${g.title}</h2>
     <div class="stage" style="--c:${g.color}">${cover(g)}</div>
     <p>${g.blurb}</p>
@@ -222,10 +226,11 @@ function openGame(g) {
   $('#gplay').onclick = async () => {
     if (!g.play) return toast('PLAYABLE BUILD COMING SOON');
     earn('play', g.id); closePanel();
-    activity.start(g.id, g.id === 'blankman' ? '8.0' : 'unknown');
-    if (me?.linked && g.id === 'blankman') prepareCloudSave().catch(() => {});
+    siteActivity.event('game_launch',g.id);
+    activity.start(g.id, GAME_SERVICES[g.id]?.build || 'unknown');
+    if (me?.linked && saveFor(g.id)) prepareCloudSave(g.id).catch(() => {});
     const gf = $('#gf'); gf.hidden = false; gf.dataset.game = g.id; gf.querySelector('b').textContent = g.title.toUpperCase();
-    gf.querySelector('a').href = g.play; const frame = gf.querySelector('iframe'); frame.title = g.title; frame.onload = () => { frame.focus(); if (g.id !== 'blankman') activity.event({ kind:'game_ready' }); }; frame.src = g.play; pauseBgm(true);
+    gf.querySelector('a').href = g.play; const frame = gf.querySelector('iframe'); frame.title = g.title; frame.onload = () => frame.focus(); frame.src = g.play; pauseBgm(true);
     clearInterval(playTimer); playTimer = setInterval(() => { if (!gf.hidden && !document.hidden) earn('minute', g.id); }, 60000);
   };
   api('board', null, '&game=' + g.id).then(r => { const o = $('#grank'); if (o) o.innerHTML = rows(r.rows, ''); }).catch(() => { const o = $('#grank'); if (o) o.innerHTML = '<li class="dim">Leaderboard is offline.</li>'; });
@@ -242,7 +247,7 @@ function openGame(g) {
   };
 }
 let playTimer;
-$('#gf button').onclick = () => { const gf = $('#gf'); clearInterval(playTimer); activity.stop(); gf.hidden = true; gf.querySelector('iframe').src = 'about:blank'; pauseBgm(false); };
+$('#gf button').onclick = () => { const gf = $('#gf'); clearInterval(playTimer); siteActivity.event('game_exit',gf.dataset.game); activity.stop(); gf.hidden = true; gf.querySelector('iframe').src = 'about:blank'; pauseBgm(false); };
 // Games report scores with: parent.postMessage({ bba: 'score', score: 1234 }, '*')
 // and events with: parent.postMessage({ bba: 'level' }, '*')  or  { bba: 'fatality' }
 addEventListener('message', e => {
@@ -252,7 +257,7 @@ addEventListener('message', e => {
   if (d.bba === 'score') { earn('score', gf.dataset.game, d.score); activity.event({ kind:'score_reported', score:d.score }); }
   if (d.bba === 'activity' && d.v === 1 && d.game === gf.dataset.game) activity.event(d.event);
   if (d.bba === 'status' && d.v === 1 && d.game === gf.dataset.game) { activity.playing(d.playing === true); if (d.input === true) activity.input(); }
-  if (d.bba === 'save' && d.v === 1 && d.game === 'blankman') queueCloudSave(d.data);
+  if (d.bba === 'save' && d.v === 1 && saveFor(d.game)) queueCloudSave(d.game,d.data);
   if (d.bba === 'level' || d.bba === 'fatality') earn(d.bba, gf.dataset.game);
 });
 
@@ -266,6 +271,7 @@ function openBigBox() {
 }
 
 function openJukebox() {
+  siteActivity.event('music_open');
   const pl = ((JUKEBOX_PLAYLIST || '').match(/[?&]list=([\w-]+)/) || [])[1];
   show(`<h2>JUKEBOX</h2><p>Big Bang music. Pick a record.</p>${pl ? `<div class="stage" style="--c:#ff4fd8"><iframe src="https://www.youtube.com/embed/videoseries?list=${pl}&playsinline=1" allow="autoplay; fullscreen" allowfullscreen></iframe></div>` : ''}<ul class="list"${pl ? ' hidden' : ''}>${SONGS.map((s, i) => `<li><span>${i + 1}. ${s.title}</span><button class="btn go" data-song="${i}">▶ PLAY</button></li>`).join('')}</ul>
     <h3>ARCADE MUSIC</h3><button class="btn" id="jbgm">${muted ? 'TURN MUSIC ON' : 'TURN MUSIC OFF'}</button>
@@ -282,6 +288,7 @@ function openJukebox() {
 }
 
 function openPrizes() {
+  siteActivity.event('rewards_open');
   if (!auth.pid) { openProfile(); return toast('SIGN IN TO REACH THE PRIZE WALL'); }
   const card = p => { const own = me && me.closet.includes(p.id) && !p.real; return `<div class="card ${own ? 'on' : ''}"><div class="ico">${p.icon}</div><span>${p.name}</span>
       <button class="btn ${own ? 'off' : 'go'}" data-buy="${p.id}" ${own ? 'disabled' : ''}>${own ? 'OWNED' : '🪙 ' + p.cost}</button></div>`; };
@@ -312,6 +319,7 @@ function openCloset() {
 }
 
 function openBoard(which) {
+  siteActivity.event('leaderboard_view',which==='all'?undefined:which);
   const tabs = [['all', 'TOP TOKEN EARNERS'], ...GAMES.map(g => [g.id, g.title.toUpperCase()])];
   show(`<h2>LEADERBOARD</h2><div class="tabs">${tabs.map(([id, n]) => `<button class="btn ${id === which ? 'on' : ''}" data-tab="${id}">${n}</button>`).join('')}</div><ol class="rank" id="brank"><li class="dim">Loading…</li></ol>`, '#35e06f');
   api('board', null, '&game=' + which).then(r => { const o = $('#brank'); if (o) o.innerHTML = rows(r.rows, which === 'all' ? ' 🪙' : ''); }).catch(() => { const o = $('#brank'); if (o) o.innerHTML = '<li class="dim">Leaderboard is offline.</li>'; });
@@ -328,6 +336,7 @@ function openCredits() {
     `<h3>MUSIC</h3>${MUSIC_PAGES.map(([n, u]) => link(n, u)).join('')}`, '#ffffff');
 }
 function openMap() {
+  siteActivity.event('map_open');
   show(`<h2>ARCADE MAP</h2><p>Tap a spot and you'll walk there.</p><div class="grid">${Object.values(stations).map(s => `<button class="btn" data-go="${s.id}" style="margin:0">${s.label.replace(/^(PLAY|OPEN|SEE|SHOP) (THE |MY )?/, '')}</button>`).join('')}</div>`);
   pbody.onclick = e => { const b = e.target.closest('[data-go]'); if (b) goTo(b.dataset.go); };
   cleanup = () => { pbody.onclick = null; };
@@ -399,6 +408,7 @@ function drawAvatar(x, W, H, a, name) { // pixel person on a 24x40 grid
   if (name) { x.font = `bold ${Math.round(H * 0.075)}px Impact,'Arial Black',sans-serif`; x.textAlign = 'center'; x.textBaseline = 'top'; x.lineWidth = Math.max(3, H * 0.02); x.strokeStyle = '#000'; x.strokeText(name, W / 2, 2); x.fillStyle = '#ffc93a'; x.fillText(name, W / 2, 2); }
 }
 function openAvatar() {
+  siteActivity.event('avatar_open');
   const rows = [['skin', 'SKIN', 5], ['hair', 'HAIR', 5], ['hc', 'HAIR COLOR', 6], ['shirt', 'SHIRT', 8], ['shades', 'SHADES', 2]];
   show(`<h2>YOUR AVATAR</h2><p>This is how other players see you in the arcade.</p><div class="cols"><div class="stage" style="--c:#3ea8ff;aspect-ratio:3/4;max-width:240px"><canvas width="240" height="320" id="avc"></canvas></div>
     <div>${rows.map(([k, label]) => `<ul class="list"><li><span>${label}</span><button class="btn" data-av="${k}">CHANGE ▶</button></li></ul>`).join('')}<button class="btn go" id="avsave">SAVE AVATAR</button></div></div>`, '#3ea8ff');
@@ -463,7 +473,9 @@ function openVault() {
 // Player Passport: optional account features live inside the arcade, not the gate.
 const sb = async () => supabase;
 let availableProviders = [], accountSession = null, accountOwner = false, restoring = false;
-let cloudRevision = 0, cloudReady = false, cloudBusy = false, cloudPending = null, cloudPlayer = null, cloudNote = '';
+const cloudSlots = new Map();
+let accountNote = '';
+function clearDeviceSaves(){for(const service of Object.values(GAME_SERVICES)){if(service.save)localStorage.removeItem(service.save.key);}for(const game of Object.keys(GAME_SERVICES))localStorage.removeItem('bba-save-backup-'+game);localStorage.removeItem('bba-blankman-local-backup');}
 enabledProviders().then(p => { availableProviders = p; });
 function saveAccountSetup() {
   if (!$('#account-adult')?.checked) throw new Error('Adult accounts are available first. Everyone can play as a guest.');
@@ -491,7 +503,7 @@ async function restoreAccount() {
         auth = { pid:r.pid }; store.set('bba-auth', auth); accountOwner = !!r.owner; setMe(r.player);
         sessionStorage.removeItem('bba-account-setup'); gname.hidden = true; earn('daily');
         if (new URLSearchParams(location.search).has('account')) { history.replaceState(null,'',location.pathname); toast('PLAYER PASSPORT CONNECTED'); }
-      } catch (err) { cloudNote = err.message; if (!me) await restoreGuest(); }
+      } catch (err) { accountNote = err.message; if (!me) await restoreGuest(); }
     } else await restoreGuest();
   } finally { restoring = false; }
 }
@@ -508,31 +520,35 @@ supabase.auth.onAuthStateChange((event) => {
   // Auth callbacks run under a client lock: defer further Auth calls.
   if (event === 'SIGNED_IN') setTimeout(() => restoreAccount(),0);
   if (event === 'SIGNED_OUT') {
-    activity.enabled(false); cloudReady=false; cloudPending=null; cloudPlayer=null; accountSession=null; accountOwner=false;
+    activity.enabled(false); siteActivity.enabled(false); cloudSlots.clear(); accountSession=null; accountOwner=false;
     // Also clear this tab when another tab signs out or its session is revoked.
     if (me?.linked) {
       if (!$('#gf').hidden) $('#gf button').click();
-      for (const key of ['bba-auth','bba-av','bba-guest-name','blankman-save-v1','bba-blankman-local-backup']) localStorage.removeItem(key);
+      clearDeviceSaves();
+      for (const key of ['bba-auth','bba-av','bba-guest-name']) localStorage.removeItem(key);
       auth={};myAv=cleanAv({});setMe(null);gname.hidden=false;gname.value='';closePanel();
     }
   }
 });
 async function signOutPlayer() {
-  await activity.stop(); cloudReady = false; cloudPending = null; cloudPlayer = null;
+  await activity.stop(); await siteActivity.flush(); siteActivity.enabled(false); cloudSlots.clear();
   const { error } = await supabase.auth.signOut({scope:'local'});
   if (error) return toast('SIGN OUT FAILED. PLEASE TRY AGAIN.');
-  for (const key of ['bba-auth','bba-av','bba-guest-name','blankman-save-v1','bba-blankman-local-backup']) localStorage.removeItem(key);
+  clearDeviceSaves();
+      for (const key of ['bba-auth','bba-av','bba-guest-name']) localStorage.removeItem(key);
   auth = {}; accountSession = null; accountOwner = false; me = null; myAv = cleanAv({});
   const gf = $('#gf'); if (!gf.hidden) $('#gf button').click();
   gname.hidden = false; gname.value = ''; setMe(null); openProfile(); toast('SIGNED OUT ON THIS DEVICE');
 }
 function openProfile() {
+  siteActivity.event('profile_view');
   const linked = !!me?.linked;
-  show(`<span class="tag">PLAYER PASSPORT</span><h2>${escapeHtml(me?.name || 'WELCOME, PLAYER')}</h2>
+  show(`<span class="tag">BIG BANG ARCADE ACCOUNT</span><h2>${escapeHtml(me?.name || 'WELCOME, PLAYER')}</h2>
     <p>${linked ? 'One player across the arcade.' : auth.key ? 'Your original guest profile is safe on this browser.' : 'Guest play stays on this device. No account needed.'}</p>
     ${me ? `<p>🪙 ${me.tokens} tokens · ${me.earned} earned · ${me.closet.length} prizes</p><button class="btn" id="pav">EDIT AVATAR</button><button class="btn" data-go="closet">MY CLOSET</button>` : '<form class="cf" id="pform"><input maxlength="16" placeholder="YOUR NICKNAME" aria-label="Your nickname"><button class="btn go">PLAY AS GUEST</button></form>'}
-    ${linked ? `<button class="btn go" id="cloud-panel">BLANKMAN CLOUD SAVE</button><button class="btn" id="lobby-panel">PLAY WITH FRIENDS</button>
-      <h3>YOUR PRIVACY</h3><p>Optionally share games played, level progress and approximate active play time to help improve the arcade. No recordings, chat text, or advertising tracking.</p>
+    <button class="btn go" id="my-arcade">MY GAMES + SAVES</button><button class="btn" id="my-boards">ALL LEADERBOARDS</button>
+    ${linked ? `<button class="btn" id="lobby-panel">INVITE LOBBIES</button>
+      <h3>YOUR PRIVACY</h3><p>Optionally share visits, arcade features used, games played, level progress and approximate active play time to help improve the arcade. No recordings, chat text, or advertising tracking.</p>
       <label class="passport-check"><input type="checkbox" id="activity-optin" ${me.analytics ? 'checked' : ''}> Share gameplay activity (optional)</label>
       <p class="dim">Activity is kept for up to 90 days. Turning this off also deletes your activity history. Cloud saves and scores stay separate.</p>
       <button class="btn" id="save-preferences">SAVE PRIVACY CHOICE</button><button class="btn" id="export-player">DOWNLOAD MY ARCADE DATA</button>
@@ -557,7 +573,8 @@ function openProfile() {
   if ($('#finish-account')) $('#finish-account').onclick = async () => { try { saveAccountSetup(); await restoreAccount(); openProfile(); } catch(err) { toast(err.message); } };
   if ($('#signout-player')) $('#signout-player').onclick = signOutPlayer;
   if ($('#save-preferences')) $('#save-preferences').onclick = async () => { try { const r=await playerCall('preferences',{analytics:$('#activity-optin').checked}); setMe(r.player); toast('PRIVACY CHOICE SAVED'); } catch(err) { toast(err.message); } };
-  if ($('#cloud-panel')) $('#cloud-panel').onclick = openCloudSave;
+  $('#my-arcade').onclick = openMyArcade;
+  $('#my-boards').onclick = ()=>openBoard('all');
   if ($('#lobby-panel')) $('#lobby-panel').onclick = () => openLobby();
   if ($('#owner-stats')) $('#owner-stats').onclick = openDashboard;
   if ($('#export-player')) $('#export-player').onclick = async () => {
@@ -566,61 +583,96 @@ function openProfile() {
     } catch(err) { toast(err.message); }
   };
 }
-async function prepareCloudSave() {
-  cloudReady=false; cloudPlayer=auth.pid;
-  if (!me?.linked || !store.get('bba-cloud-'+auth.pid)) return;
-  const owner=auth.pid, {save}=await playerCall('save_get',{game:'blankman'});
-  if (owner!==auth.pid) return;
-  cloudRevision=save?.revision || 0;
-  const local=cleanBlankmanSave(store.get('blankman-save-v1'));
-  cloudReady=!save || JSON.stringify(cleanBlankmanSave(save.data))===JSON.stringify(local);
-  cloudNote=cloudReady ? 'Cloud saving is ready.' : 'A different cloud save is waiting. Choose which progress to use in Player Passport.';
+async function openMyArcade() {
+  siteActivity.event('library_view');
+  show('<span class="tag">BIG BANG ARCADE</span><h2>MY ARCADE</h2><p>Loading your games…</p>');
+  const version=panelVersion;let stats=[];
+  if(me?.linked)try{stats=(await playerCall('library')).games;}catch{toast('Personal stats are unavailable. You can still play.');}
+  if(version!==panelVersion)return;
+  show(`<span class="tag">BIG BANG ARCADE · ONE ACCOUNT, EVERY GAME</span><h2>MY ARCADE</h2>
+    <p>All your games, scores and supported cloud saves in one place.</p>
+    <div class="arcade-library">${GAMES.map(g=>{
+      const row=stats.find(s=>s.game===g.id)||{}, service=GAME_SERVICES[g.id], local=saveFor(g.id)?.clean(store.get(saveFor(g.id)?.key));
+      return `<article class="library-game" data-library-game="${g.id}" style="--game-color:${g.color}"><img src="${g.art}" alt="${escapeHtml(g.title)}" loading="lazy"><div>
+        <h3>${escapeHtml(g.title)}</h3><p class="dim">${row.best_score==null?'NO ONLINE SCORE YET':'BEST SCORE '+Number(row.best_score).toLocaleString()}${row.launches?' · '+row.launches+' SHARED SESSIONS':''}</p>
+        <p class="dim">${row.save_revision?'CLOUD SAVE CONNECTED':local?'PROGRESS ON THIS DEVICE':service?.save?'CLOUD SAVE AVAILABLE':'SAVES MANAGED INSIDE THE GAME'}</p>
+        <button class="btn go" data-library-play="${g.id}">PLAY</button><button class="btn" data-library-board="${g.id}">SCORES</button>
+        ${service?.save?`<button class="btn" data-library-save="${g.id}">${me?.linked?'SAVE SLOT':'CONNECT TO SAVE'}</button>`:''}</div></article>`;
+    }).join('')}</div><p class="dim">Your Big Bang Arcade account is shared across the catalog. Games hosted on separate websites still need their own progress adapter before cloud saves can sync here.</p>
+    <button class="btn" id="library-account">MY ACCOUNT</button>${me?.linked?'<button class="btn" id="library-lobbies">INVITE LOBBIES</button>':''}`, '#ffc93a');
+  pbody.onclick=e=>{
+    const play=e.target.closest('[data-library-play]'),board=e.target.closest('[data-library-board]'),save=e.target.closest('[data-library-save]');
+    if(play)openGame(GAMES.find(g=>g.id===play.dataset.libraryPlay));
+    if(board)openBoard(board.dataset.libraryBoard);
+    if(save){if(me?.linked)openCloudSave(save.dataset.librarySave);else openProfile();}
+  };
+  cleanup=()=>{pbody.onclick=null;};$('#library-account').onclick=openProfile;
+  if($('#library-lobbies'))$('#library-lobbies').onclick=()=>openLobby();
 }
-async function queueCloudSave(data) {
-  if (!me?.linked || !cloudReady || cloudPlayer!==auth.pid) return;
-  const save=cleanBlankmanSave(data); if (!save) return;
-  cloudPending=save; if (cloudBusy) return;
-  cloudBusy=true;
-  try {
-    while (cloudPending && cloudReady && cloudPlayer===auth.pid) {
-      const next=cloudPending, owner=auth.pid; cloudPending=null;
-      const r=await playerCall('save_put',{game:'blankman',revision:cloudRevision,data:next});
-      if (owner!==auth.pid) break;
-      cloudRevision=r.save.revision; cloudNote='Progress saved to your player account.';
+function cloudSlot(game){
+  let slot=cloudSlots.get(game);
+  if(!slot || slot.player!==auth.pid){slot={player:auth.pid,ready:false,busy:false,pending:null,revision:0,note:''};cloudSlots.set(game,slot);}
+  return slot;
+}
+function cloudEnabled(game){return store.get('bba-cloud-'+auth.pid+'-'+game) || (game==='blankman' && store.get('bba-cloud-'+auth.pid));}
+async function prepareCloudSave(game) {
+  const service=saveFor(game),slot=cloudSlot(game);slot.ready=false;
+  if(!service || !me?.linked || !cloudEnabled(game))return;
+  const owner=auth.pid,{save}=await playerCall('save_get',{game});
+  if(owner!==auth.pid || cloudSlots.get(game)!==slot)return;
+  slot.revision=save?.revision||0;
+  const local=service.clean(store.get(service.key));
+  slot.ready=!save || JSON.stringify(service.clean(save.data))===JSON.stringify(local);
+  slot.note=slot.ready?'Cloud saving is ready.':'A different cloud save is waiting. Choose which progress to use.';
+}
+async function queueCloudSave(game,data) {
+  const service=saveFor(game),slot=cloudSlot(game);
+  if(!service || !me?.linked || !slot.ready)return;
+  const save=service.clean(data);if(!save)return;
+  slot.pending=save;if(slot.busy)return;slot.busy=true;
+  try{
+    while(slot.pending && slot.ready && slot.player===auth.pid && cloudSlots.get(game)===slot){
+      const next=slot.pending;slot.pending=null;
+      const r=await playerCall('save_put',{game,revision:slot.revision,data:next});
+      if(slot.player!==auth.pid || cloudSlots.get(game)!==slot)break;
+      slot.revision=r.save.revision;slot.note='Progress saved to your Big Bang Arcade account.';
     }
-  } catch(err) { cloudReady=false; cloudNote=err.message; toast('LOCAL PROGRESS IS SAFE. CHECK PLAYER PASSPORT FOR CLOUD SAVE.'); }
-  finally { cloudBusy=false; }
+  }catch(err){slot.ready=false;slot.note=err.message;toast('LOCAL PROGRESS IS SAFE. CHECK MY ARCADE FOR CLOUD SAVES.');}
+  finally{slot.busy=false;}
 }
-async function openCloudSave() {
-  show('<h2>YOUR SAVE SLOT</h2><p>Checking Blankman progress…</p>');
-  const version=panelVersion;
-  try {
-    const owner=auth.pid, {save}=await playerCall('save_get',{game:'blankman'}); if (owner!==auth.pid || version!==panelVersion) return;
-    const local=cleanBlankmanSave(store.get('blankman-save-v1')), cloud=cleanBlankmanSave(save?.data);
-    show(`<h2>BLANKMAN SAVE SLOT</h2><p>Your cloud save is separate from leaderboard scores.</p>
-      <ul class="list"><li><span>THIS DEVICE</span><b>${local ? 'STAGE '+(local.stage+1) : 'NO SAVE YET'}</b></li><li><span>CLOUD</span><b>${cloud ? 'STAGE '+(cloud.stage+1) : 'EMPTY SLOT'}</b></li></ul>
-      <p class="dim">${escapeHtml(cloudNote)} Restoring reloads the game. Saving replaces the cloud slot with this device’s progress.</p>
-      ${local ? '<button class="btn go" id="cloud-upload">USE THIS DEVICE + ENABLE CLOUD SAVING</button>' : ''}
-      ${cloud ? '<button class="btn" id="cloud-restore">RESTORE CLOUD SAVE TO THIS DEVICE</button>' : ''}
-      <button class="btn" id="cloud-off">KEEP SAVES ON THIS DEVICE ONLY</button><button class="btn" id="passport-back">BACK TO MY PLAYER</button>`);
-    $('#passport-back').onclick=openProfile;
-    $('#cloud-off').onclick=()=>{store.set('bba-cloud-'+auth.pid,false);cloudReady=false;toast('AUTOMATIC CLOUD SAVING OFF');};
-    if ($('#cloud-upload')) $('#cloud-upload').onclick=async()=>{try {
-      if (cloudBusy) return toast('A SAVE IS STILL FINISHING');
-      if (cloud && !confirm('Replace the cloud save with progress from this device?')) return;
-      const r=await playerCall('save_put',{game:'blankman',revision:save?.revision||0,data:local});
-      cloudRevision=r.save.revision;cloudPlayer=auth.pid;cloudReady=true;store.set('bba-cloud-'+auth.pid,true);toast('CLOUD SAVE CONNECTED');openProfile();
-    } catch(err){toast(err.message);}};
-    if ($('#cloud-restore')) $('#cloud-restore').onclick=()=>{
-      if (!confirm('Restore the cloud save and reload Blankman? Current progress will be backed up on this device.')) return;
-      if (local) store.set('bba-blankman-local-backup',local);
-      store.set('blankman-save-v1',cloud);cloudRevision=save.revision;cloudPlayer=auth.pid;cloudReady=true;store.set('bba-cloud-'+auth.pid,true);
-      const frame=$('#gf iframe');if (!$('#gf').hidden && $('#gf').dataset.game==='blankman') frame.src=frame.src;
-      toast('CLOUD PROGRESS RESTORED');openProfile();
+async function openCloudSave(game) {
+  const g=GAMES.find(g=>g.id===game),service=saveFor(game);if(!g || !service)return openMyArcade();
+  show(`<h2>${escapeHtml(g.title)}</h2><p>Checking your save slot…</p>`);const version=panelVersion;
+  try{
+    const owner=auth.pid,{save}=await playerCall('save_get',{game});if(owner!==auth.pid || version!==panelVersion)return;
+    const slot=cloudSlot(game),local=service.clean(store.get(service.key)),cloud=service.clean(save?.data);
+    show(`<span class="tag">MY ARCADE · CLOUD SAVE</span><h2>${escapeHtml(g.title)}</h2><p>Your save is separate from leaderboard scores.</p>
+      <ul class="list"><li><span>THIS DEVICE</span><b>${local?service.label(local):'NO SAVE YET'}</b></li><li><span>CLOUD</span><b>${cloud?service.label(cloud):'EMPTY SLOT'}</b></li></ul>
+      <p class="dim">${escapeHtml(slot.note)} Saving uses this device’s progress. Restoring reloads the game.</p>
+      ${local?'<button class="btn go" id="cloud-upload">USE THIS DEVICE + ENABLE CLOUD SAVING</button>':''}
+      ${cloud?'<button class="btn" id="cloud-restore">RESTORE CLOUD SAVE TO THIS DEVICE</button>':''}
+      <button class="btn" id="cloud-off">KEEP SAVES ON THIS DEVICE ONLY</button><button class="btn" id="library-back">BACK TO MY ARCADE</button>`);
+    $('#library-back').onclick=openMyArcade;
+    $('#cloud-off').onclick=()=>{store.set('bba-cloud-'+auth.pid+'-'+game,false);if(game==='blankman')store.set('bba-cloud-'+auth.pid,false);slot.ready=false;toast('AUTOMATIC CLOUD SAVING OFF');};
+    if($('#cloud-upload'))$('#cloud-upload').onclick=async()=>{try{
+      if(slot.busy)return toast('A SAVE IS STILL FINISHING');
+      if(cloud && !confirm('Replace the cloud save with progress from this device?'))return;
+      const r=await playerCall('save_put',{game,revision:save?.revision||0,data:local});
+      if(owner!==auth.pid)return;
+      slot.revision=r.save.revision;slot.ready=true;store.set('bba-cloud-'+auth.pid+'-'+game,true);toast('CLOUD SAVE CONNECTED');openMyArcade();
+    }catch(err){toast(err.message);}};
+    if($('#cloud-restore'))$('#cloud-restore').onclick=()=>{
+      if(!confirm(`Restore ${g.title} from the cloud? Current local progress will be backed up.`))return;
+      if(owner!==auth.pid)return;
+      if(local)store.set('bba-save-backup-'+game,local);
+      store.set(service.key,cloud);slot.revision=save.revision;slot.ready=true;store.set('bba-cloud-'+auth.pid+'-'+game,true);
+      const frame=$('#gf iframe');if(!$('#gf').hidden && $('#gf').dataset.game===game)frame.src=frame.src;
+      toast('CLOUD PROGRESS RESTORED');openMyArcade();
     };
-  } catch(err){toast(err.message);openProfile();}
+  }catch(err){toast(err.message);if(version===panelVersion)openMyArcade();}
 }
 async function openLobby(code=store.get('bba-lobby') || '') {
+  siteActivity.event('lobby_open');
   show(`<h2>BRING YOUR CREW</h2><p>Private, eight-player gathering rooms. Pick the same game and compare scores. The games still run individually.</p>
     <label class="passport-login">CHOOSE A GAME<select id="lobby-game">${GAMES.map(g=>`<option value="${g.id}">${escapeHtml(g.title)}</option>`).join('')}</select></label>
     <button class="btn go" id="lobby-create">CREATE PRIVATE LOBBY</button>
@@ -642,9 +694,11 @@ async function openLobby(code=store.get('bba-lobby') || '') {
 async function openDashboard() {
   show('<h2>ARCADE PULSE</h2><p>Loading owner statistics…</p>');
   const version=panelVersion;
-  try { const d=await playerCall('dashboard');if(version!==panelVersion)return;
+  try { const d=await playerCall('site_dashboard');if(version!==panelVersion)return;
     show(`<span class="tag">OWNER ONLY · LAST 30 DAYS</span><h2>ARCADE PULSE</h2><div class="passport-metrics"><p><b>${d.players}</b>Player profiles</p><p><b>${d.linked}</b>Linked accounts</p><p><b>${d.opted_in}</b>Sharing activity</p><p><b>${d.saves}</b>Cloud saves</p></div>
-      <h3>GAMES PLAYED</h3><ul class="list">${d.games.map(g=>`<li><span>${escapeHtml(GAMES.find(x=>x.id===g.game)?.title || g.game)}</span><span>${g.launches} launches · ${g.players} players · ${Math.round(g.active_seconds/60)} active minutes</span></li>`).join('') || '<li>Activity will appear when signed-in players choose to share it.</li>'}</ul>
+      <h3>THE WHOLE WEBSITE</h3><p>${d.site?.visits||0} shared visits · ${d.site?.players||0} participating players</p>
+      <ul class="list">${(d.site?.actions||[]).map(a=>`<li><span>${escapeHtml(a.kind.replaceAll('_',' '))}</span><b>${a.total}</b></li>`).join('') || '<li>Website activity appears after players opt in.</li>'}</ul>
+      <h3>EVERY GAME</h3><ul class="list">${GAMES.map(game=>{const g=d.games.find(r=>r.game===game.id)||{launches:0,players:0,active_seconds:0};return `<li><span>${escapeHtml(game.title)}<small class="dim" style="display:block">${GAME_SERVICES[game.id]?.progress?'PROGRESS CONNECTED':'CABINET + SCORE MESSAGES; DETAILED PROGRESS PENDING'}</small></span><span>${g.launches} launches · ${g.players} players · ${Math.round(g.active_seconds/60)} active minutes</span></li>`;}).join('')}</ul>
       <h3>LEVELS + MOMENTS</h3><ul class="list">${d.events.map(e=>`<li><span>${escapeHtml(e.game)} · ${escapeHtml(e.kind.replaceAll('_',' '))}${e.stage == null ? '' : ' · stage '+(e.stage+1)}</span><b>${e.total}</b></li>`).join('') || '<li>No shared gameplay events yet.</li>'}</ul>
       <p class="dim">These figures cover opted-in adult accounts only. Active time is an estimate from visible gameplay and recent input. Browser-reported events and scores are not verified for competitive prizes.</p><button class="btn" id="passport-back">BACK TO MY PLAYER</button>`, '#35e06f');
     $('#passport-back').onclick=openProfile;
@@ -683,4 +737,4 @@ $('#genter').onclick = enter; gname.addEventListener('keydown', e => { if (e.key
 setMe(null);
 restoreAccount();
 
-$('#featured').onclick = () => goTo('blankman');
+if ($('#featured')) $('#featured').onclick = openMyArcade;

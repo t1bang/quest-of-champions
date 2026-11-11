@@ -1,4 +1,4 @@
-# Big Bang Arcade player services — first release
+# Big Bang Arcade player services — platform setup
 
 Implemented November 10, 2026. This uses the arcade's existing Supabase project, `t1-vendetta` (`fspcfzxtohaaeoudrack`). No project, paid branch, analytics subscription, or billing upgrade was created.
 
@@ -18,13 +18,30 @@ Primary setup references: [Google](https://supabase.com/docs/guides/auth/social-
 
 Apple, Discord, Microsoft and LinkedIn buttons are also prepared and appear only if their corresponding providers are enabled. ChatGPT login is not configured; it requires separate provider access. Email/password login is provided for **existing** accounts. Public email signup/password recovery is not launched: configure production SMTP first rather than relying on Supabase's limited default email service.
 
+## The main platform is BigBangArcade.com
+
+The account, player ID, privacy choices, token balance, library, leaderboard access, lobbies and owner dashboard belong to **Big Bang Arcade**. Blankman is one catalog entry. The database project still has its historical `t1-vendetta` label; that does not limit the platform to one game, and no data migration or new billable project is necessary.
+
+**My Arcade** lists Quest of Champions, T1 Versus, Gorilla City 2032, Gamer Boyz and Blankman, with personal scores and the correct save capability for each. The lobby shortcut opens this whole-site library. The simple entrance stays unchanged.
+
+| Game | Shared arcade account / library / boards / lobbies | Main-site cabinet and launch events | Detailed game events and cloud progress |
+| --- | --- | --- | --- |
+| Quest of Champions | Connected | Connected, with consent | Connected |
+| T1 Versus | Connected | Connected, with consent | External game adapter still needed |
+| Gorilla City 2032 | Connected | Connected, with consent | External game adapter still needed |
+| Gamer Boyz | Connected | Connected, with consent | External game adapter still needed |
+| Blankman | Connected | Connected, with consent | Connected |
+
+The main-site identity does not silently sign a player into an independently hosted game's own account system. External integrations must use the shared bridge/API deliberately. We never claim to infer events or read local saves inside a different origin's canvas.
+
 ## What works in this release
 
 - The entrance remains only the Big Bang Arcade logo, nickname and Enter button.
 - New guests store their nickname locally and can play without creating online profiles. Older online guest records remain accessible through their existing browser secret.
 - A linked adult account has one stable arcade player ID. It restores tokens, earned totals, closet, scores and avatar across browsers. Explicit legacy claims preserve existing IDs and balances; the old guest secret stops working once claimed.
 - Existing per-game community leaderboards are retained. Linking an account does not create duplicate score records. Scores are still client-reported, not competition-grade verified scores.
-- Blankman cloud saves are opt-in separately from analytics. Upload the current device's save once to enable automatic updates. Restoring is explicit; a differing cloud/device save never silently replaces the other. Revisions reject concurrent overwrites. Restored saves do not award tokens.
+- Quest of Champions and Blankman cloud saves are opt-in separately from analytics. Upload the current device's save once to enable automatic updates. Restoring is explicit; a differing cloud/device save never silently replaces the other. Revisions reject concurrent overwrites. Restored saves do not award tokens.
+- Whole-site activity covers consenting visits, profile/library/map views, cabinet views, game launches/exits, leaderboards, lobbies, rewards and music-area use. Site activity is included in data exports and erased on opt-out. The owner dashboard shows all five games even before activity arrives.
 - Gameplay activity is off by default and restricted to linked adult accounts in this first release. Opting out deletes the player's activity while retaining scores and saves.
 - All five cabinet launches can be counted for opted-in players. Existing score/level messages are accepted only from the active game's iframe and configured origin.
 - Blankman adds ready, level start/completion, pause/resume, lives lost, helper calls, equipment changes, victory and game-over events. Active time is estimated from visible, unpaused play with recent keyboard, touch or gamepad input. Other games need their own adapter for comparable active-time and detailed-event coverage.
@@ -34,13 +51,13 @@ Apple, Discord, Microsoft and LinkedIn buttons are also prepared and appear only
 
 ## Data and access
 
-New private tables: `game_saves`, `game_runs`, `game_events`, `lobbies`, `lobby_members`. Existing players gain `user_id`, `avatar`, consent and adult-setup fields. All tables have RLS enabled and no direct client grants. Private functions enforce ownership; the public wrappers are security invoker functions. Their private implementations use a fixed empty search path and validate identity before operating.
+New private tables: `site_events`, `game_saves`, `game_runs`, `game_events`, `lobbies`, `lobby_members`. Existing players gain `user_id`, `avatar`, consent and adult-setup fields. All tables have RLS enabled and no direct client grants. Private functions enforce ownership; the public wrappers are security invoker functions. Their private implementations use a fixed empty search path and validate identity before operating.
 
 The web API forwards the signed-in player's JWT to Supabase. PostgREST verifies it; user IDs are never trusted from request bodies. There is no service-role key in browser code or these server endpoints. Account links are based on verified Auth identity and, when claiming a guest, proof of the old guest secret. Public nicknames never come from an OAuth legal name automatically.
 
 Telemetry accepts only named events and bounded game fields. It never stores raw snapshots, exact controller inputs, passwords, email addresses or arbitrary event text. Session and event IDs deduplicate retries. Limits include 100 session starts per player per day, 30 events per batch, 120 events per run per minute, and 2,000 events per run. Event queues are bounded to 120 events and dropped on sign-out/opt-out; they are not persisted across users.
 
-The `bba-player-retention` database job runs daily at 05:23 UTC, deleting activity older than 90 days and expired lobbies. Events cascade with their runs. A closed browser may leave a session without an explicit end; active time and dashboard counts are estimates, not proof of attention or gameplay integrity.
+The `bba-player-retention` database job runs daily at 05:23 UTC, deleting activity older than 90 days and expired lobbies. Game events cascade with their runs. Site events have the same 90-day retention and are private to the player and authorized owner analytics. A closed browser may leave a session without an explicit end; active time and dashboard counts are estimates, not proof of attention or gameplay integrity.
 
 The project security advisor reported no new warnings for this design. Informational “RLS enabled, no policy” findings are expected for deliberately inaccessible private tables. The existing project-wide leaked-password protection warning remains; review it when enabling password-based public signup. [Supabase guidance](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection).
 
@@ -52,7 +69,7 @@ The dependency audit also reports pre-existing advisories in the legacy `@vercel
 
 `tests/player-database.sql` exercises the real Supabase functions in a rolled-back transaction: account recovery, legacy balance preservation, revoked guest secret, cross-user save/run isolation, stale save rejection, private lobby membership, dashboard authorization, event deduplication and consent erasure. Do not remove its rollback.
 
-`npm run test:browser` uses Chrome with locally mocked sign-in/API responses; it does not create real accounts or rewards. Set `ARCADE_URL` to the local preview or deployed site. It checks guest desktop/mobile entry, linked player UI, cloud conflicts, lobbies, Blankman play and events, message-source rejection, opt-out, logout and owner visibility. Real Google/Facebook consent flow testing waits for provider activation.
+`npm run test:browser` uses Chrome with locally mocked sign-in/API responses; it does not create real accounts or rewards. Set `ARCADE_URL` to the local preview or deployed site. It checks guest desktop/mobile entry, linked player UI, cloud conflicts, lobbies, Quest and Blankman play and events, the all-game library and site interactions, message-source rejection, opt-out, logout and owner visibility. Real Google/Facebook consent flow testing waits for provider activation.
 
 Do not blindly replay the migration on another Supabase project: it builds on the existing `bba_private` schema and owner/content functions. The pre-change definitions are backed up outside the published site. If a web rollback is needed, revert the frontend/API commit; the added private tables can remain without losing player data. Linked-account security deliberately invalidates old guest secrets, so do not revert the identity resolver after real players have linked accounts.
 
@@ -63,3 +80,11 @@ Do not blindly replay the migration on another Supabase project: it builds on th
 3. Add per-mode/season leaderboards and authoritative score validation before competitions or real prize claims.
 4. Add a reviewed parent-managed account flow before expanding connected features to children; retain local guest play.
 5. Add complete account deletion, password recovery, storage/usage alerts and longer-term minimized aggregate metrics as account adoption grows.
+
+## Connecting another game
+
+`game-services.js` is the catalog capability registry. The shared game bridge is `sdk/arcade-game.js`; Quest demonstrates its use. An adapter reports bounded `activity`, `status` and optional `save` messages containing its catalog `game` ID. The parent checks the active iframe window, exact configured origin and matching game ID before accepting anything. Authentication tokens stay in the arcade shell.
+
+For an additional cloud-save format, add a small client sanitizer, a matching database validation branch and tests for private data stripping and revision conflicts. Do not upload arbitrary localStorage or claim every game's save format is supported by a generic JSON endpoint. Server score writes and cloud saves remain separate.
+
+`tests/site-database.sql` checks whole-site consent, all-game launch recording, deduplication, private library ownership, Quest save validation, owner metrics, export and deletion in a rolled-back transaction. Browser checks use mocked accounts; real social-provider testing still waits for your Google/Facebook activation.

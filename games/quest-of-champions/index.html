@@ -1046,8 +1046,10 @@ function frame(){
   if(pressed('mute'))toggleMute();drawMute();
   endFrameInput();requestAnimationFrame(frame);
 }
+window.questArcade={state:()=>({mode:state,playing:state==='play',level,score:Number(score)||0,lives:Number(lives)||0}),save:()=>save};
 frame();
 </script>
+<script type="module" src="arcade-adapter.js"></script>
 
 </body>
 </html>

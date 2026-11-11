@@ -89,3 +89,6 @@ body:has(#gate:not([hidden])) #featured,body:has(#panel:not([hidden])) #featured
 .passport-login input,.passport-login select{width:100%;padding:14px;background:#141624;color:#fff;border:2px solid #59637e;border-radius:5px;font:inherit}
 .passport-metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
 .passport-metrics p{padding:14px;background:#16192a;border-left:4px solid #ffc93a}.passport-metrics b{display:block;font-size:2rem;color:#ffc93a}
+.arcade-library{display:grid;gap:14px;margin:20px 0}.library-game{display:flex;gap:16px;padding:14px;border-left:5px solid var(--game-color);background:#16192a}
+.library-game>img{width:100px;height:130px;object-fit:cover;flex:none}.library-game h3{color:var(--game-color);margin-top:0}.library-game>div{min-width:0;flex:1}.library-game .btn{font-size:10px}
+@media(max-width:540px){.library-game{gap:10px;padding:10px}.library-game>img{width:62px;height:90px}.library-game .btn{display:block;width:100%}.library-game h3{font-size:13px}.library-game .dim{overflow-wrap:anywhere}}

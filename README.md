@@ -86,8 +86,8 @@ The arcade has four areas: the main floor, the coming-soon hallway (back doorway
 - The lounge (through the doorway at the front of the room) has a bar, couches, darts, pool, air hockey and bowling. The four games are simple timing mini-games.
 - The bar and avatars use two extra API actions, `spend` and `avatar`; the token rules `minute`, `level`, `fatality` and `social` are in `api/arcade.js` too. **The Supabase `bba_arcade` function must implement the same actions** for them to work on the live site.
 - Other players' avatars are shared through a Supabase Realtime broadcast channel (`bba-arcade-room`), so Realtime must be enabled on the project.
-# Player Passport
+# Big Bang Arcade accounts
 
-The arcade now shares player identities, existing leaderboards, Blankman cloud saves, optional gameplay events and private invite lobbies through the existing T1 Supabase project. New guest play stays local. The entrance layout is unchanged.
+BigBangArcade.com is the main account platform. My Arcade brings all five games, personal scores, supported cloud saves and invite lobbies into one shared player library. Optional analytics cover the website as well as connected game events, with an owner dashboard for the entire arcade. New guest play stays local. The entrance layout is unchanged.
 
 See [player setup and provider activation](docs/player-system-setup.md) for Google/Facebook callbacks, owner access, event coverage, privacy choices and the remaining launch steps. Social buttons stay hidden until their providers are enabled. Run `npm test` for automated checks and `npm run test:browser` against a local preview for mocked-account desktop/mobile checks.
