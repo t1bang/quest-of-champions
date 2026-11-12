@@ -78,9 +78,9 @@ const actions = {
     const name = cleanName(b.name);
     if (name.length < 2) throw fail(400, 'Pick a player name (2-16 letters or numbers)');
     const pid = randomBytes(8).toString('hex'), key = randomBytes(16).toString('hex');
-    const p = { name, kh: hash(key), tokens: 0, earned: 0, closet: [], claims: [], badge: '', day: today(), did: {} };
+    const p = { name, kh: hash(key), tokens: REWARDS.signup, earned: REWARDS.signup, closet: [], claims: [], badge: '', day: today(), did: {} };
     await set('player/' + pid, p);
-    return { pid, key, player: pub(p) };
+    return { pid, key, player: pub(p), gained: REWARDS.signup };
   },
   async me(b) { return { player: pub(await auth(b)) }; },
   async earn(b) {
@@ -107,6 +107,10 @@ const actions = {
       if (Date.now() - (p.last[why] || 0) >= gap * 1000 && (p.did['n:' + why] || 0) < cap) {
         gained = REWARDS[why]; p.last[why] = Date.now(); p.did['n:' + why] = (p.did['n:' + why] || 0) + 1;
       }
+    } else if (why === 'daily') {
+      // Daily streak: 10 x the streak day, capped at day 7.
+      const t = today(), y = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
+      if (p.lastDaily !== t) { p.streak = p.lastDaily === y ? (p.streak || 0) + 1 : 1; p.lastDaily = t; gained = REWARDS.daily * Math.min(p.streak, REWARDS.streakMax); }
     } else if (why !== 'social' && REWARDS[why] && !p.did[tag]) {
       gained = REWARDS[why];
       p.did[tag] = 1;
@@ -116,7 +120,7 @@ const actions = {
       await rank('earners', { pid: b.pid, name: p.name, badge: badgeIcon(p), score: p.earned, ts: Date.now() }, 'score');
     }
     await set('player/' + b.pid, p);
-    return { player: pub(p), gained };
+    return { player: pub(p), gained, streak: p.streak || 0 };
   },
   // One-time bonus for signing in with Google or Facebook (verified with Supabase Auth).
   async social(b) {

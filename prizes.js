@@ -17,7 +17,6 @@ export const PRIZES = [
   { id: 'real-stickers', name: 'Sticker Pack', icon: '🏷️', cost: 15, real: true },
   { id: 'real-tone-tee', name: 'Tone Da Boss T-Shirt', icon: '👕', cost: 40, real: true },
   { id: 'real-hat', name: 'T1 Hat', icon: '🧢', cost: 45, real: true },
-  { id: 'real-stevie-tickets', name: 'Stevie Stone Tickets', icon: '🎟️', cost: 60, real: true },
   { id: 'real-hoodie', name: 'T1 Hoodie', icon: '🧥', cost: 80, real: true },
   // song downloads (10 tokens each)
   { id: 'song-ring', name: 'Gimme My Ring', icon: '🎵', cost: 10, file: 'games/quest-of-champions/audio/ring.mp3' },
@@ -29,7 +28,8 @@ export const PRIZES = [
 // Token rewards (the server enforces these).
 // minute = each minute a game window is open; fatality = T1 Versus; level = beating a Quest of Champions level;
 // social = one-time bonus for signing in with Google or Facebook.
-export const REWARDS = { daily: 25, play: 5, trailer: 3, song: 1, scorePer100: 1, scoreMax: 50, minute: 1, fatality: 3, level: 5, social: 5 };
+// signup = welcome bonus for a new player; daily = 10 x the streak day, up to streakMax days (70 a day).
+export const REWARDS = { signup: 25, daily: 10, streakMax: 7, play: 5, trailer: 3, song: 1, scorePer100: 1, scoreMax: 50, minute: 1, fatality: 3, level: 5, social: 5 };
 
 // The bar in the lounge.
 export const BAR = { beer: 2, tips: [1, 2, 5] };
