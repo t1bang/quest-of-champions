@@ -92,3 +92,13 @@ Do not blindly replay the migration on another Supabase project: it builds on th
 For an additional cloud-save format, add a small client sanitizer, a matching database validation branch and tests for private data stripping and revision conflicts. Do not upload arbitrary localStorage or claim every game's save format is supported by a generic JSON endpoint. Server score writes and cloud saves remain separate.
 
 `tests/site-database.sql` checks whole-site consent, all-game launch recording, deduplication, private library ownership, Quest save validation, owner metrics, export and deletion in a rolled-back transaction. Browser checks use mocked accounts; real social-provider testing still waits for your Google/Facebook activation.
+
+
+## Arcade passport, levels and the activity hub (November 12, 2026)
+
+- **Instant players.** Entering a nickname now creates an online player again (random id plus a secret kept in that browser). Tokens, levels and leaderboards work without signing in; signing in later and ticking "connect this browser's tokens and scores" keeps the same player on every device. Sign-in providers are still off until credentials are added (see "Activate Google and Facebook" above).
+- **One level.** `level = 1 + floor(sqrt(earned / 20))`, from every token ever earned in any game. It shows next to the player's name, on every leaderboard and in the passport.
+- **Leaderboards** come from `public.bba_boards(p_game)`: `all` is the arcade rank, a game id is that game's best scores. Each row carries the player's level, avatar and badge.
+- **Passport.** When a cabinet opens, the arcade posts `{ bba:'passport', v:1, game, player:{ name, level, avatar, badge, tokens, account } }` to the game, and again whenever the game posts `{ bba:'hello' }`. `sdk/arcade-game.js` exposes this as `onPassport`. Games still report up with `{ bba:'score', score }` and `{ bba:'level' }`.
+- **Cruizin IA** is registered in the published game list, so its scores and play tokens are accepted.
+- **Activity hub.** `https://cruizin.chucksi.com/hub.js` with `data-game="<id>"` counts anonymous visits into `bba_private.hub_events` through `public.hub_track`. The owner page is `https://hub.t1bang.com/` (key required). The arcade lobby, Quest of Champions, Blankman and Cruizin IA carry the counter; T1 Vs., Gorilla City 2032 and Gamer Boyz still need the one-line tag in their own repositories.
