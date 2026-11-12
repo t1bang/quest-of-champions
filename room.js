@@ -358,28 +358,83 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = []) {
       gl.drawArrays(gl.TRIANGLES, m.start, m.n);
     }
   };
-  let sprites = [];
-  function render(P, time, spr) {
-    sprites = spr || [];
-    resize();
-    const view = mul(mul(rotX(-P.pitch), rotY(P.yaw)), trans(-P.x, -P.eye, -P.z)), proj = persp(fov, asp, 8, 8000);
+  let sprites = [], beams = [];
+  // One eye: `view`/`proj` are column-major matrices, `eye` the world-space eye, `byaw` the yaw sprites turn to face.
+  function drawScene(view, proj, eye, byaw, time, mirrorFloor) {
     const flip = ident(); flip[5] = -1;
-    gl.uniform3f(U.uEye, P.x, P.eye, P.z); setLights(P); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    gl.uniform3f(U.uEye, eye[0], eye[1], eye[2]);
     const pass = (vp, mirror) => {
       gl.uniformMatrix4fv(U.uVP, false, vp); gl.uniform1f(U.uMirror, mirror ? 1 : 0); gl.uniform1f(U.uAlpha, 1);
       gl.disable(gl.BLEND); gl.depthMask(true); drawSet(m => !m.glow && !m.floor && !m.blend, time);
-      if (sprites.length) { // other players' avatars, always turned to face the camera
-        const c = Math.cos(P.yaw), s = Math.sin(P.yaw); gl.uniform3fv(U.uTint, sprM.tint); gl.uniform1f(U.uEmis, sprM.emis); gl.uniform1f(U.uSpec, 0);
+      if (sprites.length) { // other players' avatars and VR labels, always turned to face the camera
+        const c = Math.cos(byaw), s = Math.sin(byaw); gl.uniform3fv(U.uTint, sprM.tint); gl.uniform1f(U.uEmis, sprM.emis); gl.uniform1f(U.uSpec, 0);
         for (const sp of sprites) { const m = ident(); m[0] = c * sp.w; m[2] = s * sp.w; m[5] = sp.h; m[8] = -s; m[10] = c; m[12] = sp.x; m[13] = sp.y || 0; m[14] = sp.z; gl.uniformMatrix4fv(U.uM, false, m); gl.bindTexture(gl.TEXTURE_2D, sp.tex); gl.drawArrays(gl.TRIANGLES, sprM.start, 6); }
+      }
+      if (beams.length && !mirror) { // VR pointer rays: a thin strip from the controller, turned toward the eye
+        gl.bindTexture(gl.TEXTURE_2D, white); gl.uniform1f(U.uEmis, 1); gl.uniform1f(U.uSpec, 0);
+        for (const bm of beams) {
+          const d = bm.d, e = [eye[0] - bm.o[0], eye[1] - bm.o[1], eye[2] - bm.o[2]];
+          let r = [d[1] * e[2] - d[2] * e[1], d[2] * e[0] - d[0] * e[2], d[0] * e[1] - d[1] * e[0]]; const rl = Math.hypot(r[0], r[1], r[2]) || 1, w = bm.w || 3;
+          const m = ident(); m[0] = r[0] / rl * w; m[1] = r[1] / rl * w; m[2] = r[2] / rl * w; m[4] = d[0] * bm.len; m[5] = d[1] * bm.len; m[6] = d[2] * bm.len; m[12] = bm.o[0]; m[13] = bm.o[1]; m[14] = bm.o[2];
+          gl.uniform3fv(U.uTint, bm.c || [1, 1, 1]); gl.uniformMatrix4fv(U.uM, false, m); gl.drawArrays(gl.TRIANGLES, sprM.start, 6);
+        }
       }
       gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.depthMask(false); drawSet(m => m.blend, time);
       gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE); gl.depthMask(false); drawSet(m => m.glow, time); gl.depthMask(true);
     };
-    pass(mul(proj, mul(view, flip)), true);          // the room mirrored below the floor
-    gl.clear(gl.DEPTH_BUFFER_BIT);
+    if (mirrorFloor) { pass(mul(proj, mul(view, flip)), true); gl.clear(gl.DEPTH_BUFFER_BIT); } // the room mirrored below the floor
     gl.uniformMatrix4fv(U.uVP, false, mul(proj, view)); gl.uniform1f(U.uMirror, 0);
-    gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.uniform1f(U.uAlpha, 0.74); drawSet(m => m.floor, time); // glossy floor over it
+    gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.uniform1f(U.uAlpha, mirrorFloor ? 0.74 : 1); drawSet(m => m.floor, time); // glossy floor over it
     pass(mul(proj, view), false);
+  }
+  function render(P, time, spr) {
+    sprites = spr || []; beams = [];
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null); resize();
+    const view = mul(mul(rotX(-P.pitch), rotY(P.yaw)), trans(-P.x, -P.eye, -P.z)), proj = persp(fov, asp, 8, 8000);
+    setLights(P); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    drawScene(view, proj, [P.x, P.eye, P.z], P.yaw, time, true);
+  }
+
+  // ---------- VR (WebXR immersive-vr) ----------
+  // The room is drawn in its own units; XRU of them make one metre (a 300-unit eye line is about 1.65 m).
+  const XRU = 182, XREYE = 300;
+  let xrFloor = true;
+  const xrBase = P => xrFloor ? 0 : XREYE; // 'local' space starts at head height, 'local-floor' at the floor
+  // a point / direction in the headset's reference space -> room coordinates, for a player rig standing at P
+  const xrPoint = (p, P) => { const c = Math.cos(P.yaw), s = Math.sin(P.yaw), x = p.x * XRU, z = p.z * XRU; return [c * x - s * z + P.x, p.y * XRU + xrBase(P), s * x + c * z + P.z]; };
+  const xrDir = (m, P) => { const c = Math.cos(P.yaw), s = Math.sin(P.yaw), x = -m[8], y = -m[9], z = -m[10], l = Math.hypot(x, y, z) || 1; return [(c * x - s * z) / l, y / l, (s * x + c * z) / l]; };
+  async function xrBegin(session) {
+    if (gl.makeXRCompatible) await gl.makeXRCompatible();
+    await session.updateRenderState({ baseLayer: new XRWebGLLayer(session, gl), depthNear: 0.05, depthFar: 60 });
+    let ref; try { ref = await session.requestReferenceSpace('local-floor'); xrFloor = true; } catch { ref = await session.requestReferenceSpace('local'); xrFloor = false; }
+    return ref;
+  }
+  // a controller pose -> { o, d } ray in room coordinates
+  const xrRay = (pose, P) => ({ o: xrPoint(pose.transform.position, P), d: xrDir(pose.transform.matrix, P) });
+  // draws both eyes; returns the head in room coordinates, or null when the headset has no pose this frame
+  function renderXR(frame, ref, P, time, spr, rays) {
+    const pose = frame.getViewerPose(ref), layer = frame.session.renderState.baseLayer; if (!pose || !layer) return null;
+    sprites = spr || []; beams = rays || [];
+    gl.bindFramebuffer(gl.FRAMEBUFFER, layer.framebuffer); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    const sc = ident(); sc[0] = sc[5] = sc[10] = 1 / XRU;
+    const rig = mul(sc, mul(rotY(P.yaw), trans(-P.x, -xrBase(P), -P.z)));
+    const hp = xrPoint(pose.transform.position, P), hd = xrDir(pose.transform.matrix, P), head = { x: hp[0], y: hp[1], z: hp[2], yaw: Math.atan2(hd[0], -hd[2]), dir: hd };
+    setLights({ x: head.x, z: head.z });
+    for (const v of pose.views) {
+      const vp = layer.getViewport(v); if (!vp || !vp.width) continue;
+      gl.viewport(vp.x, vp.y, vp.width, vp.height);
+      drawScene(mul(v.transform.inverse.matrix, rig), v.projectionMatrix, xrPoint(v.transform.position, P), head.yaw, time, false);
+    }
+    return head;
+  }
+  function pickRay(o, d) {
+    let best = null, bt = 1e9;
+    for (const s of Object.values(stations)) {
+      let t0 = 0, t1 = 1e9;
+      for (let i = 0; i < 3; i++) { const inv = 1 / (d[i] || 1e-9); let a = (s.min[i] - o[i]) * inv, b = (s.max[i] - o[i]) * inv; if (a > b) [a, b] = [b, a]; t0 = Math.max(t0, a); t1 = Math.min(t1, b); }
+      if (t0 <= t1 && t0 < bt) { bt = t0; best = s; }
+    }
+    return best ? { s: best, t: bt } : null;
   }
   // which station is under a screen point?
   function pick(px, py, P) {
@@ -387,15 +442,9 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = []) {
     const cp = Math.cos(P.pitch), sp = Math.sin(P.pitch);
     const vy = cy * cp + sp, vz = -cp + cy * sp, cs = Math.cos(P.yaw), sn = Math.sin(P.yaw);
     const d = [cx * cs - vz * sn, vy, cx * sn + vz * cs], o = [P.x, P.eye, P.z];
-    let best = null, bt = 1e9;
-    for (const s of Object.values(stations)) {
-      let t0 = 0, t1 = 1e9;
-      for (let i = 0; i < 3; i++) { const inv = 1 / (d[i] || 1e-9); let a = (s.min[i] - o[i]) * inv, b = (s.max[i] - o[i]) * inv; if (a > b) [a, b] = [b, a]; t0 = Math.max(t0, a); t1 = Math.min(t1, b); }
-      if (t0 <= t1 && t0 < bt) { bt = t0; best = s; }
-    }
-    return best;
+    const h = pickRay(o, d); return h ? h.s : null;
   }
   const hfov = () => 2 * Math.atan(Math.tan(fov / 2) * asp);
   resize();
-  return { stations, render, pick, hfov, vfov: () => fov, tex, freeTex: t => gl.deleteTexture(t), setScores: rows => { scoreRows = Array.isArray(rows) ? rows.slice(0, 4) : []; if (scoreWall && scoreWall.t && scoreWall.t.redraw) scoreWall.t.redraw(); } };
+  return { stations, render, pick, pickRay, xrBegin, xrRay, renderXR, hfov, vfov: () => fov, tex, freeTex: t => gl.deleteTexture(t), setScores: rows => { scoreRows = Array.isArray(rows) ? rows.slice(0, 4) : []; if (scoreWall && scoreWall.t && scoreWall.t.redraw) scoreWall.t.redraw(); } };
 }

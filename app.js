@@ -144,11 +144,15 @@ function goTo(id) {
   goal = { path, yaw: -s.T.th, pitch: s.pitch || 0, id, t: 0 };
 }
 let last = performance.now();
-function frame(now) {
+function frame(now, xf) {
+  if (xr && !xf) return;                    // a leftover page frame after VR started
+  if (!xr && xf) return;                    // a leftover headset frame after VR ended
   const dt = Math.min(0.1, (now - last) / 1000); last = now;
   const inputBlocked = !$('#gf').hidden || !$('#panel').hidden || !$('#gate').hidden;
   if (inputBlocked) { for (const k of Object.keys(keys)) delete keys[k]; joy.x = joy.y = 0; }
+  if (xr) xrInput(dt);
   const f = (keys.w || keys.arrowup ? 1 : 0) - (keys.s || keys.arrowdown ? 1 : 0) - joy.y, st = (keys.d ? 1 : 0) - (keys.a ? 1 : 0) + joy.x;
+  const look = xr ? xr.yaw : P.yaw;        // in VR you walk and aim where your head points
   if (keys.arrowleft) P.yaw -= dt * 1.8; if (keys.arrowright) P.yaw += dt * 1.8;
   if (f || st) { goal = null; sitting = false; }
   let moving = false;
@@ -160,22 +164,106 @@ function frame(now) {
     goal.t += dt;
     if ((lastLeg && d <= step && Math.abs(angDiff(goal.yaw, P.yaw)) < 0.05) || goal.t > 16) { const id = goal.id; goal = null; stations[id].open(); }
   } else if (f || st) {
-    const sp = 430 * dt, s = Math.sin(P.yaw), c = Math.cos(P.yaw);
+    const sp = (xr ? 300 : 430) * dt, s = Math.sin(look), c = Math.cos(look);
     P.x += (s * f + c * st) * sp; P.z += (-c * f + s * st) * sp; collide(); moving = true;
   }
   if (moving) walkT += dt * 11;
   P.eyeBase = (P.eyeBase || 300) + ((sitting ? 190 : 300) - (P.eyeBase || 300)) * Math.min(1, dt * 6);
   P.eye = P.eyeBase + Math.sin(walkT) * (moving ? 5 : 0);
-  if (room && !window.__skip) room.render(P, now / 1000, peerSprites(dt));
+  if (xr) xrDraw(xf, now / 1000, dt);
+  else if (room && !window.__skip) room.render(P, now / 1000, peerSprites(dt));
   let best = null, bd = 1e9;
   if (room) for (const s of Object.values(stations)) {
     const d = Math.hypot(s.x - P.x, s.z - P.z), a = Math.atan2(s.x - P.x, -(s.z - P.z));
-    if (d < 620 && d < bd && Math.abs(angDiff(a, P.yaw)) < 0.6) { best = s; bd = d; }
+    if (d < 620 && d < bd && Math.abs(angDiff(a, look)) < 0.6) { best = s; bd = d; }
   }
   if (best !== near) { near = best; const b = $('#act'); b.hidden = !near || !panel.hidden; if (near) b.textContent = '▶ ' + near.label; }
-  requestAnimationFrame(frame);
+  if (xr) xr.session.requestAnimationFrame(frame); else raf0 = requestAnimationFrame(frame);
 }
-requestAnimationFrame(frame);
+let raf0 = requestAnimationFrame(frame);
+
+// ---------------- VR (WebXR): walk the room in a headset ----------------
+// Menus and the games themselves are flat web pages, so opening a machine ends the VR session and shows it on screen.
+let xr = null;
+const vrBtn = $('#vr');
+if (room && navigator.xr && navigator.xr.isSessionSupported) navigator.xr.isSessionSupported('immersive-vr').then(ok => { if (ok && vrBtn) vrBtn.hidden = false; }).catch(() => {});
+function xrSign(lines, color) {
+  return room.tex(1024, 256, (x, W, H) => {
+    x.clearRect(0, 0, W, H); x.fillStyle = 'rgba(12,6,22,.92)'; x.beginPath(); x.roundRect(6, 6, W - 12, H - 12, 36); x.fill(); x.lineWidth = 8; x.strokeStyle = color; x.stroke();
+    x.textAlign = 'center'; x.textBaseline = 'middle';
+    lines.forEach((t, i) => { let f = i ? 44 : 70; do { x.font = `${f}px Bungee,Impact,'Arial Black',sans-serif`; f -= 2; } while (x.measureText(t).width > W - 70 && f > 16); x.fillStyle = i ? '#fff' : color; x.fillText(t, W / 2, lines.length === 1 ? H / 2 : i ? 88 + i * 64 : 72); });
+  });
+}
+async function enterVR() {
+  if (xr || !room) return;
+  if (!$('#gate').hidden) return toast('ENTER THE ARCADE FIRST');
+  let session;
+  try { session = await navigator.xr.requestSession('immersive-vr', { optionalFeatures: ['local-floor'] }); } catch { return toast('VR DID NOT START ON THIS DEVICE'); }
+  try {
+    const ref = await room.xrBegin(session);
+    closePanel(); goal = null; sitting = false; P.pitch = 0;
+    xr = { session, ref, yaw: P.yaw, head: null, rays: [], aim: null, armed: null, turned: false, label: null, labelKey: '', help: xrSign(['WELCOME TO BIG BANG ARCADE VR', 'LEFT STICK WALK · RIGHT STICK TURN', 'POINT + TRIGGER TO GO TO A MACHINE'], '#ffc93a'), helpT: 10, after: null };
+    session.addEventListener('select', xrSelect);
+    session.addEventListener('end', () => { const a = xr && xr.after; if (xr) { room.freeTex(xr.help); if (xr.label) room.freeTex(xr.label); } xr = null; last = performance.now(); raf0 = requestAnimationFrame(frame); if (vrBtn) vrBtn.textContent = 'VR'; if (a) a(); });
+    cancelAnimationFrame(raf0); last = performance.now(); session.requestAnimationFrame(frame);
+    if (vrBtn) vrBtn.textContent = 'EXIT VR';
+    try { window.bbHub && window.bbHub('vr'); } catch {}
+  } catch (err) { console.error(err); try { await session.end(); } catch {} toast('VR DID NOT START ON THIS DEVICE'); }
+}
+function leaveVR(after) { if (!xr) return after && after(); xr.after = after || null; xr.session.end().catch(() => {}); }
+if (vrBtn) vrBtn.onclick = () => xr ? leaveVR() : enterVR();
+// thumbsticks: left hand walks, right hand snap-turns (one controller does both: push forward/back to walk, sideways to turn)
+function xrInput(dt) {
+  let mx = 0, my = 0, tx = 0; const pads = [...xr.session.inputSources].filter(s => s.gamepad);
+  for (const s of pads) {
+    const ax = s.gamepad.axes, x = ax.length >= 4 ? ax[2] : ax[0] || 0, y = ax.length >= 4 ? ax[3] : ax[1] || 0;
+    if (s.handedness === 'left' && pads.length > 1) { mx += x; my += y; } else if (pads.length > 1) tx += x; else { my += y; tx += x; }
+  }
+  const dead = v => Math.abs(v) < 0.25 ? 0 : v;
+  joy.x = dead(mx); joy.y = dead(my);
+  if (Math.abs(tx) > 0.7) { if (!xr.turned) { P.yaw += Math.sign(tx) * Math.PI / 6; xr.turned = true; } } else if (Math.abs(tx) < 0.3) xr.turned = false;
+  if (joy.x || joy.y) xr.armed = null;
+}
+function xrDraw(xf, time, dt) {
+  // where each controller points, and which machine (if any) the main one is aimed at
+  xr.rays = []; xr.aim = null;
+  const srcs = [...xr.session.inputSources].filter(s => s.targetRaySpace && s.targetRayMode !== 'gaze').sort((a, b) => (a.handedness === 'right' ? 0 : 1) - (b.handedness === 'right' ? 0 : 1));
+  srcs.forEach((src, i) => {
+    const pose = xf.getPose(src.targetRaySpace, xr.ref); if (!pose) return;
+    const ray = room.xrRay(pose, P), hit = room.pickRay(ray.o, ray.d);
+    let len = hit ? hit.t : 900; if (!hit && ray.d[1] < -0.02) len = Math.min(1600, -ray.o[1] / ray.d[1]);
+    if (i === 0 && hit) xr.aim = hit.s;
+    xr.rays.push({ o: ray.o, d: ray.d, len, w: 2.5, c: hit ? [1, 0.79, 0.23] : [0.55, 0.85, 1] });
+  });
+  const spr = peerSprites(dt).slice(), a = xr.aim;
+  if (a) {
+    const key = a.id + (xr.armed === a.id ? '!' : '');
+    if (key !== xr.labelKey) { if (xr.label) room.freeTex(xr.label); xr.labelKey = key; xr.label = xrSign([a.label, xr.armed === a.id ? 'TRIGGER AGAIN TO OPEN (LEAVES VR)' : 'PULL TRIGGER TO GO THERE'], '#31d7ff'); }
+    spr.push({ x: a.x, y: Math.min(520, a.max[1] + 16), z: a.z, w: 300, h: 75, tex: xr.label });
+  }
+  if (xr.helpT > 0 && xr.head) { xr.helpT -= dt; spr.push({ x: xr.head.x + Math.sin(xr.yaw) * 420, y: 250, z: xr.head.z - Math.cos(xr.yaw) * 420, w: 520, h: 130, tex: xr.help }); }
+  const head = room.renderXR(xf, xr.ref, P, time, spr, xr.rays);
+  if (head) { xr.head = head; xr.yaw = head.yaw; }
+}
+function xrSelect(e) {
+  if (!xr) return;
+  const pose = e.frame.getPose(e.inputSource.targetRaySpace, xr.ref); if (!pose) return;
+  const ray = room.xrRay(pose, P), hit = room.pickRay(ray.o, ray.d), head = xr.head || { x: P.x, z: P.z, yaw: P.yaw };
+  xr.helpT = 0;
+  if (hit) {
+    const s = hit.s;
+    if (xr.armed === s.id) return leaveVR(() => s.open());
+    goTo(s.id); if (!goal) return;              // reuse the walk-up spot, but jump there: gliding is uncomfortable in a headset
+    const to = goal.path[goal.path.length - 1], faceYaw = goal.yaw; goal = null;
+    const da = angDiff(faceYaw, head.yaw), ox = head.x - P.x, oz = head.z - P.z, ca = Math.cos(da), sa = Math.sin(da);
+    P.yaw += da;                                // turn the rig so your head faces the machine,
+    P.x = to.x - (ca * ox - sa * oz); P.z = to.z - (sa * ox + ca * oz); xr.armed = s.id; return; // and put your head (not the play-space centre) on the spot
+  }
+  if (ray.d[1] < -0.02) {                       // pointed at the floor: step to that spot
+    const t = -ray.o[1] / ray.d[1]; if (t > 1600) return;
+    P.x += ray.o[0] + ray.d[0] * t - head.x; P.z += ray.o[2] + ray.d[2] * t - head.z; collide(); xr.armed = null;
+  }
+}
 
 addEventListener('keydown', e => { if (e.target.tagName === 'INPUT' || !$('#gf').hidden) return; keys[e.key.toLowerCase()] = 1; if ((e.key === 'Enter' || e.key.toLowerCase() === 'e') && near && panel.hidden && $('#gate').hidden) near.open(); if (e.key === 'Escape') closePanel(); });
 addEventListener('keyup', e => { keys[e.key.toLowerCase()] = 0; });
