@@ -16,6 +16,7 @@ export const GAME_SERVICES = {
   vendetta:{build:'external',progress:false},
   guerilla:{build:'external',progress:false},
   gamerboy:{build:'external',progress:false},
+  cruizin:{build:'external',progress:false},
   blankman:{build:'8.0',progress:true,save:{key:'blankman-save-v1',clean:cleanBlankmanSave,label:s=>`STAGE ${s.stage+1}`}},
 };
 export function saveFor(game){return GAME_SERVICES[game]?.save;}

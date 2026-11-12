@@ -1,11 +1,13 @@
 // Optional game-side bridge. Account sessions stay in the arcade shell.
-export function connectArcade({game,build='unknown',state,save,onState,interval=500}) {
+// onPassport(player) is called with {name, level, avatar, badge, tokens, account} when the arcade says who is playing.
+export function connectArcade({game,build='unknown',state,save,onState,onPassport,interval=500}) {
   if(typeof window==='undefined'||parent===window)return ()=>{};
   let origin;try{origin=new URL(document.referrer).origin;}catch{return ()=>{};}
   const local=origin===location.origin;
   if(!local && origin!=='https://bigbangarcade.com')return ()=>{};
   const send=data=>parent.postMessage({v:1,game,...data},origin);
   let tick=0,inputAt=0,previousSave=null,ready=false;
+  if(onPassport){addEventListener('message',e=>{if(e.origin===origin&&e.data&&e.data.bba==='passport'&&e.data.v===1)onPassport(e.data.player||null);});send({bba:'hello'});}
   const input=()=>{inputAt=Date.now();};
   addEventListener('keydown',input);addEventListener('pointerdown',input);
   const timer=setInterval(()=>{

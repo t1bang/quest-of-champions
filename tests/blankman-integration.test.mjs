@@ -5,7 +5,7 @@ import { GAMES, SOON } from '../config.js';
 import { createReporter } from '../games/blankman/arcade-adapter.js';
 
 test('all cabinets occupy unique slots and Blankman assets resolve locally', () => {
-  assert.equal(GAMES.length, 5);
+  assert.equal(GAMES.length, 6);
   const ids = [...GAMES, ...SOON].map(g => g.id);
   assert.equal(new Set(ids).size, ids.length);
   const slots = [...GAMES.filter(g => g.hallSlot != null).map(g => g.hallSlot), ...SOON.filter(g => g.room !== 'east').map((g, i) => g.hallSlot ?? i)]; // East Wing machines take wing slots, not hallway ones

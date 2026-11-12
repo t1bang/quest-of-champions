@@ -27,11 +27,13 @@ async function api(a, body, q = '') {
   if (!r.ok) throw new Error(j.error || 'Something went wrong');
   return j;
 }
+// One arcade-wide level from every token ever earned, in any game (the database uses the same formula).
+const levelOf = earned => 1 + Math.floor(Math.sqrt(Math.max(0, earned || 0) / 20));
 function setMe(p) {
   me = p; activity.enabled(!!p?.linked && !!p?.analytics); siteActivity.enabled(!!p?.linked && !!p?.analytics); if (p && p.avatar && !store.get('bba-av')) myAv = cleanAv(p.avatar);
   $('#tok b').textContent = p ? p.tokens : 0;
   const icon = p && (PRIZES.find(x => x.id === p.badge) || {}).icon;
-  $('#who').textContent = p ? (icon ? icon + ' ' : '') + p.name : 'SIGN IN';
+  $('#who').textContent = p ? (icon ? icon + ' ' : '') + p.name + (p.local ? '' : ' · LV ' + levelOf(p.earned)) : 'SIGN IN';
 }
 async function earn(why, game, score) {
   if (!auth.pid) return;
@@ -41,7 +43,14 @@ async function join(name) {
   name = String(name).replace(/[^A-Za-z0-9 _-]/g, '').trim().slice(0,16);
   if (name.length < 2) throw new Error('Pick a nickname of 2–16 characters');
   store.set('bba-guest-name', name);
-  setMe({ local:true, name, tokens:0, earned:0, closet:[], badge:'' });
+  // A nickname makes an online player straight away: tokens, levels and leaderboards work without signing in.
+  // The player is tied to this browser by a secret; signing in later keeps it on every device.
+  try {
+    const r = await api('join', { name });
+    auth = { pid: r.pid, key: r.key }; store.set('bba-auth', auth); setMe(r.player);
+    api('avatar', { av: myAv }).then(x => { if (x?.player) setMe(x.player); }).catch(() => {});
+    earn('daily');
+  } catch { setMe({ local:true, name, tokens:0, earned:0, closet:[], badge:'' }); }
 }
 
 // ---------------- the 3D room ----------------
@@ -202,7 +211,16 @@ panel.addEventListener('pointerdown', e => { if (e.target === panel) closePanel(
 const link = (label, url, cls = '') => url ? `<a class="btn ${cls}" href="${url}" target="_blank" rel="noopener">${label}</a>` : `<button class="btn off ${cls}" data-soon="1">${label}</button>`;
 pbody.addEventListener('click', e => { if (e.target.closest('[data-soon]')) toast('COMING SOON'); });
 const needMe = () => { if (auth.pid) return true; openProfile(); toast('CONNECT A PLAYER ACCOUNT TO SAVE ONLINE'); return false; };
-const rows = (list, unit) => list.length ? list.map((r, i) => `<li><span>${i + 1}. ${escapeHtml(r.badge || '')} ${escapeHtml(r.name)}</span><b>${Number(r.score).toLocaleString()}${unit}</b></li>`).join('') : '<li class="dim">No scores yet. Be the first.</li>';
+const badgeIcon = id => (PRIZES.find(x => x.id === id) || {}).icon || '';
+const rows = (list, unit) => list.length ? list.map((r, i) => `<li><span class="who">${i + 1}. <canvas class="mini" width="24" height="40" data-av="${escapeHtml(JSON.stringify(r.avatar || {}))}"></canvas>${escapeHtml(badgeIcon(r.badge))} ${escapeHtml(r.name)}${r.level ? ` <small class="lv">LV ${r.level}</small>` : ''}${r.linked ? ' <small class="lv ok" title="Signed-in player">✔</small>' : ''}</span><b>${Number(r.score).toLocaleString()}${unit}</b></li>`).join('') : '<li class="dim">No scores yet. Be the first.</li>';
+// Every row shows that player's own avatar, the same one they wear in the lobby and carry into games.
+const paintMinis = root => { for (const c of (root || document).querySelectorAll('canvas.mini')) { try { drawAvatar(c.getContext('2d'), 24, 40, cleanAv(JSON.parse(c.dataset.av || '{}')), ''); } catch {} } };
+async function board(game) {
+  try {
+    const r = await fetch(`${SOCIAL_AUTH.url}/rest/v1/rpc/bba_boards`, { method: 'POST', headers: { apikey: SOCIAL_AUTH.key, 'Content-Type': 'application/json' }, body: JSON.stringify({ p_game: game }) });
+    if (!r.ok) throw new Error('board'); return { rows: await r.json() };
+  } catch { return api('board', null, '&game=' + game); }
+}
 
 function openGame(g) {
   siteActivity.event('cabinet_view',g.id);
@@ -230,10 +248,12 @@ function openGame(g) {
     activity.start(g.id, GAME_SERVICES[g.id]?.build || 'unknown');
     if (me?.linked && saveFor(g.id)) prepareCloudSave(g.id).catch(() => {});
     const gf = $('#gf'); gf.hidden = false; gf.dataset.game = g.id; gf.querySelector('b').textContent = g.title.toUpperCase();
-    gf.querySelector('a').href = g.play; const frame = gf.querySelector('iframe'); frame.title = g.title; frame.onload = () => frame.focus(); frame.src = g.play; pauseBgm(true);
+    gf.querySelector('a').href = g.play; const frame = gf.querySelector('iframe'); frame.title = g.title; // The passport: every game is told who is playing (nickname, arcade level, avatar look) so one player carries across all games.
+    passport = () => { try { frame.contentWindow.postMessage({ bba: 'passport', v: 1, game: g.id, player: me ? { name: me.name, level: levelOf(me.earned), avatar: myAv, badge: me.badge || '', tokens: me.tokens || 0, account: me.linked ? 'linked' : auth.pid ? 'guest' : 'local' } : null }, new URL(g.play, location.href).origin); } catch {} };
+    frame.onload = () => { frame.focus(); passport(); }; frame.src = g.play; pauseBgm(true);
     clearInterval(playTimer); playTimer = setInterval(() => { if (!gf.hidden && !document.hidden) earn('minute', g.id); }, 60000);
   };
-  api('board', null, '&game=' + g.id).then(r => { const o = $('#grank'); if (o) o.innerHTML = rows(r.rows, ''); }).catch(() => { const o = $('#grank'); if (o) o.innerHTML = '<li class="dim">Leaderboard is offline.</li>'; });
+  board(g.id).then(r => { const o = $('#grank'); if (o) { o.innerHTML = rows(r.rows, ''); paintMinis(o); } }).catch(() => { const o = $('#grank'); if (o) o.innerHTML = '<li class="dim">Leaderboard is offline.</li>'; });
   const loadC = () => api('comments', null, '&game=' + g.id).then(r => {
     const u = $('#gcm'); if (!u) return; u.innerHTML = '';
     if (!r.rows.length) u.innerHTML = '<li class="dim">No comments yet.</li>';
@@ -246,13 +266,14 @@ function openGame(g) {
     try { await api('comment', { game: g.id, text: inp.value }); inp.value = ''; loadC(); } catch (err) { toast(err.message.toUpperCase()); }
   };
 }
-let playTimer;
+let playTimer, passport = () => {};
 $('#gf button').onclick = () => { const gf = $('#gf'); clearInterval(playTimer); siteActivity.event('game_exit',gf.dataset.game); activity.stop(); gf.hidden = true; gf.querySelector('iframe').src = 'about:blank'; pauseBgm(false); };
 // Games report scores with: parent.postMessage({ bba: 'score', score: 1234 }, '*')
 // and events with: parent.postMessage({ bba: 'level' }, '*')  or  { bba: 'fatality' }
 addEventListener('message', e => {
   const gf = $('#gf'), d = e.data, frame = gf.querySelector('iframe');
   if (gf.hidden || !d || e.source !== frame.contentWindow || e.origin !== new URL(frame.src, location.href).origin || (d.game && d.game !== gf.dataset.game)) return;
+  if (d.bba === 'hello') { passport(); return; }     // a game asking who is playing
   if (d.bba === 'score' && (!Number.isFinite(d.score) || d.score < 0 || d.score > 1e9)) return;
   if (d.bba === 'score') { earn('score', gf.dataset.game, d.score); activity.event({ kind:'score_reported', score:d.score }); }
   if (d.bba === 'activity' && d.v === 1 && d.game === gf.dataset.game) activity.event(d.event);
@@ -324,9 +345,9 @@ function openCloset() {
 
 function openBoard(which) {
   siteActivity.event('leaderboard_view',which==='all'?undefined:which);
-  const tabs = [['all', 'TOP TOKEN EARNERS'], ...GAMES.map(g => [g.id, g.title.toUpperCase()])];
+  const tabs = [['all', 'ARCADE RANK · ALL GAMES'], ...GAMES.map(g => [g.id, g.title.toUpperCase()])];
   show(`<h2>LEADERBOARD</h2><div class="tabs">${tabs.map(([id, n]) => `<button class="btn ${id === which ? 'on' : ''}" data-tab="${id}">${n}</button>`).join('')}</div><ol class="rank" id="brank"><li class="dim">Loading…</li></ol>`, '#35e06f');
-  api('board', null, '&game=' + which).then(r => { const o = $('#brank'); if (o) o.innerHTML = rows(r.rows, which === 'all' ? ' 🪙' : ''); }).catch(() => { const o = $('#brank'); if (o) o.innerHTML = '<li class="dim">Leaderboard is offline.</li>'; });
+  board(which).then(r => { const o = $('#brank'); if (o) { o.innerHTML = rows(r.rows, which === 'all' ? ' 🪙' : ''); paintMinis(o); } }).catch(() => { const o = $('#brank'); if (o) o.innerHTML = '<li class="dim">Leaderboard is offline.</li>'; });
   pbody.onclick = e => { const t = e.target.closest('[data-tab]'); if (t) openBoard(t.dataset.tab); };
   cleanup = () => { pbody.onclick = null; };
 }
@@ -548,7 +569,7 @@ function openProfile() {
   siteActivity.event('profile_view');
   const linked = !!me?.linked;
   show(`<span class="tag">BIG BANG ARCADE ACCOUNT</span><h2>${escapeHtml(me?.name || 'WELCOME, PLAYER')}</h2>
-    <p>${linked ? 'One player across the arcade.' : auth.key ? 'Your original guest profile is safe on this browser.' : 'Guest play stays on this device. No account needed.'}</p>
+    <p>${linked ? 'One player across the arcade.' : auth.key ? 'Your player, tokens and scores are saved on this browser. Sign in to keep them on every device.' : 'Enter a nickname to start earning tokens and ranking on the boards.'}</p>
     ${me ? `<p>🪙 ${me.tokens} tokens · ${me.earned} earned · ${me.closet.length} prizes</p><button class="btn" id="pav">EDIT AVATAR</button><button class="btn" data-go="closet">MY CLOSET</button>` : '<form class="cf" id="pform"><input maxlength="16" placeholder="YOUR NICKNAME" aria-label="Your nickname"><button class="btn go">PLAY AS GUEST</button></form>'}
     <button class="btn go" id="my-arcade">MY GAMES + SAVES</button><button class="btn" id="my-boards">ALL LEADERBOARDS</button>
     ${linked ? `<button class="btn" id="lobby-panel">INVITE LOBBIES</button>
