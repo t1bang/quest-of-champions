@@ -206,6 +206,7 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = []) {
   stations.bigbox = { id: 'bigbox', label: 'OPEN THE BIG BANG BOX', x: 0, z: BZ + 130, w: 260, depth: 0, T: { x: 0, z: BZ + 130, th: 0 }, open: handlers.bigbox, min: [-140, 0, BZ - 140], max: [140, 300, BZ + 140] };
 
   // ---------- other stations ----------
+  let scoreRows = [];
   const panel = (w, h, color, draw) => mat(tex(512, 512, (x, W, H) => { x.fillStyle = '#0c0c14'; x.fillRect(0, 0, W, H); x.strokeStyle = color; x.lineWidth = 16; x.strokeRect(8, 8, W - 16, H - 16); draw(x, W, H); }), { emis: 0.85, spec: 0.3 });
   const emoji = (x, s, cx, cy, size) => text(x, s, cx, cy, `${size}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`, '#fff');
   const L = z => ({ x: 2 - HW, z, th: Math.PI / 2 }), R = z => ({ x: HW - 2, z, th: -Math.PI / 2 }), F = x => ({ x, z: ZF - 2, th: Math.PI });
@@ -227,7 +228,14 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = []) {
   glow('#ffc93a', T, 0, 440, 40, 560, 200); light(T, [0, 300, 260], '#ffc93a', 1.1); add('prizes', 'SHOP THE PRIZE WALL', T, 560, 100, 480, handlers.prizes);
 
   T = R(480);
-  box(metal, T, -160, 160, 110, 450, 0, 30, { front: panel(320, 340, '#35e06f', (x, W) => { emoji(x, '🏆', W / 2, 96, 84); text(x, 'HIGH SCORES', W / 2, 190, `52px ${BIG}`, '#35e06f'); ['1ST', '2ND', '3RD', '4TH'].forEach((s, i) => { text(x, `${s}  ......  ?`, W / 2, 262 + i * 46, `20px ${PIX}`, i ? '#fff' : '#ffc93a'); }); text(x, 'WHO RUNS THE ARCADE?', W / 2, 462, `14px ${PIX}`, '#35e06f'); }) });
+  box(metal, T, -160, 160, 110, 450, 0, 30, { front: panel(320, 340, '#35e06f', (x, W) => { emoji(x, '🏆', W / 2, 96, 84); text(x, 'HIGH SCORES', W / 2, 190, `52px ${BIG}`, '#35e06f'); ['1ST', '2ND', '3RD', '4TH'].forEach((s, i) => {
+      const r = scoreRows[i], y = 262 + i * 46, col = i ? '#fff' : '#ffc93a';
+      if (!r) { text(x, `${s}  ......  ?`, W / 2, y, `20px ${PIX}`, col); return; }
+      x.font = `15px ${PIX}`; x.textBaseline = 'middle'; x.fillStyle = col;
+      x.textAlign = 'left'; x.fillText(`${s} ${String(r.name).toUpperCase().slice(0, 10)}`, 40, y);
+      x.textAlign = 'right'; x.fillText(`LV${r.level || 1} ${Number(r.score).toLocaleString()}`, W - 40, y);
+    }); text(x, scoreRows.length ? 'ARCADE RANK · ALL GAMES' : 'WHO RUNS THE ARCADE?', W / 2, 462, `14px ${PIX}`, '#35e06f'); }) });
+  const scoreWall = mats[mats.length - 1];     // the wall board is redrawn when real standings arrive (setScores)
   glow('#35e06f', T, 0, 280, 50, 520, 480); light(T, [0, 280, 220], '#35e06f', 0.8); add('scores', 'SEE THE LEADERBOARD', T, 320, 60, 450, handlers.scores);
 
   T = F(-360);
@@ -389,5 +397,5 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = []) {
   }
   const hfov = () => 2 * Math.atan(Math.tan(fov / 2) * asp);
   resize();
-  return { stations, render, pick, hfov, vfov: () => fov, tex, freeTex: t => gl.deleteTexture(t) };
+  return { stations, render, pick, hfov, vfov: () => fov, tex, freeTex: t => gl.deleteTexture(t), setScores: rows => { scoreRows = Array.isArray(rows) ? rows.slice(0, 4) : []; if (scoreWall && scoreWall.t && scoreWall.t.redraw) scoreWall.t.redraw(); } };
 }

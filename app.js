@@ -62,6 +62,9 @@ const cover = g => `<img src="${g.art}" alt="${g.title} cover art">`;
 await Promise.race([Promise.all([document.fonts.load('40px Bungee'), document.fonts.load('16px "Press Start 2P"')]).catch(() => {}), new Promise(r => setTimeout(r, 1800))]);
 const handlers = { game: g => openGame(g), bigbox: () => openBigBox(), jukebox: () => openJukebox(), closet: () => openCloset(), prizes: () => openPrizes(), scores: () => openBoard('all'), donate: () => openDonate(), credits: () => openCredits(), soon: g => openSoon(g), vault: () => openVault(), bar: () => openBar(), sit: id => sitDown(id), mini: k => openMini(k), eastwing: () => toast('EAST WING: NEW GAMES LAND HERE SOON') };
 const room = buildRoom(view, GAMES, PRIZES, handlers, SOON);
+// The wall board in the lobby shows the real arcade standings and refreshes while the room is open.
+const refreshWall = () => { if (room && room.setScores && !document.hidden) board('all').then(r => room.setScores(r.rows)).catch(() => {}); };
+refreshWall(); setInterval(refreshWall, 60000);
 const stations = room ? room.stations : Object.fromEntries([...GAMES.map(g => [g.id, { id: g.id, label: 'PLAY ' + g.title.toUpperCase(), open: () => openGame(g) }]),
   ...SOON.map(g => [g.id, { id: g.id, label: 'COMING SOON: ' + g.title.toUpperCase(), open: () => openSoon(g) }]),
   ...[['darts', 'PLAY DARTS'], ['pool', 'PLAY POOL'], ['hockey', 'PLAY AIR HOCKEY'], ['bowling', 'GO BOWLING']].map(([id, label]) => [id, { id, label, open: () => openMini(id) }]),
