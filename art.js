@@ -141,6 +141,8 @@ const CAPTIONS = {
   vendetta: ['T1 VERSUS', '21 FIGHTERS', 'ROUND 1... FIGHT!', 'SETTLE THE SCORE'],
   guerilla: ['ONE BIG CITY', 'GO ANYWHERE', 'RUN THE STREETS', 'OWN THE MAP'],
   gamerboy: ['TONE DA BOSS + ENTRE LUCHÉ', 'JUMP THE ENEMIES', 'COLLECT THE RECORDS', 'RACE TO THE FLAGPOLE'],
+  blankman: ['EIGHT STAGES', 'GEAR UP', 'RIDE THE BLANKMOBILE', 'SAVE THE CITY'],
+  cruizin: ['CEDAR RAPIDS IN 3D', 'RACE I-380', 'MISSIONS · FISHING · BOATS', 'RUN THE CITY'],
 };
 // Plays a looping 12-second trailer on a canvas. Returns a stop function. onLoop fires each time it finishes.
 // shots = real screenshots/artwork: shown as a slow-zoom slideshow instead of the drawn scene.
@@ -156,7 +158,7 @@ export function playTrailer(canvas, id, titleText, onLoop, shots) {
       const seg = 10 / pics.length, k = Math.min(pics.length - 1, Math.floor(t / seg)), im = pics[k], u = (t - k * seg) / seg;
       if (im.complete && im.naturalWidth) { const s = Math.max(W / im.naturalWidth, H / im.naturalHeight) * (1.04 + u * 0.12), w = im.naturalWidth * s, h = im.naturalHeight * s; c.globalAlpha = Math.min(1, u * 6, (1 - u) * 6 + 0.2); c.drawImage(im, (W - w) / 2 + (k % 2 ? -1 : 1) * u * 14, (H - h) / 2, w, h); c.globalAlpha = 1; }
     } else { c.imageSmoothingEnabled = false; SCENES[id](c, t, W, H); }
-    if (t < 10) { const k = Math.floor(t / 2.5); if (t % 2.5 > 0.3) { c.fillStyle = 'rgba(0,0,0,.55)'; c.fillRect(0, H - 34, W, 34); txt(c, CAPTIONS[id][k], W / 2, H - 12, 12, '#fff'); } }
+    if (t < 10) { const k = Math.floor(t / 2.5); if (t % 2.5 > 0.3) { c.fillStyle = 'rgba(0,0,0,.55)'; c.fillRect(0, H - 34, W, 34); txt(c, (CAPTIONS[id] || [])[k] || titleText.toUpperCase(), W / 2, H - 12, 12, '#fff'); } }
     else { c.fillStyle = 'rgba(0,0,0,.8)'; c.fillRect(0, 0, W, H); txt(c, titleText.toUpperCase(), W / 2, H / 2 - 8, 18, '#ffc93a'); if (t % 0.6 > 0.25) txt(c, 'PLAY NOW AT BIG BANG ARCADE', W / 2, H / 2 + 26, 9, '#fff'); }
     raf = requestAnimationFrame(tick);
   };
