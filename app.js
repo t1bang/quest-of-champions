@@ -6,6 +6,8 @@ import { supabase, authHeaders, playerCall, enabledProviders, escapeHtml, create
 import { GAME_SERVICES, saveFor, createSiteTracker } from './game-services.js';
 
 const $ = s => document.querySelector(s);
+// anonymous activity counts for the admin hub (hub.js loads after this file, so early calls wait for it)
+const hub = (kind, val, tries = 0) => { try { if (window.bbHub) window.bbHub(kind, val); else if (tries < 20) setTimeout(() => hub(kind, val, tries + 1), 300); } catch {} };
 const view = $('#view'), panel = $('#panel'), pbody = $('#pbody');
 const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; };
 let toastT;
@@ -69,6 +71,7 @@ const stations = room ? room.stations : Object.fromEntries([...GAMES.map(g => [g
   ...SOON.map(g => [g.id, { id: g.id, label: 'COMING SOON: ' + g.title.toUpperCase(), open: () => openSoon(g) }]),
   ...[['darts', 'PLAY DARTS'], ['pool', 'PLAY POOL'], ['hockey', 'PLAY AIR HOCKEY'], ['bowling', 'GO BOWLING']].map(([id, label]) => [id, { id, label, open: () => openMini(id) }]),
   ...[['bar', 'VISIT THE BAR'], ['vault', 'OPEN THE BIG BANG VAULT'], ['eastwing', 'EAST WING: NEW GAMES SOON'], ['bigbox', 'OPEN THE BIG BANG BOX'], ['jukebox', 'OPEN THE JUKEBOX'], ['closet', 'OPEN MY CLOSET'], ['prizes', 'SHOP THE PRIZE WALL'], ['scores', 'SEE THE LEADERBOARD'], ['donate', 'DONATE'], ['credits', 'CREDITS + SOCIALS']].map(([id, label]) => [id, { id, label, open: handlers[id] }])]);
+hub('ready');
 if (!room) { $('#hint').textContent = 'YOUR BROWSER CANNOT SHOW THE 3D ROOM. USE THE MAP BUTTON.'; $('#stick').hidden = true; }
 
 // ---------------- movement + controls ----------------
@@ -207,7 +210,7 @@ async function enterVR() {
     session.addEventListener('end', () => { const a = xr && xr.after; if (xr) { room.freeTex(xr.help); if (xr.label) room.freeTex(xr.label); } xr = null; last = performance.now(); raf0 = requestAnimationFrame(frame); if (vrBtn) vrBtn.textContent = 'VR'; if (a) a(); });
     cancelAnimationFrame(raf0); last = performance.now(); session.requestAnimationFrame(frame);
     if (vrBtn) vrBtn.textContent = 'EXIT VR';
-    try { window.bbHub && window.bbHub('vr'); } catch {}
+    hub('vr');
   } catch (err) { console.error(err); try { await session.end(); } catch {} toast('VR DID NOT START ON THIS DEVICE'); }
 }
 function leaveVR(after) { if (!xr) return after && after(); xr.after = after || null; xr.session.end().catch(() => {}); }
@@ -314,7 +317,7 @@ async function board(game) {
 }
 
 function openGame(g) {
-  siteActivity.event('cabinet_view',g.id);
+  siteActivity.event('cabinet_view',g.id); hub('view:' + g.id);
   show(`<span class="tag" style="--c:${g.color}">${g.genre.toUpperCase()}</span><h2>${g.title}</h2>
     <div class="stage" style="--c:${g.color}">${cover(g)}</div>
     <p>${g.blurb}</p>
@@ -338,6 +341,7 @@ function openGame(g) {
     siteActivity.event('game_launch',g.id);
     activity.start(g.id, GAME_SERVICES[g.id]?.build || 'unknown');
     if (me?.linked && saveFor(g.id)) prepareCloudSave(g.id).catch(() => {});
+    hub('open:' + g.id);
     const gf = $('#gf'); gf.hidden = false; gf.dataset.game = g.id; gf.querySelector('b').textContent = g.title.toUpperCase();
     gf.querySelector('a').href = g.play; const frame = gf.querySelector('iframe'); frame.title = g.title; // The passport: every game is told who is playing (nickname, arcade level, avatar look) so one player carries across all games.
     passport = () => { try { frame.contentWindow.postMessage({ bba: 'passport', v: 1, game: g.id, player: me ? { name: me.name, level: levelOf(me.earned), avatar: myAv, badge: me.badge || '', tokens: me.tokens || 0, account: me.linked ? 'linked' : auth.pid ? 'guest' : 'local' } : null }, new URL(g.play, location.href).origin); } catch {} };
@@ -419,7 +423,7 @@ function openPrizes() {
     <h3>HOW TO WIN TOKENS</h3><p class="dim">Every minute you play +${REWARDS.minute} · Beat a Quest of Champions level +${REWARDS.level} · T1 Versus fatality +${REWARDS.fatality} · Welcome bonus +${REWARDS.signup} · Daily streak +${REWARDS.daily} on day 1 up to +${REWARDS.daily * REWARDS.streakMax} a day by day ${REWARDS.streakMax} · Game scores up to +${REWARDS.scoreMax} a run</p>`, '#ffc93a');
   pbody.onclick = async e => {
     const b = e.target.closest('[data-buy]'); if (!b || !needMe()) return;
-    try { const r = await api('buy', { id: b.dataset.buy }); setMe(r.player); if (r.code || b.dataset.buy.startsWith('song-')) openCloset(); else { toast('ADDED TO YOUR CLOSET'); openPrizes(); } } catch (err) { toast(err.message.toUpperCase()); }
+    try { const r = await api('buy', { id: b.dataset.buy }); setMe(r.player); hub('prize'); if (r.code || b.dataset.buy.startsWith('song-')) openCloset(); else { toast('ADDED TO YOUR CLOSET'); openPrizes(); } } catch (err) { toast(err.message.toUpperCase()); }
   };
   cleanup = () => { pbody.onclick = null; };
 }
@@ -499,7 +503,7 @@ const MINI = {
 };
 // Simple timing games: stop the marker as close to the centre as you can.
 function openMini(kind) {
-  const g = MINI[kind];
+  const g = MINI[kind]; hub('mini:' + kind);
   show(`<h2>${g.icon} ${g.title}</h2><p>Stop the marker in the gold zone. ${g.rounds} tries.</p><div class="stage" style="--c:#ffc93a;aspect-ratio:16/6"><canvas width="640" height="240" id="mcv"></canvas></div>
     <p id="mtxt" style="color:var(--gold)">&nbsp;</p><button class="btn go" id="mgo">${g.verb}</button><button class="btn" id="magain" hidden>PLAY AGAIN</button>`, '#ffc93a');
   const cv = $('#mcv'), c = cv.getContext('2d'); let round = 0, total = 0, left = g.pool || 0, t0 = performance.now(), frozen = null, raf, done = false;
@@ -651,7 +655,7 @@ async function restoreGuest() {
 }
 supabase.auth.onAuthStateChange((event) => {
   // Auth callbacks run under a client lock: defer further Auth calls.
-  if (event === 'SIGNED_IN') setTimeout(() => restoreAccount(),0);
+  if (event === 'SIGNED_IN') { hub('signin'); setTimeout(() => restoreAccount(),0); }
   if (event === 'SIGNED_OUT') {
     activity.enabled(false); siteActivity.enabled(false); cloudSlots.clear(); accountSession=null; accountOwner=false;
     // Also clear this tab when another tab signs out or its session is revoked.
