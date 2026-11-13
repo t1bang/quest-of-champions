@@ -2,6 +2,7 @@
 // Storage: configured Upstash Redis or Vercel Blob; otherwise the T1Bang Supabase arcade.
 import { createHash, randomBytes } from 'node:crypto';
 import { PRIZES, REWARDS, REAL_PRIZES_LIVE, BAR } from '../prizes.js';
+import { prizeMail } from '../lib/mail.js';
 
 const SB_URL = "https://tdjvnhuygpobdcmhlcms.supabase.co";
 const SB_KEY = "sb_publishable_hQBcSsJqxa9vLTCAwx2W-w_ZlZDVMxy";
@@ -78,9 +79,9 @@ const actions = {
     const name = cleanName(b.name);
     if (name.length < 2) throw fail(400, 'Pick a player name (2-16 letters or numbers)');
     const pid = randomBytes(8).toString('hex'), key = randomBytes(16).toString('hex');
-    const p = { name, kh: hash(key), tokens: REWARDS.signup, earned: REWARDS.signup, closet: [], claims: [], badge: '', day: today(), did: {} };
+    const p = { name, kh: hash(key), tokens: 0, earned: 0, closet: [], claims: [], badge: '', day: today(), did: {} };
     await set('player/' + pid, p);
-    return { pid, key, player: pub(p), gained: REWARDS.signup };
+    return { pid, key, player: pub(p) };
   },
   async me(b) { return { player: pub(await auth(b)) }; },
   async earn(b) {
@@ -165,7 +166,7 @@ const actions = {
     let code;
     if (prize.real) {
       code = 'BBA-' + randomBytes(4).toString('hex').toUpperCase();
-      p.claims.push({ id: prize.id, code, ts: Date.now() });
+      p.claims.push({ id: prize.id, code, name: prize.name, kind: prize.kind || 'ship', link: prize.kind === 'ticket' ? process.env.TICKETS_LINK || '' : '', ts: Date.now() });
       const all = (await get('claims')) || [];
       all.push({ code, prize: prize.id, pid: b.pid, name: p.name, ts: Date.now() });
       await set('claims', all);
@@ -224,7 +225,10 @@ export default async function handler(req, res) {
     // Supabase RPC when neither Redis nor Blob is connected.
     if (!R_URL && !process.env.BLOB_READ_WRITE_TOKEN) {
       if (q.a === 'uncomment') throw fail(501, 'Comment moderation is not available on this storage backend');
-      return res.status(200).json(await supabaseAction(q.a, b, q.game, req.headers?.authorization));
+      const out = await supabaseAction(q.a, b, q.game, req.headers?.authorization);
+      // A redeemed real prize is emailed to the signed-in player (and copied to the arcade mailbox).
+      if (q.a === 'buy' && out.code && out.prize) { out.emailed = await prizeMail(out.email, out.player?.name || 'Player', out.prize, out.code); delete out.email; }
+      return res.status(200).json(out);
     }
     res.status(200).json(await fn(b, q));
   } catch (e) {

@@ -1,5 +1,5 @@
-import { GAMES, SONGS, MUSIC_PAGES, DONATE, SOCIALS, CLAIM_HELP, BGM, SOON, VAULT, SOCIAL_AUTH, JUKEBOX_PLAYLIST, TICKETS } from './config.js';
-import { PRIZES, REWARDS, REAL_PRIZES_LIVE, BAR } from './prizes.js';
+import { GAMES, SONGS, MUSIC_PAGES, DONATE, SOCIALS, CLAIM_HELP, BGM, SOON, VAULT, SOCIAL_AUTH, JUKEBOX_PLAYLIST } from './config.js';
+import { PRIZES, REWARDS, REAL_PRIZES_LIVE, BAR, TOKEN_PACK } from './prizes.js';
 import { COVERS, playTrailer } from './art.js';
 import { buildRoom, DIMS } from './room.js';
 import { supabase, authHeaders, playerCall, enabledProviders, escapeHtml, createActivityTracker } from './player-services.js';
@@ -27,11 +27,13 @@ async function api(a, body, q = '') {
   const r = await fetch(`/api/arcade?a=${a}${q}`, body ? { method: 'POST', headers: { 'Content-Type': 'application/json', ...await authHeaders() }, body: JSON.stringify({ ...auth, ...body }) } : undefined);
   const j = await r.json().catch(() => ({ error: 'The arcade database is not reachable right now' }));
   if (!r.ok) throw new Error(j.error || 'Something went wrong');
+  if (j.welcome) setTimeout(() => toast(`SIGN-IN BONUS: +${j.welcome} TOKENS`), 1200);
   return j;
 }
 // One arcade-wide level from every token ever earned, in any game (the database uses the same formula).
 const levelOf = earned => 1 + Math.floor(Math.sqrt(Math.max(0, earned || 0) / 20));
 function setMe(p) {
+  if (p && me && !(p.claims || []).length && (me.claims || []).length && p.name === me.name) p.claims = me.claims; // some replies leave claims out
   me = p; activity.enabled(!!p?.linked && !!p?.analytics); siteActivity.enabled(!!p?.linked && !!p?.analytics); if (p && p.avatar && !store.get('bba-av')) myAv = cleanAv(p.avatar);
   $('#tok b').textContent = p ? p.tokens : 0;
   const icon = p && (PRIZES.find(x => x.id === p.badge) || {}).icon;
@@ -49,7 +51,7 @@ async function join(name) {
   // The player is tied to this browser by a secret; signing in later keeps it on every device.
   try {
     const r = await api('join', { name });
-    auth = { pid: r.pid, key: r.key }; store.set('bba-auth', auth); setMe(r.player); if (r.gained) toast(`WELCOME BONUS: +${r.gained} TOKENS`);
+    auth = { pid: r.pid, key: r.key }; store.set('bba-auth', auth); setMe(r.player);
     api('avatar', { av: myAv }).then(x => { if (x?.player) setMe(x.player); }).catch(() => {});
     setTimeout(() => earn('daily'), 2800);
   } catch { setMe({ local:true, name, tokens:0, earned:0, closet:[], badge:'' }); }
@@ -407,24 +409,43 @@ function openJukebox() {
   cleanup = () => { pbody.onclick = null; pauseBgm(false); };
 }
 
+let payCfg;
+const payConfig = () => payCfg || (payCfg = fetch('/api/pay?a=config').then(r => r.json()).catch(() => ({ enabled: false })));
+// Coming back from PayPal: finish the payment and add the tokens.
+async function payReturn() {
+  const u = new URLSearchParams(location.search), kind = u.get('pay'); if (!kind) return;
+  history.replaceState(null, '', location.pathname);
+  if (kind !== 'return' || !u.get('token')) return toast('PAYMENT CANCELLED');
+  try {
+    const r = await fetch('/api/pay?a=capture', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ order: u.get('token') }) }), j = await r.json();
+    if (!r.ok) throw new Error(j.error);
+    toast(j.credited ? `PAYMENT RECEIVED: +${j.tokens} TOKENS` : 'THIS PAYMENT WAS ALREADY ADDED');
+    if (auth.pid) api('me', {}).then(x => setMe(x.player)).catch(() => {});
+  } catch (err) { toast((err.message || 'PAYMENT COULD NOT BE CONFIRMED').toUpperCase()); }
+}
 function openPrizes() {
   siteActivity.event('rewards_open');
   if (!auth.pid) { openProfile(); return toast('SIGN IN TO REACH THE PRIZE WALL'); }
   const card = p => { const own = me && me.closet.includes(p.id) && !p.real; return `<div class="card ${own ? 'on' : ''}"><div class="ico">${p.icon}</div><span>${p.name}</span>
       <button class="btn ${own ? 'off' : 'go'}" data-buy="${p.id}" ${own ? 'disabled' : ''}>${own ? 'OWNED' : '🪙 ' + p.cost}</button></div>`; };
   const real = PRIZES.filter(p => p.real && REAL_PRIZES_LIVE), songs = PRIZES.filter(p => p.file), gear = PRIZES.filter(p => !p.real && !p.file);
-  const tix = TICKETS.filter(t => t.link && (!t.ends || new Date().toISOString().slice(0, 10) < t.ends));
   show(`<h2>PRIZE WALL</h2><p>You have <b style="color:var(--gold)">🪙 ${me ? me.tokens : 0}</b> tokens. Everything you win goes in your closet.</p>
-    ${tix.length ? `<h3>FREE TICKETS</h3>${tix.map(t => `<div class="card on" style="flex-direction:row;text-align:left;gap:12px"><div class="ico">🎟️</div><div style="flex:1"><p style="color:#fff">${t.title.toUpperCase()}</p><p class="dim">${t.when} · ${t.where}</p>
-      <a class="btn go" href="${t.link}" target="_blank" rel="noopener" data-tix="1">GET FREE TICKETS</a><p class="dim">Opens the ticket page with the free code applied. Your tickets are emailed to you when you finish the order.</p></div></div>`).join('')}` : ''}
-    ${real.length ? `<h3>REAL PRIZES</h3><div class="grid">${real.map(card).join('')}</div>` : ''}
+    <div id="paybox"></div>
+    ${real.length ? `<h3>REAL PRIZES</h3><p class="dim">Sign in to redeem. Your claim code and any ticket link are emailed to you.</p><div class="grid">${real.map(card).join('')}</div>` : ''}
     ${songs.length ? `<h3>SONG DOWNLOADS</h3><div class="grid">${songs.map(card).join('')}</div>` : ''}
     <h3>CLOSET GEAR</h3><div class="grid">${gear.map(card).join('')}</div>
-    <h3>HOW TO WIN TOKENS</h3><p class="dim">Every minute you play +${REWARDS.minute} · Beat a Quest of Champions level +${REWARDS.level} · T1 Versus fatality +${REWARDS.fatality} · Welcome bonus +${REWARDS.signup} · Daily streak +${REWARDS.daily} on day 1 up to +${REWARDS.daily * REWARDS.streakMax} a day by day ${REWARDS.streakMax} · Game scores up to +${REWARDS.scoreMax} a run</p>`, '#ffc93a');
+    <h3>HOW TO WIN TOKENS</h3><p class="dim">Every minute you play +${REWARDS.minute} · Beat a Quest of Champions level +${REWARDS.level} · T1 Versus fatality +${REWARDS.fatality} · Sign-in bonus +${REWARDS.signup} (one time) · Daily streak +${REWARDS.daily} on day 1 up to +${REWARDS.daily * REWARDS.streakMax} a day by day ${REWARDS.streakMax} · Game scores up to +${REWARDS.scoreMax} a run</p>`, '#ffc93a');
   pbody.onclick = async e => {
     const b = e.target.closest('[data-buy]'); if (!b || !needMe()) return;
-    try { const r = await api('buy', { id: b.dataset.buy }); setMe(r.player); hub('prize'); if (r.code || b.dataset.buy.startsWith('song-')) openCloset(); else { toast('ADDED TO YOUR CLOSET'); openPrizes(); } } catch (err) { toast(err.message.toUpperCase()); }
+    try { const r = await api('buy', { id: b.dataset.buy }); setMe(r.player); hub('prize'); if (r.code || b.dataset.buy.startsWith('song-')) { openCloset(); if (r.code) toast(r.emailed ? 'REDEEMED! CHECK YOUR EMAIL' : 'REDEEMED! YOUR CODE IS IN YOUR CLOSET'); } else { toast('ADDED TO YOUR CLOSET'); openPrizes(); } } catch (err) { toast(err.message.toUpperCase()); if (/sign in/i.test(err.message)) openProfile(); }
   };
+  // Buy tokens with real money (only shown when the payment service is switched on)
+  payConfig().then(c => { const box = $('#paybox'); if (!box || !c.enabled) return;
+    box.innerHTML = `<h3>BUY TOKENS</h3><div class="card on" style="flex-direction:row;text-align:left;gap:12px"><div class="ico">🪙</div><div style="flex:1"><p style="color:#fff">${c.tokens} TOKENS</p><p class="dim">Pay with PayPal. Tokens are added to this player right after payment.</p><button class="btn go" id="paygo">BUY FOR $${c.price}</button></div></div>`;
+    $('#paygo').onclick = async () => { const btn = $('#paygo'); btn.disabled = true; btn.textContent = 'OPENING PAYPAL…';
+      try { const r = await fetch('/api/pay?a=create', { method: 'POST', headers: { 'Content-Type': 'application/json', ...await authHeaders() }, body: JSON.stringify(auth) }), j = await r.json(); if (!r.ok) throw new Error(j.error); location.href = j.url; }
+      catch (err) { toast((err.message || 'PAYMENT COULD NOT START').toUpperCase()); btn.disabled = false; btn.textContent = `BUY FOR $${c.price}`; } };
+  });
   cleanup = () => { pbody.onclick = null; };
 }
 
@@ -436,7 +457,7 @@ function openCloset() {
     <div>${sw('shirt', 'SHIRT COLOR', AV.shirt)}${sw('hc', 'HAIR COLOR', AV.hc)}${sw('skin', 'SKIN', AV.skin)}${pick('hair', 'HAIR', AV.hair)}${pick('shades', 'SHADES', ['OFF', 'ON'])}</div></div>
     <h3>MY PRIZES</h3>${own.length ? `<p>Tap a prize to wear it next to your name.</p><div class="grid">${own.map(p => `<div class="card ${me.badge === p.id ? 'on' : ''}"><div class="ico">${p.icon}</div><span>${p.name}</span>
       ${p.file ? `<a class="btn go" href="${p.file}" download="${p.name}.mp3">⬇ DOWNLOAD</a>` : `<button class="btn" data-wear="${me.badge === p.id ? '' : p.id}">${me.badge === p.id ? 'TAKE OFF' : 'WEAR'}</button>`}</div>`).join('')}</div>` : '<p>No prizes yet. Win tokens and hit the prize wall.</p><button class="btn go" data-go="prizes">GO TO THE PRIZE WALL</button>'}
-    ${me && me.claims && me.claims.length ? `<h3>REAL PRIZE CLAIM CODES</h3><p>${CLAIM_HELP}</p>${me.claims.map(c => `<div><span class="code">${c.code}</span> ${(PRIZES.find(p => p.id === c.id) || {}).name || ''}</div>`).join('')}` : ''}`, '#3ea8ff');
+    ${me && me.claims && me.claims.length ? `<h3>REAL PRIZE CLAIM CODES</h3><p>${CLAIM_HELP}</p>${me.claims.map(c => `<div><span class="code">${c.code}</span> ${c.name || (PRIZES.find(p => p.id === c.id) || {}).name || ''}${c.link ? ` <a class="btn go" href="${c.link}" target="_blank" rel="noopener">GET YOUR TICKETS</a>` : ''}</div>`).join('')}` : ''}`, '#3ea8ff');
   const paint = () => drawAvatar($('#clav').getContext('2d'), 240, 320, myAv, me ? me.name : ''); paint();
   let saveT;
   pbody.onclick = async e => {
@@ -872,6 +893,7 @@ const enter = async () => {
 };
 $('#genter').onclick = enter; gname.addEventListener('keydown', e => { if (e.key === 'Enter') enter(); });
 setMe(null);
+payReturn();
 restoreAccount();
 
 if ($('#featured')) $('#featured').onclick = openMyArcade;

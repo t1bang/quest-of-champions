@@ -110,11 +110,5 @@ export const SOCIALS = {
 };
 
 // How to claim a real prize (shown with the claim code).
-export const CLAIM_HELP = 'Send this code to T1 Entertainment to claim your prize.';
+export const CLAIM_HELP = 'We email your code to you. For merch, reply to that email with your size and shipping address.';
 
-// Free tickets on the prize wall. The button opens the ticket page; Eventbrite emails the
-// tickets to the player when they finish the order. "ends" hides the card after that date.
-export const TICKETS = [
-  { title: 'Stevie Stone Presents: GOAT Talk Tour', where: 'North Point, Cedar Rapids, IA', when: 'Sat Nov 21 · Doors 7 PM',
-    link: 'https://www.eventbrite.com/e/2002897186401/?discount=BIGBANG1', ends: '2026-11-22' },
-];

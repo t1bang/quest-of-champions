@@ -15,9 +15,10 @@ export const PRIZES = [
   { id: 'crown', name: 'Arcade Crown', icon: '👑', cost: 250 },
   // real prizes
   { id: 'real-stickers', name: 'Sticker Pack', icon: '🏷️', cost: 15, real: true },
-  { id: 'real-tone-tee', name: 'Tone Da Boss T-Shirt', icon: '👕', cost: 40, real: true },
+  { id: 'real-tickets', name: 'Stevie Stone GOAT Talk Tour Tickets', icon: '🎟️', cost: 500, real: true, kind: 'ticket' },
+  { id: 'real-tone-tee', name: 'Tone Da Boss T-Shirt', icon: '👕', cost: 500, real: true },
   { id: 'real-hat', name: 'T1 Hat', icon: '🧢', cost: 45, real: true },
-  { id: 'real-hoodie', name: 'T1 Hoodie', icon: '🧥', cost: 80, real: true },
+  { id: 'real-hoodie', name: 'T1 Hoodie', icon: '🧥', cost: 1000, real: true },
   // song downloads (10 tokens each)
   { id: 'song-ring', name: 'Gimme My Ring', icon: '🎵', cost: 10, file: 'games/quest-of-champions/audio/ring.mp3' },
   { id: 'song-champions', name: 'Champions', icon: '🎵', cost: 10, file: 'games/quest-of-champions/audio/champions.mp3' },
@@ -28,8 +29,11 @@ export const PRIZES = [
 // Token rewards (the server enforces these).
 // minute = each minute a game window is open; fatality = T1 Versus; level = beating a Quest of Champions level;
 // social = one-time bonus for signing in with Google or Facebook.
-// signup = welcome bonus for a new player; daily = 10 x the streak day, up to streakMax days (70 a day).
+// signup = one-time bonus when a player signs in (links an account); daily = 10 x the streak day, up to streakMax days (70 a day).
 export const REWARDS = { signup: 25, daily: 10, streakMax: 7, play: 5, trailer: 3, song: 1, scorePer100: 1, scoreMax: 50, minute: 1, fatality: 3, level: 5, social: 5 };
 
 // The bar in the lounge.
 export const BAR = { beer: 2, tips: [1, 2, 5] };
+
+// Tokens for real money (PayPal). cents is the price in US cents.
+export const TOKEN_PACK = { tokens: 100, cents: 500 };

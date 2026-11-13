@@ -102,3 +102,13 @@ For an additional cloud-save format, add a small client sanitizer, a matching da
 - **Passport.** When a cabinet opens, the arcade posts `{ bba:'passport', v:1, game, player:{ name, level, avatar, badge, tokens, account } }` to the game, and again whenever the game posts `{ bba:'hello' }`. `sdk/arcade-game.js` exposes this as `onPassport`. Games still report up with `{ bba:'score', score }` and `{ bba:'level' }`.
 - **Cruizin IA** is registered in the published game list, so its scores and play tokens are accepted.
 - **Activity hub.** `https://cruizin.chucksi.com/hub.js` with `data-game="<id>"` counts anonymous visits into `bba_private.hub_events` through `public.hub_track`. The owner page is `https://hub.t1bang.com/` (key required). The arcade lobby, Quest of Champions, Blankman and Cruizin IA carry the counter; T1 Vs., Gorilla City 2032 and Gamer Boyz still need the one-line tag in their own repositories.
+
+## Store: real prizes, email and buying tokens (November 13, 2026)
+
+Run `supabase/migrations/20261113160000_arcade_store.sql`, then set the two values named in its header (the ticket link and the server secret hash). They are deliberately not in this public repository.
+
+**Real prizes** live in `bba_private.real_prizes` (id, name, cost, kind, link, active). Redeeming needs a signed-in player, spends tokens, records a row in `bba_private.redemptions` and returns a claim code. Tickets (`kind='ticket'`) are limited to one per player and carry the link.
+
+**Email (Microsoft 365 / Outlook)** is sent by `lib/mail.js` through Microsoft Graph. In Microsoft Entra create an app registration, add the *application* permission `Mail.Send`, grant admin consent, and create a client secret. Then add these environment variables in Vercel: `MS_TENANT_ID`, `MS_CLIENT_ID`, `MS_CLIENT_SECRET`, `MAIL_FROM` (the mailbox that sends). Without them the site still works and simply does not send mail. Restrict the app to that one mailbox with an application access policy.
+
+**Buying tokens (PayPal)** is `api/pay.js`: 100 tokens for $5 (`TOKEN_PACK` in `prizes.js`). Add `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_ENV` (`sandbox` to test, `live` to charge) and `ARCADE_SERVER_SECRET` (a long random value; store its hash in `bba_private.secrets` as the migration header shows). The Buy Tokens card appears on the prize wall only when all of these are set. Payments are captured on the server and credited once per PayPal capture id; bought tokens do not raise a player's level or leaderboard rank.
