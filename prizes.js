@@ -1,23 +1,55 @@
-// Prize wall. cost = tokens. Used by both the site and the server.
-// real:true prizes give the player a claim code to redeem with T1 Entertainment.
+// Prize wall and wardrobe. cost = tokens. Used by both the site and the server.
+// real:true items are real life items: the player gets a claim code by email.
 // file: prizes are song downloads that unlock in the player's closet.
 export const REAL_PRIZES_LIVE = true;
 
+// AVATAR ITEMS: what a player's avatar can wear. slot = where it goes; cost 0 = free for everyone.
+// Jewelry is priced higher (100+). The server only lets a player wear free items or ones in their closet.
+export const SLOTS = [['hat', 'AVATAR HATS'], ['shirt', 'AVATAR SHIRTS'], ['pants', 'AVATAR PANTS'], ['shoes', 'AVATAR SHOES'], ['eyes', 'AVATAR EYEWEAR'],
+  ['chain', 'GOLD CHAIN'], ['rings', 'GOLD RINGS'], ['fangs', 'GOLD FANGS'], ['belt', 'CHAMPIONSHIP BELT'], ['hand', 'IN YOUR HAND']];
+export const JEWELRY = ['chain', 'rings', 'fangs', 'belt'];
+export const WEAR = [
+  // free basics
+  ...[['red', '#e01226'], ['black', '#16161c'], ['white', '#ffffff'], ['blue', '#3ea8ff'], ['green', '#35e06f'], ['gold', '#ffc93a'], ['purple', '#b06cff'], ['orange', '#ff7a1a']]
+    .map(([n, c]) => ({ id: 'tee-' + n, name: n[0].toUpperCase() + n.slice(1) + ' Tee', slot: 'shirt', cost: 0, icon: '👕', c })),
+  { id: 'jeans-black', name: 'Black Jeans', slot: 'pants', cost: 0, icon: '👖', c: '#23232b' },
+  { id: 'jeans-blue', name: 'Blue Jeans', slot: 'pants', cost: 0, icon: '👖', c: '#2a4a9a' },
+  { id: 'shorts-grey', name: 'Grey Shorts', slot: 'pants', cost: 0, icon: '🩳', c: '#8a8f9c' },
+  { id: 'kicks', name: 'White Sneakers', slot: 'shoes', cost: 0, icon: '👟', c: '#ffffff' },
+  { id: 'kicks-black', name: 'Black Sneakers', slot: 'shoes', cost: 0, icon: '👟', c: '#16161c' },
+  // hats
+  { id: 'beanie', name: 'Black Beanie', slot: 'hat', cost: 25, icon: '🧢' },
+  { id: 'cap', name: 'Red Snapback', slot: 'hat', cost: 30, icon: '🧢' },
+  { id: 'crown', name: 'Arcade Crown', slot: 'hat', cost: 250, icon: '👑' },
+  // shirts
+  { id: 'hoodie', name: 'T1 Red Hoodie', slot: 'shirt', cost: 40, icon: '🧥' },
+  { id: 'jersey', name: 'T1 Jersey', slot: 'shirt', cost: 50, icon: '🎽' },
+  { id: 'suit', name: 'Black Suit', slot: 'shirt', cost: 80, icon: '🤵' },
+  // pants
+  { id: 'pants-camo', name: 'Camo Cargos', slot: 'pants', cost: 30, icon: '👖' },
+  { id: 'pants-red', name: 'Red Track Pants', slot: 'pants', cost: 30, icon: '👖' },
+  // shoes + eyewear
+  { id: 'boots', name: 'Champion Boots', slot: 'shoes', cost: 50, icon: '🥾' },
+  { id: 'shades', name: 'Red Aviators', slot: 'eyes', cost: 30, icon: '🕶️' },
+  // jewelry
+  { id: 'chain', name: 'Gold Chain', slot: 'chain', cost: 100, icon: '📿' },
+  { id: 'fangs', name: 'Gold Fangs', slot: 'fangs', cost: 100, icon: '🦷' },
+  { id: 'ring', name: 'Gold Rings', slot: 'rings', cost: 120, icon: '💍' },
+  { id: 'belt', name: 'Championship Belt', slot: 'belt', cost: 160, icon: '🏆' },
+  // in hand
+  { id: 'mic', name: 'Gold Mic', slot: 'hand', cost: 60, icon: '🎤' },
+  { id: 'record', name: 'Golden Record', slot: 'hand', cost: 80, icon: '📀' },
+];
+export const DEFAULT_FIT = { shirt: 'tee-red', pants: 'jeans-black', shoes: 'kicks' };
+
+// Everything that costs tokens: avatar items, real life items (500-2000 tokens) and song downloads.
 export const PRIZES = [
-  { id: 'beanie', name: 'Black Beanie', icon: '🧢', cost: 25 },
-  { id: 'shades', name: 'Red Aviators', icon: '🕶️', cost: 30 },
-  { id: 'hoodie', name: 'T1 Red Hoodie', icon: '🧥', cost: 40 },
-  { id: 'boots', name: 'Champion Boots', icon: '🥾', cost: 50 },
-  { id: 'mic', name: 'Gold Mic', icon: '🎤', cost: 60 },
-  { id: 'record', name: 'Golden Record', icon: '📀', cost: 80 },
-  { id: 'ring', name: 'Champion Ring', icon: '💍', cost: 120 },
-  { id: 'belt', name: 'Title Belt', icon: '🏆', cost: 160 },
-  { id: 'crown', name: 'Arcade Crown', icon: '👑', cost: 250 },
-  // real prizes
-  { id: 'real-stickers', name: 'Sticker Pack', icon: '🏷️', cost: 15, real: true },
+  ...WEAR.filter(w => w.cost > 0),
+  // real life items
   { id: 'real-tickets', name: 'Stevie Stone GOAT Talk Tour Tickets', icon: '🎟️', cost: 500, real: true, kind: 'ticket' },
+  { id: 'real-stickers', name: 'Sticker Pack', icon: '🏷️', cost: 500, real: true },
   { id: 'real-tone-tee', name: 'Tone Da Boss T-Shirt', icon: '👕', cost: 500, real: true },
-  { id: 'real-hat', name: 'T1 Hat', icon: '🧢', cost: 45, real: true },
+  { id: 'real-hat', name: 'T1 Hat', icon: '🧢', cost: 750, real: true },
   { id: 'real-hoodie', name: 'T1 Hoodie', icon: '🧥', cost: 1000, real: true },
   // song downloads (10 tokens each)
   { id: 'song-ring', name: 'Gimme My Ring', icon: '🎵', cost: 10, file: 'games/quest-of-champions/audio/ring.mp3' },

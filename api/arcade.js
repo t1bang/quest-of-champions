@@ -1,7 +1,7 @@
 // Big Bang Arcade online database: players, tokens, closet, leaderboards, comments.
 // Storage: configured Upstash Redis or Vercel Blob; otherwise the T1Bang Supabase arcade.
 import { createHash, randomBytes } from 'node:crypto';
-import { PRIZES, REWARDS, REAL_PRIZES_LIVE, BAR } from '../prizes.js';
+import { PRIZES, REWARDS, REAL_PRIZES_LIVE, BAR, WEAR } from '../prizes.js';
 import { prizeMail } from '../lib/mail.js';
 
 const SB_URL = "https://tdjvnhuygpobdcmhlcms.supabase.co";
@@ -56,7 +56,7 @@ async function set(key, val) {
 const fail = (status, message) => Object.assign(new Error(message), { status });
 const hash = s => createHash('sha256').update(String(s)).digest('hex');
 const cleanName = s => String(s || '').replace(/[^A-Za-z0-9 _-]/g, '').trim().slice(0, 16);
-const pub = p => ({ name: p.name, tokens: p.tokens, earned: p.earned, closet: p.closet, claims: p.claims, badge: p.badge, avatar: p.avatar || null, beers: p.beers || 0 });
+const pub = p => ({ name: p.name, tokens: p.tokens, earned: p.earned, closet: p.closet, claims: p.claims, badge: p.badge, avatar: p.avatar || null, outfit: p.outfit || {}, beers: p.beers || 0 });
 const today = () => new Date().toISOString().slice(0, 10);
 const badgeIcon = p => (PRIZES.find(x => x.id === p.badge) || {}).icon || '';
 
@@ -148,6 +148,12 @@ const actions = {
     const bar = (await get('bar')) || { beers: 0, tips: 0 };
     if (b.what === 'beer') bar.beers++; else bar.tips += cost;
     await set('bar', bar); await set('player/' + b.pid, p);
+    return { player: pub(p) };
+  },
+  async wear(b) {
+    const p = await auth(b), fit = {};
+    for (const [slot, id] of Object.entries(b.outfit || {})) { const w = WEAR.find(x => x.id === id && x.slot === slot); if (w && (w.cost === 0 || p.closet.includes(id))) fit[slot] = id; }
+    p.outfit = fit; await set('player/' + b.pid, p);
     return { player: pub(p) };
   },
   async avatar(b) {

@@ -1,5 +1,5 @@
 import { GAMES, SONGS, MUSIC_PAGES, DONATE, SOCIALS, CLAIM_HELP, BGM, SOON, VAULT, SOCIAL_AUTH, JUKEBOX_PLAYLIST } from './config.js';
-import { PRIZES, REWARDS, REAL_PRIZES_LIVE, BAR, TOKEN_PACK } from './prizes.js';
+import { PRIZES, REWARDS, REAL_PRIZES_LIVE, BAR, TOKEN_PACK, WEAR, SLOTS, JEWELRY, DEFAULT_FIT } from './prizes.js';
 import { COVERS, playTrailer } from './art.js';
 import { buildRoom, DIMS } from './room.js';
 import { supabase, authHeaders, playerCall, enabledProviders, escapeHtml, createActivityTracker } from './player-services.js';
@@ -34,6 +34,8 @@ async function api(a, body, q = '') {
 const levelOf = earned => 1 + Math.floor(Math.sqrt(Math.max(0, earned || 0) / 20));
 function setMe(p) {
   if (p && me && !(p.claims || []).length && (me.claims || []).length && p.name === me.name) p.claims = me.claims; // some replies leave claims out
+  if (p && me && !p.outfit && me.outfit && p.name === me.name) p.outfit = me.outfit;
+  if (p && p.outfit && Object.keys(p.outfit).length && !store.get('bba-fit')) myFit = cleanFit(p.outfit, p.closet);
   me = p; activity.enabled(!!p?.linked && !!p?.analytics); siteActivity.enabled(!!p?.linked && !!p?.analytics); if (p && p.avatar && !store.get('bba-av')) myAv = cleanAv(p.avatar);
   $('#tok b').textContent = p ? p.tokens : 0;
   const icon = p && (PRIZES.find(x => x.id === p.badge) || {}).icon;
@@ -428,16 +430,19 @@ function openPrizes() {
   if (!auth.pid) { openProfile(); return toast('SIGN IN TO REACH THE PRIZE WALL'); }
   const card = p => { const own = me && me.closet.includes(p.id) && !p.real; return `<div class="card ${own ? 'on' : ''}"><div class="ico">${p.icon}</div><span>${p.name}</span>
       <button class="btn ${own ? 'off' : 'go'}" data-buy="${p.id}" ${own ? 'disabled' : ''}>${own ? 'OWNED' : '🪙 ' + p.cost}</button></div>`; };
-  const real = PRIZES.filter(p => p.real && REAL_PRIZES_LIVE), songs = PRIZES.filter(p => p.file), gear = PRIZES.filter(p => !p.real && !p.file);
-  show(`<h2>PRIZE WALL</h2><p>You have <b style="color:var(--gold)">🪙 ${me ? me.tokens : 0}</b> tokens. Everything you win goes in your closet.</p>
+  const real = PRIZES.filter(p => p.real && REAL_PRIZES_LIVE), songs = PRIZES.filter(p => p.file);
+  const group = (label, list, note) => list.length ? `<h3>${label}</h3>${note ? `<p class="dim">${note}</p>` : ''}<div class="grid">${list.map(card).join('')}</div>` : '';
+  const bySlot = slots => PRIZES.filter(p => slots.includes(p.slot));
+  show(`<h2>PRIZE WALL</h2><p>You have <b style="color:var(--gold)">🪙 ${me ? me.tokens : 0}</b> tokens. Avatar items go in your closet. Plain tees, jeans and sneakers are already there for free.</p>
     <div id="paybox"></div>
-    ${real.length ? `<h3>REAL PRIZES</h3><p class="dim">Sign in to redeem. Your claim code and any ticket link are emailed to you.</p><div class="grid">${real.map(card).join('')}</div>` : ''}
-    ${songs.length ? `<h3>SONG DOWNLOADS</h3><div class="grid">${songs.map(card).join('')}</div>` : ''}
-    <h3>CLOSET GEAR</h3><div class="grid">${gear.map(card).join('')}</div>
+    ${group('REAL LIFE ITEMS', real, 'Sign in to redeem. Your claim code and any ticket link are emailed to you.')}
+    ${group('AVATAR HATS', bySlot(['hat']))}${group('AVATAR CLOTHES', bySlot(['shirt', 'pants', 'shoes', 'eyes']))}
+    ${group('AVATAR JEWELRY', bySlot(JEWELRY))}${group('AVATAR EXTRAS', bySlot(['hand']))}
+    ${group('SONG DOWNLOADS', songs)}
     <h3>HOW TO WIN TOKENS</h3><p class="dim">Every minute you play +${REWARDS.minute} · Beat a Quest of Champions level +${REWARDS.level} · T1 Versus fatality +${REWARDS.fatality} · Sign-in bonus +${REWARDS.signup} (one time) · Daily streak +${REWARDS.daily} on day 1 up to +${REWARDS.daily * REWARDS.streakMax} a day by day ${REWARDS.streakMax} · Game scores up to +${REWARDS.scoreMax} a run</p>`, '#ffc93a');
   pbody.onclick = async e => {
     const b = e.target.closest('[data-buy]'); if (!b || !needMe()) return;
-    try { const r = await api('buy', { id: b.dataset.buy }); setMe(r.player); hub('prize'); if (r.code || b.dataset.buy.startsWith('song-')) { openCloset(); if (r.code) toast(r.emailed ? 'REDEEMED! CHECK YOUR EMAIL' : 'REDEEMED! YOUR CODE IS IN YOUR CLOSET'); } else { toast('ADDED TO YOUR CLOSET'); openPrizes(); } } catch (err) { toast(err.message.toUpperCase()); if (/sign in/i.test(err.message)) openProfile(); }
+    try { const r = await api('buy', { id: b.dataset.buy }); setMe(r.player); hub('prize'); if (r.code || b.dataset.buy.startsWith('song-') || wearItem(b.dataset.buy)) { const w = wearItem(b.dataset.buy); if (w) { myFit[w.slot] = w.id; store.set('bba-fit', myFit); api('wear', { outfit: myFit }).then(x => x?.player && setMe(x.player)).catch(() => {}); } openCloset(); if (w) toast('BOUGHT! IT IS ON YOUR AVATAR'); if (r.code) toast(r.emailed ? 'REDEEMED! CHECK YOUR EMAIL' : 'REDEEMED! YOUR CODE IS IN YOUR CLOSET'); } else { toast('ADDED TO YOUR CLOSET'); openPrizes(); } } catch (err) { toast(err.message.toUpperCase()); if (/sign in/i.test(err.message)) openProfile(); }
   };
   // Buy tokens with real money (only shown when the payment service is switched on)
   payConfig().then(c => { const box = $('#paybox'); if (!box || !c.enabled) return;
@@ -450,28 +455,31 @@ function openPrizes() {
 }
 
 function openCloset() {
-  const own = me ? PRIZES.filter(p => me.closet.includes(p.id)) : [];
+  const closet = me?.closet || [];
+  const owned = slot => WEAR.filter(w => w.slot === slot && (w.cost === 0 || closet.includes(w.id)));
   const sw = (k, label, list) => `<h3>${label}</h3><div class="swatches">${list.map((c, i) => `<button class="sw ${myAv[k] === i ? 'on' : ''}" data-sw="${k}:${i}" style="background:${c}" aria-label="${label} ${i + 1}"></button>`).join('')}</div>`;
   const pick = (k, label, list) => `<h3>${label}</h3><div class="tabs">${list.map((t, i) => `<button class="btn ${myAv[k] === i ? 'on' : ''}" data-sw="${k}:${i}">${t}</button>`).join('')}</div>`;
-  show(`<h2>MY CLOSET</h2><div class="cols"><div><div class="stage" style="--c:#3ea8ff;aspect-ratio:3/4;max-width:220px"><canvas width="240" height="320" id="clav"></canvas></div><p class="dim" id="clsaved">&nbsp;</p></div>
-    <div>${sw('shirt', 'SHIRT COLOR', AV.shirt)}${sw('hc', 'HAIR COLOR', AV.hc)}${sw('skin', 'SKIN', AV.skin)}${pick('hair', 'HAIR', AV.hair)}${pick('shades', 'SHADES', ['OFF', 'ON'])}</div></div>
-    <h3>MY PRIZES</h3>${own.length ? `<p>Tap a prize to wear it next to your name.</p><div class="grid">${own.map(p => `<div class="card ${me.badge === p.id ? 'on' : ''}"><div class="ico">${p.icon}</div><span>${p.name}</span>
-      ${p.file ? `<a class="btn go" href="${p.file}" download="${p.name}.mp3">⬇ DOWNLOAD</a>` : `<button class="btn" data-wear="${me.badge === p.id ? '' : p.id}">${me.badge === p.id ? 'TAKE OFF' : 'WEAR'}</button>`}</div>`).join('')}</div>` : '<p>No prizes yet. Win tokens and hit the prize wall.</p><button class="btn go" data-go="prizes">GO TO THE PRIZE WALL</button>'}
-    ${me && me.claims && me.claims.length ? `<h3>REAL PRIZE CLAIM CODES</h3><p>${CLAIM_HELP}</p>${me.claims.map(c => `<div><span class="code">${c.code}</span> ${c.name || (PRIZES.find(p => p.id === c.id) || {}).name || ''}${c.link ? ` <a class="btn go" href="${c.link}" target="_blank" rel="noopener">GET YOUR TICKETS</a>` : ''}</div>`).join('')}` : ''}`, '#3ea8ff');
-  const paint = () => drawAvatar($('#clav').getContext('2d'), 240, 320, myAv, me ? me.name : ''); paint();
+  const tile = (slot, w) => `<button class="wtile ${(w ? myFit[slot] === w.id : !myFit[slot]) ? 'on' : ''}" data-fit="${slot}:${w ? w.id : ''}">${w ? (w.c ? `<i style="background:${w.c}"></i>` : `<b>${w.icon}</b>`) : '<b>✕</b>'}<span>${w ? w.name : 'None'}</span>${w ? `<em>${w.cost ? 'BOUGHT' : 'FREE'}</em>` : ''}</button>`;
+  const section = ([slot, label]) => { const list = owned(slot), must = slot === 'shirt' || slot === 'pants' || slot === 'shoes'; if (!list.length) return `<h3>${label}</h3><p class="dim">Nothing yet. Find these on the prize wall.</p>`; return `<h3>${label}</h3><div class="wgrid">${must ? '' : tile(slot, null)}${list.map(w => tile(slot, w)).join('')}</div>`; };
+  const songs = PRIZES.filter(p => p.file && closet.includes(p.id));
+  show(`<h2>MY CLOSET</h2><p>Everything free and everything you bought. Tap an item to put it on.</p>
+    <div class="cols"><div><div class="stage" style="--c:#3ea8ff;aspect-ratio:3/4;max-width:240px"><canvas width="240" height="320" id="clav"></canvas></div><p class="dim" id="clsaved">&nbsp;</p>
+      ${sw('skin', 'SKIN', AV.skin)}${pick('hair', 'HAIR', AV.hair)}${sw('hc', 'HAIR COLOR', AV.hc)}</div>
+    <div>${SLOTS.map(section).join('')}<button class="btn go" data-go="prizes" style="margin-top:14px">GET MORE ON THE PRIZE WALL</button></div></div>
+    ${songs.length ? `<h3>MY SONG DOWNLOADS</h3><div class="grid">${songs.map(p => `<div class="card"><div class="ico">${p.icon}</div><span>${p.name}</span><a class="btn go" href="${p.file}" download="${p.name}.mp3">⬇ DOWNLOAD</a></div>`).join('')}</div>` : ''}
+    ${me && me.claims && me.claims.length ? `<h3>REAL LIFE ITEMS: CLAIM CODES</h3><p>${CLAIM_HELP}</p>${me.claims.map(c => `<div><span class="code">${c.code}</span> ${c.name || (PRIZES.find(p => p.id === c.id) || {}).name || ''}${c.link ? ` <a class="btn go" href="${c.link}" target="_blank" rel="noopener">GET YOUR TICKETS</a>` : ''}</div>`).join('')}` : ''}`, '#3ea8ff');
+  const paint = () => drawAvatar($('#clav').getContext('2d'), 240, 320, myAv, me ? me.name : '', myFit); paint();
   let saveT;
-  pbody.onclick = async e => {
+  const save = () => { // keep the old-style avatar in step so leaderboards show the right shirt, then save both
+    const tee = WEAR.findIndex(w => w.id === myFit.shirt); if (tee > -1 && tee < 8) myAv.shirt = tee; myAv.shades = myFit.eyes === 'shades' ? 1 : 0;
+    store.set('bba-av', myAv); store.set('bba-fit', myFit); clearTimeout(saveT); $('#clsaved').textContent = 'SAVING…';
+    saveT = setTimeout(async () => { let ok = true; if (auth.pid) { try { const r = await api('avatar', { av: myAv }); if (r?.player) setMe(r.player); const w = await api('wear', { outfit: myFit }); if (w?.player) setMe(w.player); } catch { ok = false; } } const el = $('#clsaved'); if (el) el.textContent = ok ? 'SAVED' : 'SAVED ON THIS DEVICE'; }, 700);
+  };
+  pbody.onclick = e => {
     if (e.target.closest('[data-go]')) return goTo('prizes');
-    const c = e.target.closest('[data-sw]');
-    if (c) { // change a colour or style: updates the preview now, saves a moment later
-      const [k, i] = c.dataset.sw.split(':'); myAv[k] = +i; myAv = cleanAv(myAv); paint();
-      pbody.querySelectorAll(`[data-sw^="${k}:"]`).forEach(x => x.classList.toggle('on', x === c));
-      store.set('bba-av', myAv); clearTimeout(saveT); $('#clsaved').textContent = 'SAVING…';
-      saveT = setTimeout(async () => { let ok = true; if (auth.pid) { try { const r = await api('avatar', { av: myAv }); if (r?.player) setMe(r.player); } catch { ok = false; } } const el = $('#clsaved'); if (el) el.textContent = ok ? 'SAVED' : 'SAVED ON THIS DEVICE'; }, 600);
-      return;
-    }
-    const b = e.target.closest('[data-wear]'); if (!b) return;
-    try { const r = await api('badge', { id: b.dataset.wear }); setMe(r.player); openCloset(); } catch (err) { toast(err.message.toUpperCase()); }
+    const c = e.target.closest('[data-sw]'), t = e.target.closest('[data-fit]');
+    if (c) { const [k, i] = c.dataset.sw.split(':'); myAv[k] = +i; myAv = cleanAv(myAv); pbody.querySelectorAll(`[data-sw^="${k}:"]`).forEach(x => x.classList.toggle('on', x === c)); paint(); save(); }
+    if (t) { const [slot, id] = t.dataset.fit.split(':'); if (id) myFit[slot] = id; else delete myFit[slot]; myFit = cleanFit(myFit, closet); pbody.querySelectorAll(`[data-fit^="${slot}:"]`).forEach(x => x.classList.toggle('on', x === t)); paint(); save(); }
   };
   cleanup = () => { pbody.onclick = null; };
 }
@@ -551,21 +559,49 @@ function openMini(kind) {
 const AV = { skin: ['#f1c9a5', '#d9a273', '#b9794f', '#8a5a3c', '#5a3a26'], hc: ['#111111', '#5a3a1a', '#d2142a', '#ffd23e', '#3ea8ff', '#e8e8f0'], shirt: ['#e01226', '#111111', '#ffffff', '#3ea8ff', '#35e06f', '#ffc93a', '#b06cff', '#ff7a1a'], hair: ['LOCS', 'SHORT', 'AFRO', 'CAP', 'BALD'] };
 const cleanAv = a => { a = a || {}; const n = (v, m) => Math.max(0, Math.min(m, Math.floor(Number(v) || 0))); return { skin: n(a.skin, 4), hair: n(a.hair, 4), hc: n(a.hc, 5), shirt: n(a.shirt, 7), shades: n(a.shades, 1) }; };
 let myAv = cleanAv(store.get('bba-av') || { skin: 3, hair: 0, hc: 0, shirt: 0, shades: 1 });
-function drawAvatar(x, W, H, a, name) { // pixel person on a 24x40 grid
+// What the avatar is wearing: one item id per slot. Only free items or owned ones (when a closet is given) survive.
+const wearItem = id => WEAR.find(w => w.id === id);
+const cleanFit = (f, closet) => { const out = {}; for (const [slot] of SLOTS) { const w = wearItem((f || {})[slot]); if (w && w.slot === slot && (!closet || w.cost === 0 || closet.includes(w.id))) out[slot] = w.id; } if (!out.shirt) out.shirt = DEFAULT_FIT.shirt; if (!out.pants) out.pants = DEFAULT_FIT.pants; return out; };
+var myFit = cleanFit(store.get('bba-fit') || { ...DEFAULT_FIT, shirt: WEAR[myAv.shirt]?.id || DEFAULT_FIT.shirt, ...(myAv.shades ? { eyes: 'shades' } : {}) });
+function drawAvatar(x, W, H, a, name, fit) { // pixel person on a 24x40 grid
   x.clearRect(0, 0, W, H); const u = Math.min(W / 24, (H - (name ? H * 0.12 : 0)) / 40), ox = (W - 24 * u) / 2, oy = H - 40 * u, R = (c, px, py, w, h) => { x.fillStyle = c; x.fillRect(Math.round(ox + px * u), Math.round(oy + py * u), Math.ceil(w * u), Math.ceil(h * u)); };
-  const sk = AV.skin[a.skin], hc = AV.hc[a.hc], sh = AV.shirt[a.shirt];
+  const f = fit || { shirt: WEAR[a.shirt]?.id || 'tee-red', pants: 'jeans-black', shoes: 'kicks', ...(a.shades ? { eyes: 'shades' } : {}) };
+  const sk = AV.skin[a.skin], hc = AV.hc[a.hc], G = '#ffc93a', GD = '#c98a12', top = wearItem(f.shirt) || {}, leg = wearItem(f.pants) || {}, shoe = wearItem(f.shoes) || {};
+  if (f.shirt === 'hoodie') R('#b00e1e', 5.5, 9, 13, 5);                       // hood behind the head
   R('#000', 6.5, 1.5, 11, 11); R(sk, 7, 2, 10, 10); R(sk, 10, 12, 4, 2);
   if (a.hair === 0) { R(hc, 6, 0, 12, 4); R(hc, 5, 3, 2, 13); R(hc, 17, 3, 2, 13); R(hc, 7, 3, 1, 9); R(hc, 16, 3, 1, 9); }
   if (a.hair === 1) R(hc, 7, 1, 10, 3);
   if (a.hair === 2) { R(hc, 5, -2, 14, 6); R(hc, 4, 1, 2, 5); R(hc, 18, 1, 2, 5); }
   if (a.hair === 3) { R(hc, 6, 0, 12, 4); R(hc, 15, 3, 6, 1.5); }
-  if (a.shades) { R('#000', 7, 5.5, 10, 2.5); R('#d2142a', 8, 6, 3, 1.5); R('#d2142a', 13, 6, 3, 1.5); } else { R('#000', 9, 6, 1.5, 1.5); R('#000', 13.5, 6, 1.5, 1.5); }
-  R('#000', 10.5, 9.5, 3, 0.8);
-  R('#000', 4.5, 13.5, 15, 13); R(sh, 5, 14, 14, 12); R(sh, 2, 14, 3, 9); R(sh, 19, 14, 3, 9); R(sk, 2, 23, 3, 2.5); R(sk, 19, 23, 3, 2.5);
-  R('#23232b', 6, 26, 5.5, 11); R('#23232b', 12.5, 26, 5.5, 11); R('#fff', 5, 37, 6.5, 3); R('#fff', 12.5, 37, 6.5, 3); R('#d2142a', 5, 37, 6.5, 1.2); R('#d2142a', 12.5, 37, 6.5, 1.2);
+  if (f.hat === 'beanie') { R('#16161c', 6, -0.5, 12, 4.5); R('#2a2a34', 6, 3, 12, 1.2); }
+  if (f.hat === 'cap') { R('#d2142a', 6, -0.5, 12, 4); R('#8a0e1c', 3, 2.8, 9, 1.4); }
+  if (f.hat === 'crown') { R(G, 6.5, 0, 11, 3); for (const cx of [6.5, 10.5, 14.5]) R(G, cx, -2.5, 3, 2.5); R('#d2142a', 11.3, 1, 1.4, 1.2); }
+  if (f.eyes === 'shades') { R('#000', 7, 5.5, 10, 2.5); R('#d2142a', 8, 6, 3, 1.5); R('#d2142a', 13, 6, 3, 1.5); } else { R('#000', 9, 6, 1.5, 1.5); R('#000', 13.5, 6, 1.5, 1.5); }
+  if (f.fangs === 'fangs') { R('#000', 10, 9.2, 4, 1.4); R(G, 10.4, 9.4, 1.2, 1.6); R(G, 12.4, 9.4, 1.2, 1.6); } else R('#000', 10.5, 9.5, 3, 0.8);
+  const sh = top.c || '#e01226';
+  R('#000', 4.5, 13.5, 15, 13);
+  if (f.shirt === 'jersey') { R('#16161c', 5, 14, 14, 12); R(G, 5, 14, 1.2, 12); R(G, 17.8, 14, 1.2, 12); R(sk, 2, 14, 3, 9); R(sk, 19, 14, 3, 9); R(G, 9, 17, 2.5, 1); R(G, 9.8, 17, 1, 4.5); R(G, 13, 17, 1.2, 4.5); }
+  else if (f.shirt === 'suit') { R('#16161c', 5, 14, 14, 12); R('#16161c', 2, 14, 3, 9); R('#16161c', 19, 14, 3, 9); R('#fff', 10.5, 14, 3, 7); R('#d2142a', 11.4, 14.5, 1.2, 6); }
+  else if (f.shirt === 'hoodie') { R('#e01226', 5, 14, 14, 12); R('#e01226', 2, 14, 3, 9); R('#e01226', 19, 14, 3, 9); R('#b00e1e', 8, 21.5, 8, 3); R('#fff', 10.2, 16, 2, 0.8); R('#fff', 10.8, 16, 0.8, 3.5); R('#fff', 13, 16, 0.9, 3.5); }
+  else { R(sh, 5, 14, 14, 12); R(sh, 2, 14, 3, 5); R(sk, 2, 19, 3, 4); R(sh, 19, 14, 3, 5); R(sk, 19, 19, 3, 4); }
+  R(sk, 2, 23, 3, 2.5); R(sk, 19, 23, 3, 2.5);
+  if (f.chain === 'chain') { R(G, 9, 13.2, 6, 1); R(G, 9, 14, 1, 2.2); R(G, 14, 14, 1, 2.2); R(G, 10, 16, 4, 1); R(GD, 11, 17, 2, 2.6); R(G, 11.4, 17.4, 1.2, 1.8); }
+  if (f.rings === 'ring') { R(G, 2.2, 23.6, 2.6, 1); R(G, 19.2, 23.6, 2.6, 1); R(GD, 3, 24.6, 1, 0.8); R(GD, 20, 24.6, 1, 0.8); }
+  const lc = leg.c || '#23232b', short = f.pants === 'shorts-grey';
+  if (short) { R(lc, 6, 26, 5.5, 5); R(lc, 12.5, 26, 5.5, 5); R(sk, 6.8, 31, 4, 6); R(sk, 13.3, 31, 4, 6); }
+  else if (f.pants === 'pants-camo') { R('#4a5a2a', 6, 26, 5.5, 11); R('#4a5a2a', 12.5, 26, 5.5, 11); for (const [px, py] of [[7, 27], [9.5, 30.5], [6.5, 34], [13.5, 28.5], [16, 32], [13, 35]]) R('#2f3a18', px, py, 2, 1.6); for (const [px, py] of [[9, 28], [14.5, 30.5], [8, 33]]) R('#7a8a4a', px, py, 1.6, 1.2); }
+  else if (f.pants === 'pants-red') { R('#d2142a', 6, 26, 5.5, 11); R('#d2142a', 12.5, 26, 5.5, 11); R('#fff', 6, 26, 1, 11); R('#fff', 17, 26, 1, 11); }
+  else { R(lc, 6, 26, 5.5, 11); R(lc, 12.5, 26, 5.5, 11); }
+  if (f.belt === 'belt') { R('#16161c', 5, 24, 14, 2.6); R(G, 8.5, 23.2, 7, 4.2); R(GD, 10, 24.2, 4, 2.2); R(G, 11, 24.8, 2, 1); }
+  if (f.shoes === 'boots') { R('#c98a3a', 5, 34.5, 6.5, 5.5); R('#c98a3a', 12.5, 34.5, 6.5, 5.5); R('#8a5a1e', 5, 38.8, 6.5, 1.2); R('#8a5a1e', 12.5, 38.8, 6.5, 1.2); }
+  else { const kc = shoe.c || '#fff'; R(kc, 5, 37, 6.5, 3); R(kc, 12.5, 37, 6.5, 3); R('#d2142a', 5, 37, 6.5, 1.2); R('#d2142a', 12.5, 37, 6.5, 1.2); }
+  if (f.hand === 'mic') { R('#d8d8e0', 19.3, 17.2, 3, 3); R(G, 20, 20, 1.6, 4.5); }
+  if (f.hand === 'record') { R(G, 17.5, 19, 6, 6); R(GD, 19, 20.5, 3, 3); R('#16161c', 20, 21.5, 1, 1); }
   if (name) { x.font = `bold ${Math.round(H * 0.075)}px Impact,'Arial Black',sans-serif`; x.textAlign = 'center'; x.textBaseline = 'top'; x.lineWidth = Math.max(3, H * 0.02); x.strokeStyle = '#000'; x.strokeText(name, W / 2, 2); x.fillStyle = '#ffc93a'; x.fillText(name, W / 2, 2); }
 }
-function openAvatar() {
+// Creating your avatar happens in the closet now.
+function openAvatar() { siteActivity.event('avatar_open'); openCloset(); }
+function openAvatarOld() {
   siteActivity.event('avatar_open');
   const rows = [['skin', 'SKIN', 5], ['hair', 'HAIR', 5], ['hc', 'HAIR COLOR', 6], ['shirt', 'SHIRT', 8], ['shades', 'SHADES', 2]];
   show(`<h2>YOUR AVATAR</h2><p>This is how other players see you in the arcade.</p><div class="cols"><div class="stage" style="--c:#3ea8ff;aspect-ratio:3/4;max-width:240px"><canvas width="240" height="320" id="avc"></canvas></div>
@@ -579,10 +615,10 @@ function openAvatar() {
 const peers = new Map(), sid = Math.random().toString(36).slice(2, 10);
 function peerSeen(d) {
   if (!d || typeof d.id !== 'string' || d.id === sid || (peers.size >= 40 && !peers.has(d.id))) return;
-  const name = String(d.n || 'Player').replace(/[^A-Za-z0-9 _-]/g, '').slice(0, 16), av = cleanAv(d.av), key = name + JSON.stringify(av);
+  const name = String(d.n || 'Player').replace(/[^A-Za-z0-9 _-]/g, '').slice(0, 16), av = cleanAv(d.av), fit = d.fit ? cleanFit(d.fit) : null, key = name + JSON.stringify(av) + JSON.stringify(fit);
   const x = Math.max(-760, Math.min(760, +d.x || 0)), z = Math.max(-1450, Math.min(1880, +d.z || 0));
   let p = peers.get(d.id); if (!p) { p = { x, z }; peers.set(d.id, p); }
-  if (p.key !== key && room) { if (p.tex) room.freeTex(p.tex); p.tex = room.tex(128, 256, (c, W, H) => drawAvatar(c, W, H, av, name)); p.key = key; }
+  if (p.key !== key && room) { if (p.tex) room.freeTex(p.tex); p.tex = room.tex(128, 256, (c, W, H) => drawAvatar(c, W, H, av, name, fit)); p.key = key; }
   p.tx = x; p.tz = z; p.sit = !!d.s; p.seen = performance.now();
 }
 window.__bbaPeer = peerSeen;
@@ -604,7 +640,7 @@ async function startPresence() {
     let timer, previous = '', sentAt = 0;
     ch.subscribe(st => { clearInterval(timer); if (st === 'SUBSCRIBED') timer = setInterval(() => {
       if (document.hidden || !$('#gf').hidden || !auth.pid || !me) return;
-      const payload = { id:sid, n:me.name, av:myAv, x:Math.round(P.x), z:Math.round(P.z), s:sitting ? 1 : 0 }, next = JSON.stringify(payload);
+      const payload = { id:sid, n:me.name, av:myAv, fit:myFit, x:Math.round(P.x), z:Math.round(P.z), s:sitting ? 1 : 0 }, next = JSON.stringify(payload);
       if (next === previous && Date.now()-sentAt < 4000) return;
       previous = next; sentAt = Date.now(); ch.send({ type:'broadcast', event:'pos', payload });
     }, 700); });
