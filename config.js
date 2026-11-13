@@ -63,6 +63,10 @@ export const VAULT = [
 // Sign in with Google / Facebook (Supabase Auth). Turn the providers on in the Supabase project first.
 export const SOCIAL_AUTH = { url: 'https://tdjvnhuygpobdcmhlcms.supabase.co', key: 'sb_publishable_hQBcSsJqxa9vLTCAwx2W-w_ZlZDVMxy' };
 
+// Video wall: this YouTube video plays on the big screen in the main room, and its sound is the
+// room's sound. Leave it '' to go back to the room music below.
+export const WALL_VIDEO = 'https://www.youtube.com/watch?v=3GKCej6kxc4';
+
 // Original ElevenLabs 8-bit lobby theme, take 1.
 export const BGM = 'assets/audio/big-bang-elevenlabs-take-1.mp3';
 

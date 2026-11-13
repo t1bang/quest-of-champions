@@ -1,4 +1,4 @@
-import { GAMES, SONGS, MUSIC_PAGES, DONATE, SOCIALS, CLAIM_HELP, BGM, SOON, VAULT, SOCIAL_AUTH, JUKEBOX_PLAYLIST } from './config.js';
+import { GAMES, SONGS, MUSIC_PAGES, DONATE, SOCIALS, CLAIM_HELP, BGM, SOON, VAULT, SOCIAL_AUTH, JUKEBOX_PLAYLIST, WALL_VIDEO } from './config.js';
 import { PRIZES, REWARDS, REAL_PRIZES_LIVE, BAR, TOKEN_PACK, WEAR, SLOTS, JEWELRY, DEFAULT_FIT } from './prizes.js';
 import { COVERS, playTrailer } from './art.js';
 import { buildRoom, DIMS } from './room.js';
@@ -67,7 +67,8 @@ SOON.forEach(g => { g.art = g.art || svgUrl(soonCard(g)); });
 const cover = g => `<img src="${g.art}" alt="${g.title} cover art">`;
 await Promise.race([Promise.all([document.fonts.load('40px Bungee'), document.fonts.load('16px "Press Start 2P"')]).catch(() => {}), new Promise(r => setTimeout(r, 1800))]);
 const handlers = { game: g => openGame(g), bigbox: () => openBigBox(), jukebox: () => openJukebox(), closet: () => openCloset(), prizes: () => openPrizes(), scores: () => openBoard('all'), donate: () => openDonate(), credits: () => openCredits(), soon: g => openSoon(g), vault: () => openVault(), bar: () => openBar(), sit: id => sitDown(id), mini: k => openMini(k), eastwing: () => toast('EAST WING: NEW GAMES LAND HERE SOON') };
-const room = buildRoom(view, GAMES, PRIZES, handlers, SOON);
+const wallId = ((WALL_VIDEO || '').match(/(?:v=|youtu\.be\/|shorts\/|embed\/)([\w-]{11})/) || [])[1] || '';
+const room = buildRoom(view, GAMES, PRIZES, handlers, SOON, { wallVideo: !!wallId });
 // The wall board in the lobby shows the real arcade standings and refreshes while the room is open.
 const refreshWall = () => { if (room && room.setScores && !document.hidden) board('all').then(r => room.setScores(r.rows)).catch(() => {}); };
 refreshWall(); setInterval(refreshWall, 60000);
@@ -178,7 +179,7 @@ function frame(now, xf) {
   P.eyeBase = (P.eyeBase || 300) + ((sitting ? 190 : 300) - (P.eyeBase || 300)) * Math.min(1, dt * 6);
   P.eye = P.eyeBase + Math.sin(walkT) * (moving ? 5 : 0);
   if (xr) xrDraw(xf, now / 1000, dt);
-  else if (room && !window.__skip) room.render(P, now / 1000, peerSprites(dt));
+  else if (room && !window.__skip) { room.render(P, now / 1000, peerSprites(dt)); placeWall(); }
   let best = null, bd = 1e9;
   if (room) for (const s of Object.values(stations)) {
     const d = Math.hypot(s.x - P.x, s.z - P.z), a = Math.atan2(s.x - P.x, -(s.z - P.z));
@@ -903,8 +904,33 @@ $('#map').onclick = openMap; $('#who').onclick = openProfile; $('#tok').onclick 
 // ---------------- arcade music ----------------
 const bgm = new Audio(BGM); bgm.loop = true; bgm.volume = 0.45;
 let muted = !!store.get('bba-mute'), held = false, started = false;
-const applyVol = () => { $('#snd').classList.toggle('off', muted); if (!started) return; if (muted || held || document.hidden) bgm.pause(); else bgm.play().catch(() => {}); };
-function startBgm() { started = true; applyVol(); }
+// The video wall: a YouTube player that sits behind the 3D canvas and shows through the screen on the wall.
+// It starts (with sound) on the ENTER click, because browsers only allow sound after a tap or click.
+let wall = null;
+const wallCmd = (func, args = []) => { try { wall?.contentWindow?.postMessage(JSON.stringify({ event: 'command', func, args }), '*'); } catch {} };
+function startWall() {
+  if (!wallId || wall || !room) return;
+  wall = document.createElement('iframe'); wall.id = 'wallvid'; wall.allow = 'autoplay; encrypted-media'; wall.tabIndex = -1; wall.setAttribute('aria-hidden', 'true');
+  wall.src = `https://www.youtube.com/embed/${wallId}?autoplay=1&loop=1&playlist=${wallId}&controls=0&disablekb=1&playsinline=1&rel=0&enablejsapi=1&origin=${encodeURIComponent(location.origin)}`;
+  wall.addEventListener('load', () => { for (const t of [300, 1500, 4000]) setTimeout(applyVol, t); });
+  document.body.insertBefore(wall, view);
+}
+function placeWall() { // stretch the player onto the wall screen's four corners
+  if (!wall) return;
+  const q = xr ? null : room.videoQuad();
+  if (!q) { wall.style.visibility = 'hidden'; return; }
+  const [[x0, y0], [x1, y1], [x2, y2], [x3, y3]] = q, W = 640, H = 360;
+  const dx1 = x1 - x2, dx2 = x3 - x2, dy1 = y1 - y2, dy2 = y3 - y2, sx = x0 - x1 + x2 - x3, sy = y0 - y1 + y2 - y3, den = dx1 * dy2 - dx2 * dy1 || 1e-9;
+  const g = (sx * dy2 - dx2 * sy) / den, h = (dx1 * sy - sx * dy1) / den;
+  wall.style.visibility = 'visible';
+  wall.style.transform = `matrix3d(${(x1 - x0 + g * x1) / W},${(y1 - y0 + g * y1) / W},0,${g / W},${(x3 - x0 + h * x3) / H},${(y3 - y0 + h * y3) / H},0,${h / H},0,0,1,0,${x0},${y0},0,1)`;
+}
+const applyVol = () => {
+  $('#snd').classList.toggle('off', muted); if (!started) return;
+  if (wall) { bgm.pause(); wallCmd(muted ? 'mute' : 'unMute'); wallCmd(held || document.hidden ? 'pauseVideo' : 'playVideo'); return; }
+  if (muted || held || document.hidden) bgm.pause(); else bgm.play().catch(() => {});
+};
+function startBgm() { started = true; startWall(); applyVol(); }
 function pauseBgm(on) { held = on; if (!on) $('#song').pause(); applyVol(); }
 function toggleMute() { muted = !muted; store.set('bba-mute', muted); started = true; applyVol(); }
 $('#snd').onclick = toggleMute; applyVol();

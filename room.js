@@ -23,8 +23,8 @@ const persp = (fov, asp, n, f) => { const t = 1 / Math.tan(fov / 2); return new 
 // then the East Wing doorway half-width + centre, far wall, back wall and front wall.
 export const DIMS = { HW: 1200, HD: 1100, ZF: 900, BZ: -100, WD: 200, WZ: -100, WX: 2800, WZ0: -900, WZ1: 700 };
 
-export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = []) {
-  const gl = canvas.getContext('webgl', { antialias: true, alpha: false, powerPreference: 'high-performance' });
+export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = [], opts = {}) {
+  const gl = canvas.getContext('webgl', { antialias: true, alpha: !!opts.wallVideo, powerPreference: 'high-performance' });
   if (!gl) return null;
   const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(s)); return s; };
   const prog = gl.createProgram(); gl.attachShader(prog, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FS)); gl.linkProgram(prog); gl.useProgram(prog);
@@ -249,7 +249,17 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = []) {
   // ---------- neon + posters ----------
   T = F(0);
   quad(neon('BIG BANG ARCADE', '#ff2a3c', 1024, 128), T, [-330, 520, 4], [330, 520, 4], [330, 436, 4], [-330, 436, 4]); glow('#ff2a3c', T, 0, 478, 10, 860, 220);
-  GAMES.filter(g => g.poster).forEach((g, i) => {
+  // The video wall: a big screen on the left wall. The page plays the video BEHIND this canvas and the
+  // screen is drawn as a see-through window, so cabinets and players in front of it still cover it.
+  let holeM = null, holeQuad = null, lastVP = null;
+  if (opts.wallVideo) {
+    const V = { x: 2 - HW, z: -70, th: Math.PI / 2 }, hw = 300, y0 = 118, y1 = y0 + hw * 2 * 0.5625;
+    box(solid('#ff2a3c', 1, 0), V, -hw - 10, hw + 10, y0 - 10, y1 + 10, 0, 6); quad(solid('#000000', 1, 0), V, [-hw, y1, 8], [hw, y1, 8], [hw, y0, 8], [-hw, y0, 8]);
+    glow('#ff2a3c', V, 0, (y0 + y1) / 2, 4, hw * 2 + 220, y1 - y0 + 200); light(V, [0, 300, 300], '#ffffff', 0.5);
+    holeM = mat(white, {}); holeM.sprite = true; quad(holeM, V, [-hw, y1, 10], [hw, y1, 10], [hw, y0, 10], [-hw, y0, 10]);
+    holeQuad = [[-hw, y1, 10], [hw, y1, 10], [hw, y0, 10], [-hw, y0, 10]].map(p => tf(V, p));
+  }
+  GAMES.filter(g => g.poster && !opts.wallVideo).forEach((g, i) => {
     const P = { x: 2 - HW, z: -150 + i * 275, th: Math.PI / 2 }, pm = mat(withImg(g.poster, 1024, 512, (x, w, h, e) => { x.fillStyle = '#000'; x.fillRect(0, 0, w, h); drawFit(x, e, 0, 0, w, h, true); }), { emis: 0.8, spec: 0.3 });
     const hw = 105, y0 = 190, hh = hw * 0.5625;
     box(solid(g.color, 1, 0), P, -hw - 6, hw + 6, y0 - 6, y0 + hh * 2 + 6, 0, 6); quad(pm, P, [-hw, y0 + hh * 2, 8], [hw, y0 + hh * 2, 8], [hw, y0, 8], [-hw, y0, 8]);
@@ -386,13 +396,28 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = []) {
     gl.uniformMatrix4fv(U.uVP, false, mul(proj, view)); gl.uniform1f(U.uMirror, 0);
     gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.uniform1f(U.uAlpha, mirrorFloor ? 0.74 : 1); drawSet(m => m.floor, time); // glossy floor over it
     pass(mul(proj, view), false);
+    if (holeM && mirrorFloor) { // cut the video window: only where the screen is the nearest thing
+      gl.disable(gl.BLEND); gl.depthMask(false); gl.colorMask(false, false, false, true); gl.uniformMatrix4fv(U.uM, false, I); gl.bindTexture(gl.TEXTURE_2D, white); gl.uniform1f(U.uAlpha, 0);
+      gl.drawArrays(gl.TRIANGLES, holeM.start, 6); gl.uniform1f(U.uAlpha, 1); gl.depthMask(true);
+    }
+  }
+  // where the video wall is on screen right now: 4 corners in CSS pixels (TL, TR, BR, BL), or null when it is behind you
+  function videoQuad() {
+    if (!holeQuad || !lastVP) return null;
+    const out = [];
+    for (const p of holeQuad) { const m = lastVP, w = m[3] * p[0] + m[7] * p[1] + m[11] * p[2] + m[15]; if (w < 1) return null;
+      out.push([((m[0] * p[0] + m[4] * p[1] + m[8] * p[2] + m[12]) / w * 0.5 + 0.5) * innerWidth, (0.5 - (m[1] * p[0] + m[5] * p[1] + m[9] * p[2] + m[13]) / w * 0.5) * innerHeight]); }
+    return out;
   }
   function render(P, time, spr) {
     sprites = spr || []; beams = [];
     gl.bindFramebuffer(gl.FRAMEBUFFER, null); resize();
     const view = mul(mul(rotX(-P.pitch), rotY(P.yaw)), trans(-P.x, -P.eye, -P.z)), proj = persp(fov, asp, 8, 8000);
-    setLights(P); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    setLights(P); gl.colorMask(true, true, true, true); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    if (holeM) gl.colorMask(true, true, true, false); // nothing but the video window may change the canvas's transparency
+    lastVP = mul(proj, view);
     drawScene(view, proj, [P.x, P.eye, P.z], P.yaw, time, true);
+    gl.colorMask(true, true, true, true);
   }
 
   // ---------- VR (WebXR immersive-vr) ----------
@@ -446,5 +471,5 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = []) {
   }
   const hfov = () => 2 * Math.atan(Math.tan(fov / 2) * asp);
   resize();
-  return { stations, render, pick, pickRay, xrBegin, xrRay, renderXR, hfov, vfov: () => fov, tex, freeTex: t => gl.deleteTexture(t), setScores: rows => { scoreRows = Array.isArray(rows) ? rows.slice(0, 4) : []; if (scoreWall && scoreWall.t && scoreWall.t.redraw) scoreWall.t.redraw(); } };
+  return { videoQuad, stations, render, pick, pickRay, xrBegin, xrRay, renderXR, hfov, vfov: () => fov, tex, freeTex: t => gl.deleteTexture(t), setScores: rows => { scoreRows = Array.isArray(rows) ? rows.slice(0, 4) : []; if (scoreWall && scoreWall.t && scoreWall.t.redraw) scoreWall.t.redraw(); } };
 }
