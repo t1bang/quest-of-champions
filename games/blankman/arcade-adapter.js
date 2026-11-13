@@ -59,7 +59,7 @@ if (typeof window !== 'undefined' && window.parent !== window) {
 }
 
 // Anonymous milestone counts for the admin hub (hub.js supplies bbHub); runs whether or not the game is inside the arcade.
-export const blankmanHubKind = e => ({ level_start: 'level_start:' + e.stage, level_complete: 'level_done:' + e.stage, victory: 'victory', game_over: 'game_over', death: 'death', assist: 'assist',
+export const blankmanHubKind = e => ({ level_start: 'level_start:' + (e.stage + 1), level_complete: 'level_done:' + (e.stage + 1), victory: 'victory', game_over: 'game_over', death: 'death', assist: 'assist',
   equipment_change: 'gear:' + String(e.detail || 'item').toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 24) })[e.kind] || null;
 if (typeof window !== 'undefined') {
   const observe = createObserver(m => { try { const k = m && m.event && blankmanHubKind(m.event); if (k && window.bbHub) window.bbHub(k, m.event.score); } catch {} });
