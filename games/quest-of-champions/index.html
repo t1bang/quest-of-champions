@@ -973,7 +973,10 @@ function drawToneCar(h){const x=h.x-camX,y=h.z,b=Math.sin(t/3)*1.5;
   outlined("IT'S TONE!!",bx,by-1,28,'#e0202a');}
 // Level 1 basketball partner: seven frames from the supplied Curry sprite sheet.
 // Source is at repository root; remove the green matte once and cache transparent crops.
-const currySheetImage=new Image();currySheetImage.src='../../steph-curry-sprites.png';
+const currySheetImage=new Image();
+// Root-absolute URL works from both the arcade route and the standalone game domain.
+currySheetImage.src='/steph-curry-sprites.png';
+currySheetImage.onerror=()=>console.error('Curry sprite sheet failed to load:',currySheetImage.src);
 const curryCrops={
  idle:[55,8,255,390],walk1:[355,8,295,390],walk2:[700,8,305,390],
  punch:[1020,18,510,380],kick:[45,505,490,405],
@@ -1009,7 +1012,7 @@ function drawCurryPartner(e){
  ctx.restore();return true;
 }
 function drawEntity(e){
-  if(e.o&&e.o.sprite==='currySheet'&&drawCurryPartner(e))return;
+  if(e.o&&e.o.sprite==='currySheet'){if(drawCurryPartner(e))return;ctx.save();ctx.fillStyle='#ffd23f';ctx.font='bold 14px sans-serif';ctx.fillText('CURRY SPRITE LOADING',e.x-camX-70,e.y-95);ctx.restore();return;}
   if(e.o&&e.o.sprite&&drawSprite(e))return;
   if(e.scale&&e.scale!==1){const x=e.x-camX,y=e.y;ctx.save();ctx.translate(x,y);ctx.scale(e.scale,e.scale);ctx.translate(-x,-y);const sc=e.scale;e.scale=1;drawEntity(e);e.scale=sc;ctx.restore();return;}
   const f={walk:e.walk,attack:e.attack,kick:e.kick||0,air:e.air,hurt:e.hurt>0&&(t%4<2),face:e.face,flame:e.flame>0,crouch:e.crouch||0,scared:e.scared>0};
