@@ -2,6 +2,7 @@ import { GAMES, SONGS, MUSIC_PAGES, DONATE, SOCIALS, CLAIM_HELP, BGM, SOON, VAUL
 import { PRIZES, REWARDS, REAL_PRIZES_LIVE, BAR, TOKEN_PACK, WEAR, SLOTS, JEWELRY, DEFAULT_FIT, MOVES, UPGRADES } from './prizes.js';
 import { createMoves, SPRITE } from './moves.js';
 import { createLive } from './live.js';
+import { createAlerts } from './alerts.js';
 import { COVERS, playTrailer } from './art.js';
 import { buildRoom, DIMS } from './room.js';
 import { supabase, authHeaders, playerCall, enabledProviders, escapeHtml, createActivityTracker } from './player-services.js';
@@ -683,7 +684,8 @@ let live = null; // who's here, daily quests and the lobby bosses (live.js)
 const moves = room ? createMoves({ room, P, peers, sid, closet: () => (me && me.closet) || [], skin: () => AV.skin[myAv.skin] || '#c68642', drawMine: (c, W, H) => drawAvatar(c, W, H, myAv, me ? me.name : '', myFit),
   blocked: () => !$('#gf').hidden || !panel.hidden || !$('#gate').hidden || !!xr, stand: () => { sitting = false; }, collide, toast, hub, event: (type, n) => { if (live) live.event(type, n); }, send: payload => { try { window.__bbaAct && window.__bbaAct(payload); } catch {} }, name: () => (me ? me.name : 'Player') }) : null;
 window.__bbaMoves = moves;
-live = createLive({ room, P, peers, moves, toast, hub, collide, show, closePanel, pbody, onClose: fn => { cleanup = fn; },
+const alerts = createAlerts({ toast, hub, call: async (action, body) => { const { data, error } = await supabase.rpc('bba_push', { p_action: action, p_body: { ...auth, ...body } }); if (error) throw new Error(error.message); return data; } });
+live = createLive({ room, P, peers, moves, toast, hub, collide, show, closePanel, pbody, onClose: fn => { cleanup = fn; }, alertsHtml: () => alerts.html(), alerts: want => alerts.toggle(want), alertsOn: () => alerts.on || !alerts.can,
   call: async (action, body) => { const { data, error } = await supabase.rpc('bba_daily', { p_action: action, p_body: { ...auth, ...body } }); if (error) throw new Error(error.message); return data; },
   signedUp: () => !!(auth.pid && me && !me.local), setPlayer: ({ tokens, earned, closet }) => { if (me) { me.tokens = tokens; if (earned != null) me.earned = earned; if (Array.isArray(closet)) me.closet = closet; setMe(me); } },
   itemInfo: id => WEAR.find(w => w.id === id) || PRIZES.find(x => x.id === id) || null, itemIcon: it => it.icon || '🎁',
