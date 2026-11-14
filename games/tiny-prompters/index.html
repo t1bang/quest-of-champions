@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Tiny Prompters: Rocket Escape</title>
+<meta name="description" content="A retro rocket platformer with Astra, Rivet and Quark. Climb each planet, grab the fuel cells and blast off before the danger rises.">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;height:100%;background:#05030c;overflow:hidden;touch-action:none;-webkit-user-select:none;user-select:none;font-family:ui-monospace,Menlo,Consolas,monospace}
+  #wrap{position:fixed;inset:0;display:grid;place-items:center}
+  canvas{image-rendering:pixelated;image-rendering:crisp-edges;background:#000;box-shadow:0 0 0 2px #1b1440,0 0 40px #2a1a7a}
+  .pad{position:fixed;bottom:calc(14px + env(safe-area-inset-bottom));display:none;gap:10px;z-index:5}
+  .pad button{width:64px;height:64px;border-radius:14px;border:3px solid #7df9ff;background:rgba(10,8,30,.7);color:#7df9ff;font:700 24px ui-monospace,monospace;touch-action:none}
+  .pad button:active,.pad button.on{background:#7df9ff;color:#05030c}
+  #padL{left:calc(14px + env(safe-area-inset-left))}#padR{right:calc(14px + env(safe-area-inset-right))}#padR button{width:84px;height:84px;border-color:#ffd23e;color:#ffd23e}
+  body.touch .pad{display:flex}
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="c" width="320" height="240" aria-label="Tiny Prompters: Rocket Escape"></canvas></div>
+<div class="pad" id="padL"><button data-k="left" aria-label="Left">◀</button><button data-k="right" aria-label="Right">▶</button></div>
+<div class="pad" id="padR"><button data-k="jump" aria-label="Jump and jetpack">▲</button></div>
+<script>
+// Tiny Prompters: Rocket Escape. A retro platformer: climb the planet, collect fuel cells, reach your rocket and
+// blast off before the danger rising from below catches you. Five planets, three characters.
+(() => {
+'use strict';
+const W = 320, H = 240, cv = document.getElementById('c'), g = cv.getContext('2d');
+g.imageSmoothingEnabled = false;
+function fit() { const s = Math.max(1, Math.min(innerWidth / W, innerHeight / H)), k = s >= 2 ? Math.floor(s * 2) / 2 : s; cv.style.width = Math.floor(W * k) + 'px'; cv.style.height = Math.floor(H * k) + 'px'; }
+addEventListener('resize', fit); fit();
+
+// ---------- pixel art ----------
+const PAL = { W: '#f2f4ff', G: '#aeb6d6', K: '#101426', C: '#31e1ff', c: '#7df9ff', R: '#9be8ff', O: '#ff8a1f', o: '#c75a08', Y: '#ffd23e', A: '#8a93b8', P: '#8b4dff', p: '#5a2bc0', L: '#c4a2ff', E: '#c8ff3d', g: '#3dff9a', r: '#ff3b5c', B: '#2b3566', '#': '#ffffff' };
+const sprite = rows => { const c = document.createElement('canvas'); c.width = rows[0].length; c.height = rows.length; const x = c.getContext('2d'); rows.forEach((row, y) => [...row].forEach((ch, i) => { if (PAL[ch]) { x.fillStyle = PAL[ch]; x.fillRect(i, y, 1, 1); } })); return c; };
+const SPR = {
+  astra: sprite(['....WWWW....', '..WWWWWWWW..', '.WWWWWWWWWW.', '.WWWKKKKWWW.', 'RWWKKCCKKWWR', 'RWWKCccCKWWR', '.WWKKCCKKWW.', '.WWWKKKKWWW.', '.WWWWWWWWWW.', '.GWWWWWWWWG.', '..GGWWWWGG..', '...GGGGGG...']),
+  rivet: sprite(['.....A......', '...OOOOOO...', '..OKKKKKKO..', '..OKCKKCKO..', '..OKKKKKKO..', '...OOOOOO...', '.AOOOOOOOOA.', '.AOOoYYoOOA.', '.AOOOOOOOOA.', '...oOOOOo...', '...OO..OO...', '..AAA..AAA..']),
+  quark: sprite(['....PPPP....', '...PLLPPP...', '..PLLPPPPP..', '..PKKKKKKp..', '..PKEKKEKp..', '...pKKKKp...', '....pppp....', '.P..PLPP..P.', '.Pp.PLPPp.pP', '....PPPp....', '.....Pp.....', '.....gg.....']),
+  cell: sprite(['..YY..', '.YYYY.', 'gYggYg', 'gggggg', 'g#gggg', 'gggggg', '.gggg.', '..YY..']),
+  heart: sprite(['.rr.rr.', 'rrrrrrr', 'rrrrrrr', '.rrrrr.', '..rrr..', '...r...']),
+  crawler: sprite(['..rrrr..', '.rrrrrr.', 'rKrrrrKr', 'rrrrrrrr', '.r.rr.r.']),
+  floater: sprite(['..PPPP..', '.PPPPPP.', 'PP#PP#PP', '.PPPPPP.', '.p.pp.p.', 'p..pp..p']),
+};
+function drawRocket(x, y, flame, t) { // a classic red and white rocket, 20 x 40
+  const R = (c, a, b, w, h) => { g.fillStyle = c; g.fillRect(Math.round(x + a), Math.round(y + b), w, h); };
+  R('#ff3b5c', 7, 0, 6, 3); R('#ff3b5c', 5, 3, 10, 4); R('#f2f4ff', 4, 7, 12, 22); R('#aeb6d6', 13, 7, 3, 22); R('#31e1ff', 7, 11, 6, 6); R('#101426', 7, 11, 6, 1); R('#101426', 7, 16, 6, 1); R('#101426', 7, 11, 1, 6); R('#101426', 12, 11, 1, 6);
+  R('#ff3b5c', 4, 22, 12, 3); R('#ff3b5c', 0, 24, 4, 10); R('#ff3b5c', 16, 24, 4, 10); R('#aeb6d6', 6, 29, 8, 3);
+  if (flame) { const f = 6 + Math.sin(t * 40) * 3; R('#ffd23e', 6, 32, 8, f); R('#ff8a1f', 8, 32 + f * 0.5, 4, f); }
+}
+
+// ---------- sound: tiny square-wave beeps ----------
+let AC = null, muted = false;
+const beep = (f, d = 0.08, type = 'square', v = 0.05, slide = 0) => { if (muted) return; try { AC = AC || new (window.AudioContext || window.webkitAudioContext)(); const o = AC.createOscillator(), a = AC.createGain(); o.type = type; o.frequency.setValueAtTime(f, AC.currentTime); if (slide) o.frequency.linearRampToValueAtTime(f + slide, AC.currentTime + d); a.gain.setValueAtTime(v, AC.currentTime); a.gain.exponentialRampToValueAtTime(0.0001, AC.currentTime + d); o.connect(a).connect(AC.destination); o.start(); o.stop(AC.currentTime + d); } catch {} };
+const sfx = { jump: () => beep(420, 0.09, 'square', 0.04, 260), jet: () => beep(140, 0.05, 'sawtooth', 0.015), cell: () => { beep(880, 0.06); setTimeout(() => beep(1320, 0.09), 60); }, hurt: () => beep(180, 0.22, 'sawtooth', 0.06, -110), stomp: () => beep(300, 0.07, 'square', 0.05, 300), bounce: () => beep(260, 0.12, 'triangle', 0.07, 520), launch: () => { for (let i = 0; i < 8; i++) setTimeout(() => beep(200 + i * 90, 0.12, 'sawtooth', 0.05), i * 90); }, pick: () => beep(660, 0.05) };
+
+// ---------- planets ----------
+const PLANETS = [
+  { name: 'LUNA', sub: 'LOW GRAVITY', grav: 430, rise: 8, sky: ['#070b24', '#1b2a5c'], ground: '#8a93b8', top: '#d7dcf2', danger: '#31e1ff', dangerName: 'ICY FOG', tip: ['ASTRA', 'Say the goal first: reach the rocket with 5 fuel cells.'], need: 5 },
+  { name: 'RUSTO', sub: 'DUST WINDS', grav: 700, rise: 11, sky: ['#2a0a12', '#8a2a1a'], ground: '#a8482a', top: '#ffb070', danger: '#ff8a1f', dangerName: 'SANDSTORM', wind: 1, tip: ['RIVET', 'Break a big climb into small steps. One platform at a time.'], need: 5 },
+  { name: 'GLACIA', sub: 'SLIPPERY ICE', grav: 680, rise: 13, sky: ['#04202e', '#2a7a9a'], ground: '#5ac8e8', top: '#e8fbff', danger: '#7df9ff', dangerName: 'FLOOD', ice: 1, tip: ['QUARK', 'Test before you trust. Cracked platforms fall.'], need: 6 },
+  { name: 'VERDA', sub: 'BOUNCY JUNGLE', grav: 720, rise: 15, sky: ['#06240f', '#1d6a3a'], ground: '#2f9a4a', top: '#9dff7a', danger: '#c8ff3d', dangerName: 'ACID SWAMP', bouncy: 1, tip: ['ASTRA', 'Stuck? Try a different path. Mushrooms give you a boost.'], need: 6 },
+  { name: 'EMBER', sub: 'RISING LAVA', grav: 760, rise: 19, sky: ['#1a0404', '#6a1206'], ground: '#5a3a3a', top: '#ff8a1f', danger: '#ff3b0f', dangerName: 'LAVA', embers: 1, tip: ['RIVET', 'Check your fuel before you launch. Then go!'], need: 7 },
+];
+const CREW = { astra: { name: 'ASTRA', role: 'THE EXPLORER', perk: 'LONG JETPACK', jet: 1.5, jump: 44, hearts: 3 }, rivet: { name: 'RIVET', role: 'THE BUILDER', perk: 'EXTRA HEART', jet: 0.95, jump: 44, hearts: 4 }, quark: { name: 'QUARK', role: 'THE TESTER', perk: 'HIGH JUMP', jet: 0.95, jump: 58, hearts: 3 } };
+const CREW_IDS = ['astra', 'rivet', 'quark'];
+
+// ---------- state ----------
+let state = 'title', pick = 0, planet = 0, loop = 0, score = 0, best = 0, T = 0, cardT = 0, who = 'astra';
+try { best = +localStorage.getItem('tp-best') || 0; } catch {}
+let L = null, pl = null;
+const keys = { left: 0, right: 0, jump: 0 }; let jumpTap = false, anyTap = false;
+const rng = seed => () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+
+function build(pi) {
+  const P = PLANETS[pi], r = rng(1000 + pi * 77 + loop * 13), plats = [], cells = [], foes = [];
+  let y = 0, x = 130; plats.push({ x: 0, y: 0, w: W, h: 400, type: 'ground' });
+  const n = 34 + pi * 3 + loop * 2;
+  for (let i = 1; i <= n; i++) {
+    const w = 34 + Math.floor(r() * 30) - Math.min(8, pi * 2), gap = 28 + r() * (10 + pi * 1.2);
+    y -= gap; x = Math.max(8, Math.min(W - w - 8, x + (r() < 0.5 ? -1 : 1) * (26 + r() * 52)));
+    const roll = r(); let type = 'solid';
+    if (i > 3 && i < n) { if (roll < 0.14 + pi * 0.03) type = 'move'; else if (roll < 0.26 + pi * 0.04) type = 'crumble'; else if (roll < 0.34 + (P.bouncy ? 0.18 : 0.02)) type = 'bounce'; }
+    const p = { x, y, w: type === 'bounce' ? 22 : w, h: 7, type, x0: x, ph: r() * 6.28, amp: 26 + r() * 22, fall: 0, gone: 0 };
+    plats.push(p);
+    if (i % 4 === 2 || (i % 7 === 5)) cells.push({ x: Math.max(6, Math.min(W - 12, p.x + p.w / 2 - 3 + (i % 7 === 5 ? (r() < 0.5 ? -44 : 44) : 0))), y: p.y - 16 - (i % 7 === 5 ? 14 : 0), got: 0 });
+    if (type === 'solid' && w > 44 && i > 5 && r() < 0.22 + pi * 0.05) foes.push({ kind: 'crawler', p, x: p.x + 6, y: p.y - 5, dir: 1, dead: 0 });
+    if (pi >= 1 && i > 8 && i % 6 === 0) foes.push({ kind: 'floater', x: 20 + r() * 260, y: p.y - 22, dir: r() < 0.5 ? -1 : 1, base: p.y - 22, dead: 0 });
+  }
+  y -= 40; const top = { x: 110, y, w: 100, h: 8, type: 'pad' }; plats.push(top);
+  return { P, plats, cells, foes, rocket: { x: top.x + 40, y: top.y - 40 }, topY: y, danger: 150, dangerV: 0, cam: -H + 60, t: 0, got: 0, wind: 0, embers: [], launch: 0, hurtT: 0, shake: 0, msg: '', msgT: 0, parts: [] };
+}
+function startPlanet(pi) { planet = pi; L = build(pi); const C = CREW[who]; if (!pl || pi === 0) pl = { hearts: C.hearts }; Object.assign(pl, { x: 150, y: -14, vx: 0, vy: 0, w: 10, h: 12, on: null, fuel: C.jet, face: 1, inv: 0, safe: { x: 150, y: -14 }, coyote: 0, jetting: false, released: true }); state = 'card'; cardT = 0; }
+function newGame() { score = 0; loop = 0; pl = null; startPlanet(0); }
+function report() { try { if (parent !== window) parent.postMessage({ bba: 'score', score, game: 'tiny' }, '*'); } catch {} if (score > best) { best = score; try { localStorage.setItem('tp-best', String(best)); } catch {} } try { window.bbaScore && window.bbaScore(score); } catch {} try { window.tpScore && window.tpScore(score); } catch {} }
+function hurt(why) {
+  if (pl.inv > 0 || L.launch) return; pl.hearts--; pl.inv = 1.6; L.shake = 0.3; sfx.hurt(); L.msg = why; L.msgT = 1.4;
+  if (pl.hearts <= 0) { state = 'over'; cardT = 0; report(); return; }
+  if (why !== 'OUCH!') { pl.x = pl.safe.x; pl.y = Math.min(pl.safe.y, L.danger - 60); pl.vx = 0; pl.vy = -200; L.danger += 46; } else pl.vy = -170;
+}
+
+// ---------- update ----------
+function step(dt) {
+  T += dt;
+  if (state === 'title') { if (jumpTap || anyTap === 'go') { who = CREW_IDS[pick]; sfx.pick(); newGame(); } return; }
+  if (state === 'card') { cardT += dt; if (cardT > 0.5 && (jumpTap || cardT > 5)) { state = 'play'; } return; }
+  if (state === 'over' || state === 'win') { cardT += dt; if (cardT > 1 && jumpTap) { state = 'title'; } return; }
+  const P = L.P, C = CREW[who]; L.t += dt; L.msgT -= dt; L.shake = Math.max(0, L.shake - dt);
+  if (L.launch) { // blast off: the rocket carries you up and the planet is done
+    L.launch += dt; L.rocket.y -= (30 + L.launch * 260) * dt; pl.x = L.rocket.x + 5; pl.y = L.rocket.y + 12; L.cam += ((L.rocket.y - 110) - L.cam) * Math.min(1, dt * 4);
+    if (L.launch > 2.4) { const bonus = Math.max(0, Math.round(600 - L.t * 4)) + pl.hearts * 100; score += 500 + bonus; report();
+      if (planet + 1 < PLANETS.length) startPlanet(planet + 1); else { state = 'win'; cardT = 0; loop++; } }
+    return;
+  }
+  // moving platforms, crumbling platforms
+  for (const p of L.plats) { if (p.type === 'move') { const nx = p.x0 + Math.sin(L.t * 1.2 + p.ph) * p.amp; p.dx = nx - p.x; p.x = Math.max(4, Math.min(W - p.w - 4, nx)); } if (p.fall) { p.fall += dt; if (p.fall > 0.55) { p.gone = 1; if (p.fall > 3.6) { p.fall = 0; p.gone = 0; } } } }
+  // run, jump, jetpack
+  const want = (keys.right ? 1 : 0) - (keys.left ? 1 : 0), onG = !!pl.on, acc = onG ? (P.ice ? 260 : 1100) : 520, fr = onG ? (P.ice ? 70 : 900) : 60;
+  if (want) { pl.vx += want * acc * dt; pl.face = want; } else { const s = Math.sign(pl.vx); pl.vx -= s * fr * dt; if (Math.sign(pl.vx) !== s) pl.vx = 0; }
+  if (P.wind) { L.wind = Math.sin(L.t * 0.7) > 0.55 ? Math.sign(Math.sin(L.t * 0.31)) : 0; if (!onG) pl.vx += L.wind * 150 * dt; else pl.vx += L.wind * 40 * dt; }
+  pl.vx = Math.max(-98, Math.min(98, pl.vx));
+  pl.coyote = onG ? 0.09 : pl.coyote - dt;
+  if (!keys.jump) pl.released = true;
+  if (jumpTap && pl.coyote > 0) { pl.vy = -Math.sqrt(2 * P.grav * C.jump); pl.on = null; pl.coyote = 0; pl.released = false; sfx.jump(); }
+  pl.jetting = false;
+  if (!pl.on && keys.jump && (pl.released || pl.vy > -20) && pl.fuel > 0 && pl.vy > -150) { pl.vy -= (P.grav + 430) * dt; pl.fuel -= dt; pl.jetting = true; if (Math.floor(L.t * 14) !== Math.floor((L.t - dt) * 14)) { sfx.jet(); L.parts.push({ x: pl.x + 5, y: pl.y + 12, vx: (Math.random() - 0.5) * 30, vy: 60, t: 0.3, c: '#ffd23e' }); } }
+  if (!keys.jump && pl.vy < -60 && !pl.jetting) pl.vy += P.grav * 1.4 * dt;      // let go early for a short hop
+  pl.vy = Math.min(360, pl.vy + P.grav * dt);
+  if (pl.on) { pl.fuel = Math.min(C.jet, pl.fuel + dt * 1.6); if (pl.on.type === 'move') pl.x += pl.on.dx || 0; }
+  pl.x += pl.vx * dt; if (pl.x < 0) { pl.x = 0; pl.vx = 0; } if (pl.x > W - pl.w) { pl.x = W - pl.w; pl.vx = 0; }
+  const prevB = pl.y + pl.h; pl.y += pl.vy * dt; const b = pl.y + pl.h; pl.on = null;
+  if (pl.vy >= 0) for (const p of L.plats) { if (p.gone) continue; if (pl.x + pl.w > p.x + 1 && pl.x < p.x + p.w - 1 && prevB <= p.y + 2 && b >= p.y) {
+    if (p.type === 'bounce') { pl.y = p.y - pl.h; pl.vy = -Math.sqrt(2 * P.grav * C.jump) * 1.55; p.sq = 0.2; sfx.bounce(); pl.fuel = C.jet; break; }
+    pl.y = p.y - pl.h; pl.vy = 0; pl.on = p; if (p.type === 'crumble' && !p.fall) p.fall = 0.001; if (p.type !== 'crumble' && p.type !== 'move') pl.safe = { x: Math.max(p.x + 2, Math.min(p.x + p.w - pl.w - 2, pl.x)), y: p.y - pl.h }; break; } }
+  pl.inv = Math.max(0, pl.inv - dt);
+  // fuel cells
+  for (const c of L.cells) if (!c.got && Math.abs(c.x + 3 - (pl.x + 5)) < 10 && Math.abs(c.y + 4 - (pl.y + 6)) < 12) { c.got = 1; L.got++; score += 100; sfx.cell(); for (let i = 0; i < 6; i++) L.parts.push({ x: c.x + 3, y: c.y + 4, vx: (Math.random() - 0.5) * 90, vy: (Math.random() - 0.7) * 90, t: 0.4, c: '#3dff9a' }); }
+  // creatures: stomp from above to clear them
+  for (const f of L.foes) { if (f.dead) continue;
+    if (f.kind === 'crawler') { f.x += f.dir * 22 * dt; if (f.x < f.p.x + 1 || f.x > f.p.x + f.p.w - 9) f.dir *= -1; f.y = f.p.y - 5; if (f.p.gone) f.dead = 1; }
+    else { f.x += f.dir * 34 * dt; f.y = f.base + Math.sin(L.t * 2 + f.base) * 8; if (f.x < 6 || f.x > W - 14) f.dir *= -1; }
+    if (pl.x + pl.w > f.x && pl.x < f.x + 8 && pl.y + pl.h > f.y && pl.y < f.y + 6) { if (pl.vy > 40 && pl.y + pl.h - f.y < 7) { f.dead = 1; pl.vy = -210; score += 50; sfx.stomp(); } else hurt('OUCH!'); } }
+  // falling embers on the last planet
+  if (P.embers && Math.random() < dt * (0.8 + loop * 0.3)) L.embers.push({ x: Math.random() * W, y: L.cam - 10, vy: 70 + Math.random() * 60 });
+  for (const e of L.embers) { e.y += e.vy * dt; if (Math.abs(e.x - (pl.x + 5)) < 7 && Math.abs(e.y - (pl.y + 6)) < 8) { e.y = 1e9; hurt('OUCH!'); } }
+  L.embers = L.embers.filter(e => e.y < L.cam + H + 20);
+  // the danger rising from below
+  if (L.t > (planet === 0 && loop === 0 ? 7 : 3.5)) L.danger -= (P.rise + loop * 2 + Math.min(8, L.t * 0.05)) * dt;
+  L.danger = Math.min(L.danger, L.cam + H + 70);            // it never falls too far behind the screen
+  if (pl.y + pl.h > L.danger + 2) hurt(P.dangerName + '!');
+  if (pl.y > L.cam + H + 30) hurt('FELL!');
+  // the rocket
+  const rk = L.rocket; if (Math.abs(pl.x + 5 - (rk.x + 10)) < 14 && pl.y + pl.h > rk.y + 20 && pl.y < rk.y + 44) { if (L.got >= P.need) { L.launch = 0.001; sfx.launch(); } else if (L.msgT <= 0) { L.msg = `NEED ${P.need - L.got} MORE FUEL`; L.msgT = 1.2; } }
+  for (const p of L.parts) { p.x += p.vx * dt; p.y += p.vy * dt; p.t -= dt; } L.parts = L.parts.filter(p => p.t > 0);
+  const target = Math.min(pl.y - 120, 60 - H + 0), lead = Math.min(target, L.danger - H + 26); L.cam += (Math.max(L.topY - 150, lead) - L.cam) * Math.min(1, dt * 5);
+}
+
+// ---------- draw ----------
+const text = (s, x, y, c = '#fff', size = 8, align = 'left') => { g.font = size >= 14 ? `${Math.round(size * 0.8)}px "Press Start 2P",ui-monospace,monospace` : `${size}px ui-monospace,Menlo,Consolas,monospace`; g.textAlign = align; g.textBaseline = 'top'; g.fillStyle = '#000'; g.fillText(s, x + 1, y + 1); g.fillStyle = c; g.fillText(s, x, y); };
+function sky(P, cam) {
+  const gr = g.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, P.sky[0]); gr.addColorStop(1, P.sky[1]); g.fillStyle = gr; g.fillRect(0, 0, W, H);
+  for (let i = 0; i < 50; i++) { const sx = (i * 73) % W, sy = ((i * 131 - cam * 0.08) % H + H) % H; g.fillStyle = i % 7 ? 'rgba(255,255,255,.5)' : '#fff'; g.fillRect(sx, sy, i % 9 ? 1 : 2, i % 9 ? 1 : 2); }
+  g.fillStyle = P.top; g.globalAlpha = 0.25; g.beginPath(); g.arc(250, 60 - cam * 0.03 % 40, 28, 0, 7); g.fill(); g.globalAlpha = 1;
+  g.fillStyle = 'rgba(0,0,0,.28)'; for (let x = 0; x < W; x += 4) { const h = 26 + Math.sin(x * 0.045 + 2) * 12 + Math.sin(x * 0.11) * 6; g.fillRect(x, H - h + ((-cam * 0.15) % 60 + 60) % 60 - 20, 4, H); }
+}
+function drawWorld() {
+  const P = L.P, cam = Math.round(L.cam + (L.shake ? (Math.random() - 0.5) * 6 : 0)); sky(P, cam);
+  g.save(); g.translate(0, -cam);
+  for (const p of L.plats) { if (p.gone || p.y - cam > H + 20 || p.y + p.h - cam < -20) continue; const wob = p.fall ? Math.sin(L.t * 60) * 1 : 0, px = Math.round(p.x + wob), py = Math.round(p.y);
+    if (p.type === 'bounce') { const sq = p.sq > 0 ? 2 : 0; p.sq = Math.max(0, (p.sq || 0) - 0.016); g.fillStyle = '#f2f4ff'; g.fillRect(px + 8, py + 3, 6, 5); g.fillStyle = '#ff3b5c'; g.fillRect(px, py + sq, p.w, 5 - sq); g.fillStyle = '#fff'; g.fillRect(px + 4, py + 1 + sq, 3, 2); g.fillRect(px + 13, py + 1 + sq, 4, 2); continue; }
+    g.fillStyle = p.type === 'crumble' ? '#6a5a4a' : p.type === 'pad' ? '#aeb6d6' : P.ground; g.fillRect(px, py, p.w, p.h); g.fillStyle = p.type === 'move' ? '#ffd23e' : p.type === 'crumble' ? '#9a8a6a' : P.top; g.fillRect(px, py, p.w, 2);
+    if (p.type === 'crumble') { g.fillStyle = '#2a2018'; for (let i = 4; i < p.w - 2; i += 9) { g.fillRect(px + i, py + 2, 1, 3); g.fillRect(px + i + 1, py + 4, 2, 1); } }
+    if (p.type === 'pad') { g.fillStyle = '#ffd23e'; for (let i = 0; i < p.w; i += 8) g.fillRect(px + i, py + 3, 4, 2); }
+    if (p.type === 'ground') { g.fillStyle = 'rgba(0,0,0,.25)'; for (let i = 0; i < W; i += 16) g.fillRect(i + 5, py + 6, 6, 2); } }
+  for (const c of L.cells) if (!c.got) g.drawImage(SPR.cell, Math.round(c.x), Math.round(c.y + Math.sin(L.t * 4 + c.x) * 2));
+  for (const f of L.foes) if (!f.dead) g.drawImage(SPR[f.kind], Math.round(f.x), Math.round(f.y));
+  for (const e of L.embers) { g.fillStyle = '#ffd23e'; g.fillRect(e.x - 1, e.y - 3, 2, 3); g.fillStyle = '#ff3b0f'; g.fillRect(e.x - 1, e.y, 3, 3); }
+  drawRocket(L.rocket.x, L.rocket.y, L.launch > 0, L.t);
+  if (!L.launch && L.got >= P.need && Math.floor(L.t * 3) % 2) text('GO!', L.rocket.x + 10, L.rocket.y - 12, '#3dff9a', 8, 'center');
+  if (!(pl.inv > 0 && Math.floor(L.t * 16) % 2) && !L.launch) { const s = SPR[who], hover = who === 'rivet' ? 0 : Math.round(Math.sin(L.t * 6) * 1), px = Math.round(pl.x - 1), py = Math.round(pl.y + hover);
+    g.save(); if (pl.face < 0) { g.translate(px + 12, py); g.scale(-1, 1); g.drawImage(s, 0, 0); } else g.drawImage(s, px, py); g.restore();
+    if (pl.jetting) { g.fillStyle = '#ffd23e'; g.fillRect(pl.x + 3, pl.y + 12, 4, 3 + Math.random() * 3); g.fillStyle = '#ff8a1f'; g.fillRect(pl.x + 4, pl.y + 14, 2, 3 + Math.random() * 3); } }
+  for (const p of L.parts) { g.fillStyle = p.c; g.fillRect(p.x, p.y, 2, 2); }
+  // the rising danger
+  const dy = Math.round(L.danger); g.fillStyle = P.danger; g.globalAlpha = 0.85; for (let x = 0; x < W; x += 8) g.fillRect(x, dy + Math.sin(L.t * 3 + x * 0.2) * 2, 8, H + 400); g.globalAlpha = 1; g.fillStyle = '#fff'; for (let x = 0; x < W; x += 16) g.fillRect(x + (L.t * 20 % 16), dy + Math.sin(L.t * 3 + x * 0.2) * 2, 5, 1);
+  g.restore();
+  if (P.wind && L.wind) { g.fillStyle = 'rgba(255,255,255,.4)'; for (let i = 0; i < 9; i++) g.fillRect(((i * 61 + L.t * 240 * L.wind) % W + W) % W, 30 + i * 22, 14, 1); }
+  // HUD
+  for (let i = 0; i < CREW[who].hearts; i++) { g.globalAlpha = i < pl.hearts ? 1 : 0.25; g.drawImage(SPR.heart, 4 + i * 9, 4); } g.globalAlpha = 1;
+  g.drawImage(SPR.cell, 4, 14); text(`${L.got}/${P.need}`, 13, 14, L.got >= P.need ? '#3dff9a' : '#fff');
+  g.fillStyle = '#101426'; g.fillRect(4, 26, 34, 5); g.fillStyle = '#ffd23e'; g.fillRect(5, 27, Math.max(0, 32 * pl.fuel / CREW[who].jet), 3); text('JET', 41, 24, '#ffd23e', 7);
+  text(P.name, W - 4, 4, P.top, 8, 'right'); text(String(score).padStart(6, '0'), W - 4, 14, '#fff', 8, 'right');
+  const dist = Math.max(0, Math.round((L.danger - (pl.y + pl.h)))); if (dist < 46 && Math.floor(L.t * 6) % 2) text(P.dangerName + ' CLOSE!', W / 2, 30, '#ff3b5c', 8, 'center');
+  if (L.msgT > 0) text(L.msg, W / 2, 108, '#ffd23e', 10, 'center');
+  if (L.t < 5 && planet === 0 && loop === 0) { text('◀ ▶ MOVE   JUMP: SPACE OR ▲', W / 2, H - 32, '#fff', 8, 'center'); text('KEEP HOLDING JUMP = JETPACK', W / 2, H - 20, '#ffd23e', 8, 'center'); }
+}
+function drawTitle() {
+  sky(PLANETS[0], T * 30); drawRocket(150, 34 + Math.sin(T * 2) * 3, true, T);
+  text('TINY PROMPTERS', W / 2, 84, '#7df9ff', 16, 'center'); text('ROCKET ESCAPE', W / 2, 103, '#ffd23e', 20, 'center');
+  CREW_IDS.forEach((id, i) => { const x = 62 + i * 98, on = i === pick; g.fillStyle = on ? '#1b1440' : 'rgba(10,8,30,.6)'; g.fillRect(x - 40, 132, 80, 70); g.strokeStyle = on ? '#ffd23e' : '#2b3566'; g.lineWidth = 2; g.strokeRect(x - 40, 132, 80, 70);
+    g.drawImage(SPR[id], x - 12, 138 + (on ? Math.round(Math.sin(T * 6) * 2) : 0), 24, 24); text(CREW[id].name, x, 166, on ? '#ffd23e' : '#fff', 9, 'center'); text(CREW[id].role, x, 178, '#aeb6d6', 6, 'center'); text(CREW[id].perk, x, 188, '#3dff9a', 7, 'center'); });
+  if (Math.floor(T * 2) % 2) text('◀ ▶ PICK YOUR PILOT   JUMP TO START', W / 2, 212, '#fff', 8, 'center'); text(`BEST ${best}`, W / 2, 226, '#aeb6d6', 7, 'center');
+}
+function wrapText(s, x, y, w, c) { const words = s.split(' '); let line = ''; g.font = '8px ui-monospace,Menlo,Consolas,monospace'; for (const wd of words) { if (g.measureText(line + wd).width > w) { text(line.trim(), x, y, c, 8, 'center'); y += 11; line = ''; } line += wd + ' '; } text(line.trim(), x, y, c, 8, 'center'); }
+function drawCard() {
+  const P = L.P; sky(P, 0); text(`PLANET ${planet + 1} OF ${PLANETS.length}`, W / 2, 46, '#aeb6d6', 8, 'center'); text(P.name, W / 2, 60, P.top, 26, 'center'); text(P.sub, W / 2, 92, '#fff', 9, 'center');
+  g.drawImage(SPR[P.tip[0].toLowerCase()], 32, 124, 36, 36); g.fillStyle = 'rgba(10,8,30,.75)'; g.fillRect(78, 120, 214, 48); g.strokeStyle = '#7df9ff'; g.lineWidth = 1; g.strokeRect(78.5, 120.5, 213, 47);
+  text(P.tip[0] + ' SAYS', 185, 124, '#7df9ff', 8, 'center'); wrapText(P.tip[1], 185, 137, 200, '#fff');
+  text(`GRAB ${P.need} FUEL CELLS, THEN REACH THE ROCKET`, W / 2, 182, '#3dff9a', 8, 'center'); text(`${P.dangerName} RISES FROM BELOW`, W / 2, 194, '#ff3b5c', 8, 'center');
+  if (cardT > 0.5 && Math.floor(T * 2) % 2) text('JUMP TO START', W / 2, 214, '#ffd23e', 9, 'center');
+}
+function drawEnd(win) {
+  sky(PLANETS[win ? 0 : planet], T * 20); if (win) drawRocket(150, 40 + Math.sin(T * 2) * 4, true, T);
+  text(win ? 'YOU ESCAPED!' : 'OUT OF HEARTS', W / 2, 92, win ? '#3dff9a' : '#ff3b5c', 20, 'center');
+  text(win ? 'ALL FIVE PLANETS CLEARED' : `STOPPED ON ${PLANETS[planet].name}`, W / 2, 120, '#fff', 9, 'center');
+  text(`SCORE ${score}`, W / 2, 140, '#ffd23e', 14, 'center'); text(`BEST ${best}`, W / 2, 160, '#aeb6d6', 8, 'center');
+  text('THINK BIGGER. TRY SMALLER. LEARN TOGETHER.', W / 2, 184, '#7df9ff', 7, 'center'); if (cardT > 1 && Math.floor(T * 2) % 2) text('JUMP TO PLAY AGAIN', W / 2, 206, '#fff', 9, 'center');
+}
+function draw() { if (state === 'title') drawTitle(); else if (state === 'card') drawCard(); else if (state === 'over') drawEnd(false); else if (state === 'win') drawEnd(true); else drawWorld(); }
+
+// ---------- input ----------
+const down = k => { if (k === 'jump' && !keys.jump) jumpTap = true; if (state === 'title' && !keys[k]) { if (k === 'left') { pick = (pick + 2) % 3; sfx.pick(); } if (k === 'right') { pick = (pick + 1) % 3; sfx.pick(); } } keys[k] = 1; };
+const up = k => { keys[k] = 0; };
+const MAP = { ArrowLeft: 'left', a: 'left', A: 'left', ArrowRight: 'right', d: 'right', D: 'right', ' ': 'jump', ArrowUp: 'jump', w: 'jump', W: 'jump', Enter: 'jump' };
+addEventListener('keydown', e => { const k = MAP[e.key]; if (k) { e.preventDefault(); if (!e.repeat) down(k); } if (e.key === 'm' || e.key === 'M') muted = !muted; });
+addEventListener('keyup', e => { const k = MAP[e.key]; if (k) up(k); });
+for (const b of document.querySelectorAll('.pad button')) { const k = b.dataset.k; b.addEventListener('pointerdown', e => { e.preventDefault(); b.setPointerCapture(e.pointerId); b.classList.add('on'); down(k); }); for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) b.addEventListener(ev, () => { b.classList.remove('on'); up(k); }); }
+addEventListener('touchstart', () => document.body.classList.add('touch'), { once: true, passive: true });
+if (matchMedia('(pointer:coarse)').matches) document.body.classList.add('touch');
+cv.addEventListener('pointerdown', e => { const r = cv.getBoundingClientRect(), x = (e.clientX - r.left) / r.width * W, y = (e.clientY - r.top) / r.height * H; if (state === 'title' && y > 130 && y < 204) { const i = Math.max(0, Math.min(2, Math.floor((x - 13) / 98))); if (i === pick) anyTap = 'go'; else { pick = i; sfx.pick(); } } else if (state !== 'play') jumpTap = true; });
+let padJump = false, padDir = 0;
+function gamepad() { try { const p = [...navigator.getGamepads()].find(Boolean); if (!p) return; const dir = (p.axes[0] > 0.4 || p.buttons[15]?.pressed ? 1 : 0) - (p.axes[0] < -0.4 || p.buttons[14]?.pressed ? 1 : 0), j = p.buttons[0]?.pressed || p.buttons[1]?.pressed; if (dir !== padDir) { if (padDir) up(padDir > 0 ? 'right' : 'left'); if (dir) down(dir > 0 ? 'right' : 'left'); padDir = dir; } if (j !== padJump) { j ? down('jump') : up('jump'); padJump = j; } } catch {} }
+
+// ---------- loop ----------
+let last = performance.now(), acc = 0;
+function frame(now) { acc += Math.min(0.1, (now - last) / 1000); last = now; gamepad(); while (acc >= 1 / 120) { step(1 / 120); jumpTap = false; anyTap = false; acc -= 1 / 120; } draw(); requestAnimationFrame(frame); }
+requestAnimationFrame(frame);
+try { document.fonts.load('16px "Press Start 2P"'); } catch {}
+window.__tp = { get state() { return state; }, get L() { return L; }, get pl() { return pl; }, get score() { return score; }, keys, down, up, startPlanet, set who(v) { who = v; }, newGame, get planet() { return planet; } };
+try { if (parent !== window) parent.postMessage({ bba: 'activity', v: 1, game: 'tiny', event: { kind: 'game_ready' } }, '*'); } catch {}
+})();
+</script>
+<script src="https://cruizin.chucksi.com/hub.js" data-game="tiny" async></script>
+</body>
+</html>

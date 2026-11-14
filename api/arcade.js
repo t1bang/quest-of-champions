@@ -26,7 +26,7 @@ async function supabaseAction(action, body, game, authorization) {
   return data;
 }
 
-const GAMES = ['quest', 'vendetta', 'guerilla', 'gamerboy', 'blankman', 'cruizin'];
+const GAMES = ['quest', 'vendetta', 'guerilla', 'gamerboy', 'blankman', 'cruizin', 'tiny'];
 const R_URL = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
 const R_TOK = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
 

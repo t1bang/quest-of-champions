@@ -37,6 +37,11 @@ export const GAMES = [
     play: 'https://cruizin.chucksi.com/', trailer: '',
     art: 'assets/cruizin-cover.jpg',
     shots: ['assets/cruizin-cover.jpg'] },
+  { id: 'tiny', title: 'Tiny Prompters: Rocket Escape', genre: 'Platformer', color: '#31e1ff', trim: '#ffd23e', room: 'east',   // East Wing
+    blurb: 'A retro rocket platformer with Astra, Rivet and Quark. Climb each planet, grab the fuel cells and blast off before the danger rises. Five planets. Keyboard, touch or controller.',
+    play: 'games/tiny-prompters/', trailer: '',
+    art: 'assets/tiny-prompters-cover.jpg',
+    shots: ['assets/tiny-prompters-cover.jpg', 'assets/tiny-prompters-play.jpg'] },
 ];
 
 // Coming-soon games in the hallway. "file" = the song that plays when a player walks up
