@@ -1016,7 +1016,7 @@ function drawCurryPartner(e){
 // Custom seven-pose sprite sheets for P. MyHomey (Level 2) and Tevin Jones.
 // Assets are served relative to this game's index.html.
 const customSheets={};
-for(const [key,url] of [['mahomesSheet','mahomes-sprites.png'],['tevin','tevin-sprites.png']]){
+for(const [key,url] of [['mahomesSheet','tevin-sprites.png'],['tevin','mahomes-sprites.png']]){
  const img=new Image();img.src=url;
  img.onerror=()=>console.error('Character sprite failed to load:',url);
  customSheets[key]={img,frames:{}};
