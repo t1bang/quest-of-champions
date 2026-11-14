@@ -3,6 +3,7 @@ import { PRIZES, REWARDS, REAL_PRIZES_LIVE, BAR, TOKEN_PACK, WEAR, SLOTS, JEWELR
 import { createMoves, SPRITE } from './moves.js';
 import { createLive } from './live.js';
 import { createAlerts } from './alerts.js';
+import { openBartender, BARTENDER } from './bartender.js';
 import { COVERS, playTrailer } from './art.js';
 import { buildRoom, DIMS } from './room.js';
 import { supabase, authHeaders, playerCall, enabledProviders, escapeHtml, createActivityTracker } from './player-services.js';
@@ -546,15 +547,23 @@ function drinkAnim() { const d = el('div', '', '🍺'); d.id = 'drink'; document
 function openBar() {
   if (!auth.pid) { openProfile(); return toast('SIGN IN TO ORDER AT THE BAR'); }
   show(`<h2>THE BAR</h2><p>You have <b style="color:var(--gold)">🪙 ${me ? me.tokens : 0}</b> tokens${drunk ? ` · ${drunk} drink${drunk > 1 ? 's' : ''} in` : ''}.</p>
-    <div class="grid"><div class="card"><div class="ico">🍺</div><span>Drink</span><button class="btn go" data-bar="beer">🪙 ${BAR.beer}</button></div></div>
+    <div class="grid"><div class="card"><div class="ico">🍺</div><span>Drink</span><button class="btn go" data-bar="beer">🪙 ${BAR.beer}</button></div>
+      <div class="card"><div class="ico">🗣️</div><span>Talk to Dee</span><p class="about">Tell the bartender what you think of the arcade. Type it or say it.</p><button class="btn go" id="bartalk">GIVE FEEDBACK</button></div></div>
     <h3>LEAVE A TIP</h3>${BAR.tips.map(t => `<button class="btn" data-tip="${t}">🪙 ${t}</button>`).join('')}
     <p class="dim">In-game drinks only. A drink blurs the room, slows you down and scrambles the game you pick. Play a game and leave it to sober up.</p>`, '#ffb400');
   pbody.onclick = async e => {
+    if (e.target.closest('#bartalk')) return talkToDee();
     const b = e.target.closest('[data-bar]'), t = e.target.closest('[data-tip]'); if (!b && !t) return;
     try { const r = await api('spend', b ? { what: 'beer' } : { what: 'tip', amount: +t.dataset.tip }); setMe(r.player);
       if (b) { closePanel(); drinkAnim(); setTimeout(() => { setDrunk(drunk + 1); toast('CHEERS! 🍺'); }, 1300); } else { openBar(); toast('THANKS FOR THE TIP!'); } } catch (err) { toast(err.message.toUpperCase()); }
   };
   cleanup = () => { pbody.onclick = null; };
+}
+// Dee the bartender takes feedback (typed or spoken); the website emails it to the arcade admin as it arrives.
+function talkToDee() {
+  if (!needMe()) return;
+  openBartender({ show, pbody, toast, hub, onClose: fn => { cleanup = fn; }, back: openBar, games: GAMES.filter(g => g.play).map(g => [g.id, g.title]),
+    send: async payload => { const r = await fetch('/api/feedback', { method: 'POST', headers: { 'Content-Type': 'application/json', ...await authHeaders() }, body: JSON.stringify({ ...auth, ...payload }) }); const j = await r.json().catch(() => ({ error: 'The bartender is busy. Try again.' })); if (!r.ok) throw new Error(j.error || 'Could not send'); return j; } });
 }
 const MINI = {
   darts: { title: 'DARTS', icon: '🎯', rounds: 3, verb: 'THROW', unit: 'POINTS', score: a => a > 0.93 ? 50 : a > 0.8 ? 25 : Math.round(a * 20) },
@@ -721,8 +730,13 @@ function peerSprites(dt) {
     const pose = moves && p.draw ? moves.peerSprite(p, id, dt) : null;      // which picture: standing, walking, a move, an emote
     if (pose && pose.tex) out.push({ tex: pose.tex, x: p.x + (wob ? Math.sin(wob) * 22 : 0), z: p.z + (wob ? Math.cos(wob * 0.7) * 14 : 0), y: (p.sit ? -70 : pose.lift) - (wob ? Math.abs(Math.sin(wob)) * 10 : 0), w: SPRITE.w, h: SPRITE.h });
   }
+  if (room) { // Dee, behind the bar
+    if (!deeTex || deeDrunk !== drunk) { if (deeTex) room.freeTex(deeTex); deeDrunk = drunk; deeTex = room.tex(256, 256, (c, W, H) => drawAvatar(c, W, H, BARTENDER.av, BARTENDER.name, BARTENDER.fit, { curvy: drunk > 0 })); }
+    out.push({ tex: deeTex, x: BARTENDER.x + Math.sin(now / 2400) * 60, z: BARTENDER.z, y: Math.sin(now / 450) * 3, w: SPRITE.w, h: SPRITE.h });
+  }
   return out;
 }
+let deeTex = null, deeDrunk = -1;
 let presenceStarted=false;
 async function startPresence() {
   if(presenceStarted)return;presenceStarted=true;

@@ -144,3 +144,5 @@ ul.quests li b{font-size:9px;color:var(--gold);white-space:nowrap}ul.quests li b
 .lootcard small{display:block;font:8px var(--pix);color:#fff;opacity:.8}.lootcard>b{display:block;font:26px var(--big);color:var(--c);text-shadow:0 0 14px var(--c),2px 2px 0 #000;margin:6px 0}
 .lootcard .ico{font-size:64px;line-height:1.1;filter:drop-shadow(0 0 14px var(--c));margin:6px 0}.lootcard .ico canvas,.lootcard .ico img{width:96px;height:96px}
 .lootcard h3{font:13px var(--pix);color:#fff;margin:6px 0}.lootcard p{font:9px var(--pix);color:var(--dim);margin:6px 0;line-height:1.6}.lootcard p.tot{color:var(--gold);font-size:12px}.lootcard .btn{margin:8px 4px 0}
+/* bartender feedback form */
+.fbin{width:100%;background:#0b0612;color:#fff;border:2px solid #3a2a55;border-radius:6px;padding:10px;font:11px/1.6 ui-monospace,Menlo,monospace;-webkit-user-select:text;user-select:text}textarea.fbin{resize:vertical;min-height:90px}.fbin:focus{outline:none;border-color:var(--gold)}
