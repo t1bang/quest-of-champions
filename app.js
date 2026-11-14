@@ -1,5 +1,6 @@
 import { GAMES, SONGS, MUSIC_PAGES, DONATE, SOCIALS, CLAIM_HELP, BGM, SOON, VAULT, SOCIAL_AUTH, JUKEBOX_PLAYLIST, WALL_VIDEO, WALL_SONG } from './config.js';
-import { PRIZES, REWARDS, REAL_PRIZES_LIVE, BAR, TOKEN_PACK, WEAR, SLOTS, JEWELRY, DEFAULT_FIT } from './prizes.js';
+import { PRIZES, REWARDS, REAL_PRIZES_LIVE, BAR, TOKEN_PACK, WEAR, SLOTS, JEWELRY, DEFAULT_FIT, MOVES, UPGRADES } from './prizes.js';
+import { createMoves, SPRITE } from './moves.js';
 import { COVERS, playTrailer } from './art.js';
 import { buildRoom, DIMS } from './room.js';
 import { supabase, authHeaders, playerCall, enabledProviders, escapeHtml, createActivityTracker } from './player-services.js';
@@ -179,7 +180,11 @@ function frame(now, xf) {
   P.eyeBase = (P.eyeBase || 300) + ((sitting ? 190 : 300) - (P.eyeBase || 300)) * Math.min(1, dt * 6);
   P.eye = P.eyeBase + Math.sin(walkT) * (moving ? 5 : 0);
   if (xr) xrDraw(xf, now / 1000, dt);
-  else if (room && !window.__skip) { const t = now / 1000; room.render(drunk ? { ...P, yaw: P.yaw + Math.sin(t * 1.3) * 0.03 * drunk, pitch: P.pitch + Math.sin(t * 0.9) * 0.018 * drunk } : P, t, peerSprites(dt)); placeWall(); }
+  else if (room && !window.__skip) {
+    const t = now / 1000, spr = peerSprites(dt), mv = moves ? moves.update(dt, spr) : null;      // moves add blasts, sparks and the sparring bot, and lift or shake the view
+    const V = mv && (mv.lift || mv.shakeX || mv.shakeY || mv.spin) ? { ...P, eye: P.eye + mv.lift + mv.shakeY, yaw: P.yaw + mv.shakeX + mv.spin } : P;
+    room.render(drunk ? { ...V, yaw: V.yaw + Math.sin(t * 1.3) * 0.03 * drunk, pitch: V.pitch + Math.sin(t * 0.9) * 0.018 * drunk } : V, t, spr); placeWall();
+  }
   let best = null, bd = 1e9;
   if (room) for (const s of Object.values(stations)) {
     const d = Math.hypot(s.x - P.x, s.z - P.z), a = Math.atan2(s.x - P.x, -(s.z - P.z));
@@ -273,7 +278,9 @@ function xrSelect(e) {
   }
 }
 
-addEventListener('keydown', e => { if (e.target.tagName === 'INPUT' || !$('#gf').hidden) return; keys[e.key.toLowerCase()] = 1; if ((e.key === 'Enter' || e.key.toLowerCase() === 'e') && near && panel.hidden && $('#gate').hidden) near.open(); if (e.key === 'Escape') closePanel(); });
+const MOVE_KEYS = { j: 'punch', k: 'kick', ' ': 'jump', l: 'combo', f: 'blast', q: 'special' };
+addEventListener('keydown', e => { if (e.target.tagName === 'INPUT' || !$('#gf').hidden) return; keys[e.key.toLowerCase()] = 1;
+  if (moves && !e.repeat && panel.hidden && $('#gate').hidden) { const m = MOVE_KEYS[e.key.toLowerCase()]; if (m) { e.preventDefault(); moves.doMove(m); } else if (e.key === '1') moves.doEmote('wave'); else if (e.key === '2') moves.doEmote('dance'); } if ((e.key === 'Enter' || e.key.toLowerCase() === 'e') && near && panel.hidden && $('#gate').hidden) near.open(); if (e.key === 'Escape') closePanel(); });
 addEventListener('keyup', e => { keys[e.key.toLowerCase()] = 0; });
 let drag = null;
 view.addEventListener('pointerdown', e => { drag = { id: e.pointerId, x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, moved: false }; view.setPointerCapture(e.pointerId); });
@@ -442,23 +449,25 @@ async function payReturn() {
 function openPrizes() {
   siteActivity.event('rewards_open');
   if (!auth.pid) { openProfile(); return toast('SIGN IN TO REACH THE PRIZE WALL'); }
-  const card = p => { const own = me && me.closet.includes(p.id) && !p.real; return `<div class="card ${own ? 'on' : ''}"><div class="ico">${p.icon}</div><span>${p.name}</span>
-      <button class="btn ${own ? 'off' : 'go'}" data-buy="${p.id}" ${own ? 'disabled' : ''}>${own ? 'OWNED' : '🪙 ' + p.cost}</button></div>`; };
+  const card = p => { const own = me && me.closet.includes(p.id) && !p.real, locked = !own && p.needs && !(me && me.closet.includes(p.needs)); return `<div class="card ${own ? 'on' : ''}"><div class="ico">${p.icon}</div><span>${p.name}</span>${p.about ? `<p class="about">${p.about}</p>` : ''}
+      <button class="btn ${own || locked ? 'off' : 'go'}" data-buy="${p.id}" ${own || locked ? 'disabled' : ''}>${own ? 'OWNED' : locked ? 'GET LEVEL 2 FIRST' : '🪙 ' + p.cost}</button></div>`; };
   const real = PRIZES.filter(p => p.real && REAL_PRIZES_LIVE), songs = PRIZES.filter(p => p.file);
   const group = (label, list, note) => list.length ? `<h3>${label}</h3>${note ? `<p class="dim">${note}</p>` : ''}<div class="grid">${list.map(card).join('')}</div>` : '';
   const bySlot = slots => PRIZES.filter(p => slots.includes(p.slot));
   show(`<h2>PRIZE WALL</h2><p>You have <b style="color:var(--gold)">🪙 ${me ? me.tokens : 0}</b> tokens. Avatar items go in your closet. Plain tees, jeans and sneakers are already there for free.</p>
-    <div class="tabs pwmenu"><button class="btn on" data-jump="pw-avatar">AVATAR ITEMS</button><button class="btn" data-jump="pw-songs">SONGS</button><button class="btn" data-jump="pw-real">REAL LIFE ITEMS</button></div>
+    <div class="tabs pwmenu"><button class="btn on" data-jump="pw-avatar">AVATAR ITEMS</button><button class="btn" data-jump="pw-moves">MOVES</button><button class="btn" data-jump="pw-songs">SONGS</button><button class="btn" data-jump="pw-real">REAL LIFE ITEMS</button></div>
     <div id="paybox"></div>
     <section id="pw-avatar">${group('AVATAR HATS', bySlot(['hat']))}${group('AVATAR CLOTHES', bySlot(['shirt', 'pants', 'shoes', 'eyes']))}
     ${group('AVATAR JEWELRY', bySlot(JEWELRY))}${group('AVATAR EXTRAS', bySlot(['hand']))}</section>
+    <section id="pw-moves">${group('SPECIAL MOVES', MOVES, 'Punch, kick, jump, combo and blast are free. Buy a special move once, then press Q (or ★) to use it. Try them on SPAR-BOT on the main floor.')}${group('MOVE UPGRADES', UPGRADES, 'Upgrades make every move you have hit harder, recharge faster or blast bigger.')}</section>
     <section id="pw-songs">${group('SONG DOWNLOADS', songs)}</section>
     <section id="pw-real">${group('REAL LIFE ITEMS', real, 'Sign in to redeem. Your claim code and any ticket link are emailed to you.')}</section>
     <h3>HOW TO WIN TOKENS</h3><p class="dim">Every minute you play +${REWARDS.minute} · Beat a Quest of Champions level +${REWARDS.level} · T1 Versus fatality +${REWARDS.fatality} · Each game costs 1 token to start · Sign-in bonus +${REWARDS.signup} (one time) · Daily streak +${REWARDS.daily} on day 1 up to +${REWARDS.daily * REWARDS.streakMax} a day by day ${REWARDS.streakMax} · Game scores up to +${REWARDS.scoreMax} a run</p>`, '#ffc93a');
   pbody.onclick = async e => {
     const j = e.target.closest('[data-jump]'); if (j) { $('#' + j.dataset.jump)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); pbody.querySelectorAll('[data-jump]').forEach(x => x.classList.toggle('on', x === j)); return; }
     const b = e.target.closest('[data-buy]'); if (!b || !needMe()) return;
-    try { const r = await api('buy', { id: b.dataset.buy }); setMe(r.player); hub('prize'); if (r.code || b.dataset.buy.startsWith('song-') || wearItem(b.dataset.buy)) { const w = wearItem(b.dataset.buy); if (w) { myFit[w.slot] = w.id; store.set('bba-fit', myFit); api('wear', { outfit: myFit }).then(x => x?.player && setMe(x.player)).catch(() => {}); } openCloset(); if (w) toast('BOUGHT! IT IS ON YOUR AVATAR'); if (r.code) toast(r.emailed ? 'REDEEMED! CHECK YOUR EMAIL' : 'REDEEMED! YOUR CODE IS IN YOUR CLOSET'); } else { toast('ADDED TO YOUR CLOSET'); openPrizes(); } } catch (err) { toast(err.message.toUpperCase()); if (/sign in/i.test(err.message)) openProfile(); }
+    try { const r = await api('buy', { id: b.dataset.buy }); setMe(r.player); hub('prize');
+      if (/^(move|up)-/.test(b.dataset.buy)) { const isMove = b.dataset.buy.startsWith('move-'); if (isMove && moves) moves.setSpecial(b.dataset.buy); hub(isMove ? 'move_bought' : 'upgrade_bought'); openPrizes(); $('#pw-moves')?.scrollIntoView({ block: 'start' }); toast(isMove ? 'MOVE UNLOCKED! PRESS Q OR ★ TO USE IT' : 'UPGRADE ON! YOUR MOVES JUST GOT BETTER'); return; } if (r.code || b.dataset.buy.startsWith('song-') || wearItem(b.dataset.buy)) { const w = wearItem(b.dataset.buy); if (w) { myFit[w.slot] = w.id; store.set('bba-fit', myFit); api('wear', { outfit: myFit }).then(x => x?.player && setMe(x.player)).catch(() => {}); } openCloset(); if (w) toast('BOUGHT! IT IS ON YOUR AVATAR'); if (r.code) toast(r.emailed ? 'REDEEMED! CHECK YOUR EMAIL' : 'REDEEMED! YOUR CODE IS IN YOUR CLOSET'); } else { toast('ADDED TO YOUR CLOSET'); openPrizes(); } } catch (err) { toast(err.message.toUpperCase()); if (/sign in/i.test(err.message)) openProfile(); }
   };
   // Buy tokens with real money (only shown when the payment service is switched on)
   payConfig().then(c => { const box = $('#paybox'); if (!box || !c.enabled) return;
@@ -643,25 +652,56 @@ function openAvatarOld() {
   $('#avsave').onclick = async () => { store.set('bba-av', myAv); if (auth.pid) { try { const r = await api('avatar', { av: myAv }); setMe(r.player); } catch { toast('AVATAR SAVED ON THIS DEVICE; CLOUD UNAVAILABLE'); return; } } closePanel(); toast('AVATAR SAVED'); };
   cleanup = () => { pbody.onclick = null; };
 }
+// Your moves: what each button does, your levels, and which special move is equipped.
+function openMoves() {
+  if (!moves) return;
+  const lv = s => moves.level(s), have = moves.specials();
+  if (have.length && !have.some(m => m.id === moves.special)) moves.setSpecial(have[0].id);
+  const basics = [['👊', 'PUNCH', 'J'], ['🦵', 'KICK', 'K'], ['⤴', 'JUMP', 'SPACE'], ['🌀', 'COMBO', 'L'], ['💥', 'BLAST', 'F'], ['★', 'SPECIAL', 'Q'], ['👋', 'WAVE', '1'], ['🕺', 'DANCE', '2']];
+  show(`<h2>YOUR MOVES</h2><p>Use the round buttons on screen or the keys. Other players see your avatar do every move. Hits are just for show.</p>
+    <div class="cols"><div class="stage" style="--c:#31d7ff;aspect-ratio:1/1;max-width:240px"><canvas width="256" height="256" id="mvc"></canvas></div>
+    <div><ul class="list movelist">${basics.map(([i, n, k]) => `<li><span>${i} ${n}<small>KEY ${k}</small></span></li>`).join('')}</ul></div></div>
+    <h3>YOUR LEVELS</h3><p>💪 POWER LV ${lv('power')} · ⏱️ SPEED LV ${lv('speed')} · 🔆 BLAST LV ${lv('blast')}</p>
+    <h3>SPECIAL MOVE</h3>${have.length ? `<ul class="list">${have.map(m => `<li><span>${m.icon} ${m.name}<small style="display:block;color:var(--dim);font-size:8px">${m.about}</small></span><button class="btn ${moves.special === m.id ? 'off' : 'go'}" data-eq="${m.id}" ${moves.special === m.id ? 'disabled' : ''}>${moves.special === m.id ? 'EQUIPPED' : 'EQUIP'}</button></li>`).join('')}</ul>` : '<p class="dim">You have no special move yet.</p>'}
+    <button class="btn go" id="mvshop">GET MORE MOVES + UPGRADES</button> <button class="btn" id="mvbot">WALK TO SPAR-BOT</button>`, '#31d7ff');
+  const c = $('#mvc').getContext('2d'), seq = ['idle', 'walk1', 'walk2', 'punch', 'kick', 'jump', 'spin', 'blast', 'wave', 'dance1', 'dance2']; let n = 0;
+  const paint = () => { moves.preview(c, 256, 256, seq[n++ % seq.length], moves.special); }; paint(); const timer = setInterval(paint, 420);
+  pbody.onclick = e => { const b = e.target.closest('[data-eq]'); if (b) { moves.setSpecial(b.dataset.eq); clearInterval(timer); openMoves(); } };
+  $('#mvshop').onclick = () => { clearInterval(timer); openPrizes(); setTimeout(() => $('#pw-moves')?.scrollIntoView({ block: 'start' }), 60); };
+  $('#mvbot').onclick = () => { clearInterval(timer); closePanel(); const b = moves.bot; P.x = b.x + 20; P.z = b.z + 215; P.yaw = Math.atan2(b.x - P.x, -(b.z - P.z)); P.pitch = 0; collide(); toast('SPAR-BOT IS RIGHT IN FRONT OF YOU'); };
+  cleanup = () => { clearInterval(timer); pbody.onclick = null; };
+}
 // Other players: positions are shared live through a Supabase Realtime channel.
 const peers = new Map(), sid = Math.random().toString(36).slice(2, 10);
+// Moves and animation for avatars (moves.js). Actions are shared on the same live channel as positions.
+const moves = room ? createMoves({ room, P, peers, sid, closet: () => (me && me.closet) || [], skin: () => AV.skin[myAv.skin] || '#c68642', drawMine: (c, W, H) => drawAvatar(c, W, H, myAv, me ? me.name : '', myFit),
+  blocked: () => !$('#gf').hidden || !panel.hidden || !$('#gate').hidden || !!xr, stand: () => { sitting = false; }, collide, toast, hub, send: payload => { try { window.__bbaAct && window.__bbaAct(payload); } catch {} }, name: () => (me ? me.name : 'Player') }) : null;
+window.__bbaMoves = moves;
+if (moves) {
+  $('#mv').onclick = openMoves;
+  const pad = $('#moves');
+  pad.addEventListener('pointerdown', e => { const b = e.target.closest('[data-move]'); if (!b) return; e.preventDefault(); e.stopPropagation(); moves.doMove(b.dataset.move); });
+  setInterval(() => { const off = !$('#gf').hidden || !panel.hidden || !$('#gate').hidden || !!xr; if (pad.hidden !== off) pad.hidden = off; if (!off) pad.querySelectorAll('[data-move]').forEach(b => b.classList.toggle('cd', moves.cooldown(b.dataset.move) > 0.05)); }, 120);
+} else if ($('#mv')) $('#mv').hidden = true;
+
 function peerSeen(d) {
   if (!d || typeof d.id !== 'string' || d.id === sid || (peers.size >= 40 && !peers.has(d.id))) return;
   const name = String(d.n || 'Player').replace(/[^A-Za-z0-9 _-]/g, '').slice(0, 16), av = cleanAv(d.av), fit = d.fit ? cleanFit(d.fit) : null, look = { goggles: !!d.d, curvy: drunk > 0 }, key = name + JSON.stringify(av) + JSON.stringify(fit) + JSON.stringify(look);
   const x = Math.max(-760, Math.min(760, +d.x || 0)), z = Math.max(-1450, Math.min(1880, +d.z || 0));
   let p = peers.get(d.id); if (!p) { p = { x, z }; peers.set(d.id, p); }
-  if (p.key !== key && room) { if (p.tex) room.freeTex(p.tex); p.tex = room.tex(128, 256, (c, W, H) => drawAvatar(c, W, H, av, name, fit, look)); p.key = key; }
+  if (p.key !== key && room) { if (moves) moves.freePeer(p); p.draw = (c, W, H) => drawAvatar(c, W, H, av, name, fit, look); p.key = key; }
   p.tx = x; p.tz = z; p.sit = !!d.s; p.drunk = !!d.d; p.last = d; p.seen = performance.now();
 }
 window.__bbaPeer = peerSeen;
 function peerSprites(dt) {
   const out = [], now = performance.now();
   for (const [id, p] of peers) {
-    if (now - p.seen > 8000) { if (p.tex && room) room.freeTex(p.tex); peers.delete(id); continue; }
+    if (now - p.seen > 8000) { if (moves) moves.freePeer(p); peers.delete(id); continue; }
     if (!p.key && p.last) { const seen = p.seen; peerSeen(p.last); p.seen = seen; } // redraw after my own drinks change how I see people
     p.x += (p.tx - p.x) * Math.min(1, dt * 5); p.z += (p.tz - p.z) * Math.min(1, dt * 5);
     const wob = p.drunk && !p.sit ? now / 260 + id.charCodeAt(0) : 0; // a stumble: sway side to side and dip
-    if (p.tex) out.push({ tex: p.tex, x: p.x + (wob ? Math.sin(wob) * 22 : 0), z: p.z + (wob ? Math.cos(wob * 0.7) * 14 : 0), y: (p.sit ? -70 : 0) - (wob ? Math.abs(Math.sin(wob)) * 10 : 0), w: 150, h: 300 });
+    const pose = moves && p.draw ? moves.peerSprite(p, id, dt) : null;      // which picture: standing, walking, a move, an emote
+    if (pose && pose.tex) out.push({ tex: pose.tex, x: p.x + (wob ? Math.sin(wob) * 22 : 0), z: p.z + (wob ? Math.cos(wob * 0.7) * 14 : 0), y: (p.sit ? -70 : pose.lift) - (wob ? Math.abs(Math.sin(wob)) * 10 : 0), w: SPRITE.w, h: SPRITE.h });
   }
   return out;
 }
@@ -671,6 +711,8 @@ async function startPresence() {
   try {
     const c = await sb(), ch = c.channel('bba-arcade-room', { config: { broadcast: { self: false } } });
     ch.on('broadcast', { event: 'pos' }, m => peerSeen(m.payload));
+    ch.on('broadcast', { event: 'act' }, m => moves && moves.onAct(m.payload));
+    window.__bbaAct = payload => { if (auth.pid && me) ch.send({ type: 'broadcast', event: 'act', payload }); };
     let timer, previous = '', sentAt = 0;
     ch.subscribe(st => { clearInterval(timer); if (st === 'SUBSCRIBED') timer = setInterval(() => {
       if (document.hidden || !$('#gf').hidden || !auth.pid || !me) return;

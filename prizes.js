@@ -40,11 +40,30 @@ export const WEAR = [
   { id: 'mic', name: 'Gold Mic', slot: 'hand', cost: 60, icon: '🎤' },
   { id: 'record', name: 'Golden Record', slot: 'hand', cost: 80, icon: '📀' },
 ];
+// MOVES: what an avatar can do in the lobby. Punch, kick, jump, combo and blast are free for everyone.
+// Special moves are bought once and then equipped (one at a time); upgrades make every move stronger or faster.
+export const MOVES = [
+  { id: 'move-uppercut', name: 'Rising Uppercut', slot: 'move', cost: 60, icon: '⤴️', about: 'Launch up with a heavy fist' },
+  { id: 'move-tornado', name: 'Tornado Kick', slot: 'move', cost: 80, icon: '🌪️', about: 'Spin and hit everything around you' },
+  { id: 'move-dash', name: 'Flash Dash', slot: 'move', cost: 90, icon: '⚡', about: 'Blink forward and strike' },
+  { id: 'move-slam', name: 'Ground Slam', slot: 'move', cost: 100, icon: '💥', about: 'Leap and send out a shockwave' },
+  { id: 'move-wave', name: 'Big Bang Wave', slot: 'move', cost: 150, icon: '🌊', about: 'Charge up, then fire a long energy beam' },
+  { id: 'move-meteor', name: 'Meteor Blast', slot: 'move', cost: 200, icon: '☄️', about: 'Lob a giant fireball that bursts where it lands' },
+];
+export const UPGRADES = [
+  { id: 'up-power-2', name: 'Power Level 2', slot: 'upgrade', cost: 75, icon: '💪', about: 'All hits +40%' },
+  { id: 'up-power-3', name: 'Power Level 3', slot: 'upgrade', cost: 150, icon: '💪', needs: 'up-power-2', about: 'All hits +80%' },
+  { id: 'up-speed-2', name: 'Speed Level 2', slot: 'upgrade', cost: 75, icon: '⏱️', about: 'Moves recharge 25% faster' },
+  { id: 'up-speed-3', name: 'Speed Level 3', slot: 'upgrade', cost: 150, icon: '⏱️', needs: 'up-speed-2', about: 'Moves recharge 45% faster' },
+  { id: 'up-blast-2', name: 'Blast Level 2', slot: 'upgrade', cost: 75, icon: '🔆', about: 'Bigger blasts' },
+  { id: 'up-blast-3', name: 'Blast Level 3', slot: 'upgrade', cost: 150, icon: '🔆', needs: 'up-blast-2', about: 'Huge blasts' },
+];
 export const DEFAULT_FIT = { shirt: 'tee-red', pants: 'jeans-black', shoes: 'kicks' };
 
 // Everything that costs tokens: avatar items, real life items (500-2000 tokens) and song downloads.
 export const PRIZES = [
   ...WEAR.filter(w => w.cost > 0),
+  ...MOVES, ...UPGRADES,
   // real life items
   { id: 'real-tickets', name: 'Stevie Stone GOAT Talk Tour Tickets', icon: '🎟️', cost: 500, real: true, kind: 'ticket' },
   { id: 'real-stickers', name: 'Sticker Pack', icon: '🏷️', cost: 500, real: true },
