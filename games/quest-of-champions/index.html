@@ -289,7 +289,7 @@ const LEVELS={
      boss:{name:'KING RING BARRER',o:{skin:'#6b3f22',hair:{type:'crown'},top:'#552583',jersey:{number:'1',color:'#fdb927',text:'#552583'},pants:'#552583',boots:'#000',size:4.6,big:true,holding:'ball',face:{beard:true}},hp:50,speed:1.3,moves:['fireball','jumpslam']},
      reward:'ring'},
   2:{name:'VICTORY LAP',sub:'Level 2 · The Gridiron',song:'audio/victory.mp3',theme:'field',length:5800,
-     team:{name:'P. MYHOMIE',big:true,o:{skin:'#c58a5a',hair:{type:'helmet',color:'#e31837'},top:'#e31837',jersey:{number:'15',color:'#ffd23f',text:'#e31837'},pants:'#ffd23f',boots:'#e31837',size:3,holding:'football'},proj:'football'},
+     team:{name:'P. MYHOMEY',big:true,o:{sprite:'mahomesSheet',skin:'#c58a5a',hair:{type:'helmet',color:'#e31837'},top:'#e31837',jersey:{number:'15',color:'#ffd23f',text:'#e31837'},pants:'#ffd23f',boots:'#e31837',size:3,holding:'football'},proj:'football'},
      enemy:{kinds:[
         {o:{skin:'#8d5a3b',hair:{type:'helmet',color:'#004c54'},top:'#004c54',jersey:{number:'55',color:'#a5acaf',text:'#000'},pants:'#fff',boots:'#000',size:3,big:true},charger:true,heisman:true},
         {o:{skin:'#e3b58a',hair:{type:'helmet',color:'#003594'},top:'#003594',jersey:{number:'7',color:'#fff',text:'#003594'},pants:'#fff',boots:'#003594',size:3,holding:'football'},ranged:'football'},
@@ -1013,7 +1013,53 @@ function drawCurryPartner(e){
  ctx.drawImage(im,-w*.5,-h,w,h);
  ctx.restore();return true;
 }
+// Custom seven-pose sprite sheets for P. MyHomey (Level 2) and Tevin Jones.
+// Assets are served relative to this game's index.html.
+const customSheets={};
+for(const [key,url] of [['mahomesSheet','mahomes-sprites.png'],['tevin','tevin-sprites.png']]){
+ const img=new Image();img.src=url;
+ img.onerror=()=>console.error('Character sprite failed to load:',url);
+ customSheets[key]={img,frames:{}};
+}
+const customRegions={
+ idle:[0.025,0.005,0.19,0.385],
+ walk1:[0.245,0.005,0.205,0.385],
+ walk2:[0.465,0.005,0.205,0.385],
+ punch:[0.705,0.005,0.285,0.385],
+ kick:[0.025,0.485,0.31,0.405],
+ jump:[0.36,0.485,0.23,0.405],
+ hit:[0.675,0.485,0.27,0.405]
+};
+function customFrame(key,name){
+ const sh=customSheets[key];if(!sh||!sh.img.complete||!sh.img.naturalWidth)return null;
+ if(sh.frames[name])return sh.frames[name];
+ const im=sh.img,region=customRegions[name]||customRegions.idle;
+ const sx=Math.round(region[0]*im.width),sy=Math.round(region[1]*im.height);
+ const sw=Math.min(im.width-sx,Math.round(region[2]*im.width));
+ const shh=Math.min(im.height-sy,Math.round(region[3]*im.height));
+ const cv=document.createElement('canvas');cv.width=sw;cv.height=shh;
+ const cx=cv.getContext('2d',{willReadFrequently:true});cx.drawImage(im,sx,sy,sw,shh,0,0,sw,shh);
+ const pixels=cx.getImageData(0,0,sw,shh),d=pixels.data;
+ for(let i=0;i<d.length;i+=4){const red=d[i],green=d[i+1],blue=d[i+2];
+  if(green>90&&green>red*1.4&&green>blue*1.4)d[i+3]=0;
+ }
+ cx.putImageData(pixels,0,0);sh.frames[name]=cv;return cv;
+}
+function drawCustomCharacter(e){
+ const key=e.o.sprite;
+ const name=e.hurt>0?'hit':e.kick>0?'kick':e.attack>0?'punch':
+   e.air?'jump':Math.abs(e.walk||0)>0.1?(Math.floor(e.walk*1.6)%2?'walk2':'walk1'):'idle';
+ const im=customFrame(key,name);if(!im)return false;
+ const height=key==='mahomesSheet'?180:155;
+ const scale=height/(customSheets[key].img.height*.385)*(e.scale||1);
+ const w=im.width*scale,h=im.height*scale;
+ ctx.save();ctx.translate(Math.round(e.x-camX),Math.round(e.y));
+ ctx.scale(e.face<0?-1:1,1);ctx.imageSmoothingEnabled=false;
+ if(e.hurt>0&&t%4<2)ctx.globalAlpha=.7;
+ ctx.drawImage(im,-w*.5,-h,w,h);ctx.restore();return true;
+}
 function drawEntity(e){
+  if(e.o&&(e.o.sprite==='mahomesSheet'||e.o.sprite==='tevin')){if(drawCustomCharacter(e))return;ctx.save();ctx.fillStyle='#ffd23f';ctx.font='bold 13px sans-serif';ctx.fillText('SPRITE LOADING',e.x-camX-60,e.y-90);ctx.restore();return;}
   if(e.o&&e.o.sprite==='currySheet'){if(drawCurryPartner(e))return;ctx.save();ctx.fillStyle='#ffd23f';ctx.font='bold 14px sans-serif';ctx.fillText('CURRY SPRITE LOADING',e.x-camX-70,e.y-95);ctx.restore();return;}
   if(e.o&&e.o.sprite&&drawSprite(e))return;
   if(e.scale&&e.scale!==1){const x=e.x-camX,y=e.y;ctx.save();ctx.translate(x,y);ctx.scale(e.scale,e.scale);ctx.translate(-x,-y);const sc=e.scale;e.scale=1;drawEntity(e);e.scale=sc;ctx.restore();return;}
