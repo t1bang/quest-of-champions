@@ -15,10 +15,10 @@ export default async function handler(req, res) {
     const job = await rpc('job', { secret: b.secret });
     if (!job.note || !(job.subs || []).length) return res.status(200).json({ sent: 0, note: !!job.note });
     webpush.setVapidDetails('mailto:admin@t1bang.com', job.public, job.private);
-    const payload = JSON.stringify(job.note), dead = []; let sent = 0, failed = 0;
+    const payload = JSON.stringify(job.note), dead = [], codes = {}; let sent = 0, failed = 0;
     await Promise.all(job.subs.map(s => webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload, { TTL: 1200, urgency: 'high' })
-      .then(() => { sent++; }).catch(e => { failed++; if (e.statusCode === 404 || e.statusCode === 410) dead.push(s.endpoint); })));
+      .then(() => { sent++; }).catch(e => { failed++; const c = e.statusCode || 'error'; codes[c] = (codes[c] || 0) + 1; if (c === 404 || c === 410) dead.push(s.endpoint); })));
     if (dead.length) await rpc('report', { secret: b.secret, dead }).catch(() => {});
-    res.setHeader('Cache-Control', 'no-store'); res.status(200).json({ sent, failed, removed: dead.length });
+    res.setHeader('Cache-Control', 'no-store'); res.status(200).json({ sent, failed, removed: dead.length, codes });
   } catch (e) { res.status(e.status || 500).json({ error: e.status ? e.message : 'push failed' }); if (!e.status) console.error(e); }
 }
