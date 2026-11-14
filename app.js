@@ -197,7 +197,7 @@ function frame(now, xf) {
   P.eyeBase = (P.eyeBase || 300) + ((sitting ? 190 : 300) - (P.eyeBase || 300)) * Math.min(1, dt * 6);
   P.eye = P.eyeBase + Math.sin(walkT) * (moving ? 5 : 0);
   if (xr) xrDraw(xf, now / 1000, dt);
-  else if (room && !window.__skip) {
+  else if (room && !window.__skip && !lobbyPaused) {
     const t = now / 1000, spr = peerSprites(dt), mv = moves ? moves.update(dt, spr) : null; if (live) live.update(dt, spr);      // moves add blasts, sparks and the sparring bot, and lift or shake the view
     const V = mv && (mv.lift || mv.shakeX || mv.shakeY || mv.spin) ? { ...P, eye: P.eye + mv.lift + mv.shakeY, yaw: P.yaw + mv.shakeX + mv.spin } : P;
     room.render(drunk ? { ...V, yaw: V.yaw + Math.sin(t * 1.3) * 0.03 * drunk, pitch: V.pitch + Math.sin(t * 0.9) * 0.018 * drunk } : V, t, spr); placeWall();
@@ -605,14 +605,46 @@ function talkToDee() {
     send: async payload => { const r = await fetch('/api/feedback', { method: 'POST', headers: { 'Content-Type': 'application/json', ...await authHeaders() }, body: JSON.stringify({ ...auth, ...payload }) }); const j = await r.json().catch(() => ({ error: 'The bartender is busy. Try again.' })); if (!r.ok) throw new Error(j.error || 'Could not send'); return j; } });
 }
 const MINI = {
-  darts: { title: 'DARTS', icon: '🎯', rounds: 3, verb: 'THROW', unit: 'POINTS', score: a => a > 0.93 ? 50 : a > 0.8 ? 25 : Math.round(a * 20) },
+  darts: { title: 'DARTS', icon: '🎯', rounds: 3, verb: 'THROW', unit: 'POINTS', score: a => a > 0.93 ? 50 : a > 0.8 ? 25 : Math.round(a * 20), three: true },   // the real game is darts3d.js; this line is the fallback if 3D cannot start
   bowling: { title: 'BOWLING', icon: '🎳', rounds: 2, verb: 'ROLL', unit: 'PINS', score: (a, left) => Math.min(left, Math.round(a * a * (left === 10 ? 10 : left + 1))), pool: 10 },
   pool: { title: 'POOL', icon: '🎱', rounds: 4, verb: 'SHOOT', unit: 'BALLS SUNK', score: a => a > 0.9 ? 2 : a > 0.6 ? 1 : 0 },
   hockey: { title: 'AIR HOCKEY', icon: '🏒', rounds: 5, verb: 'SHOOT', unit: 'GOALS', score: a => a > 0.72 ? 1 : 0 },
 };
+// Darts is a real 3D game (darts3d.js, with models made in Tripo): hold on the board to aim, let go to throw.
+// Solo: 3 rounds of 3 darts, real darts scoring, your best total is remembered on this device.
+let lobbyPaused = false;                         // the lobby stops drawing while the 3D darts game is on screen
+const dartsGame = () => import('./darts3d.js');
+async function openDarts() {
+  show(`<h2>🎯 DARTS</h2><div class="dstage" id="dstage"><div class="dload">SETTING UP THE BOARD…</div></div>
+    <p id="dtxt" class="dim">Hold on the board to aim. Your hand sways, so let go when the ring is where you want it. Trebles (the thin inner ring) score three times the number.</p>
+    <button class="btn go" id="dagain" hidden>PLAY AGAIN</button> <button class="btn" id="dvs">⚔ CHALLENGE A PLAYER</button>`, '#ffc93a');
+  let view = null, closed = false, round = 0, thrown = 0, total = 0, roundPts = 0, over = false, wait = 0;
+  cleanup = () => { closed = true; lobbyPaused = false; clearTimeout(wait); if (view) view.destroy(); window.__darts = null; };
+  $('#dvs').onclick = () => { if (needMe()) versus.pick('darts'); }; $('#dagain').onclick = openDarts;
+  const best = () => +store.get('bba-darts-best') || 0;
+  const hud = () => view.hud(`<span>ROUND <b>${Math.min(round + 1, 3)}</b>/3</span><span class="dd">${'<i></i>'.repeat(3 - thrown)}${'<i class="u"></i>'.repeat(thrown)}</span><span>SCORE <b>${total}</b></span>`);
+  try {
+    lobbyPaused = true; const mod = await dartsGame(); if (closed) return;
+    view = await mod.createDarts($('#dstage'), { muted: () => muted, canThrow: () => !over && !wait, sway: () => 1 + round * 0.18,
+      onLand: hit => {
+        total += hit.score; roundPts += hit.score; thrown++; hud();
+        view.pop(hit.label, hit.score ? '+' + hit.score : 'NO SCORE', hit.ring === 'bull' || hit.ring === 'treble' ? '#3dff9a' : hit.score ? '#ffc93a' : '#ff5a6a');
+        if (thrown < 3) return;
+        wait = setTimeout(() => {                                                         // three darts thrown: pull them and start the next round
+          wait = 0; if (closed) return; if (roundPts === 180) toast('ONE HUNDRED AND EIGHTY!');
+          round++; thrown = 0; roundPts = 0; view.clear();
+          if (round >= 3) { over = true; const top = total > best(); if (top) store.set('bba-darts-best', total); view.hint(''); view.pop('FINAL ' + total, top ? 'NEW BEST!' : 'BEST ' + best(), '#ffc93a'); $('#dagain').hidden = false; $('#dtxt').textContent = `Final score: ${total}. Your best: ${best()}. The most possible is 540.`; hub('darts_done', total); }
+          hud();
+        }, 1300);
+      } });
+    if (closed) { view.destroy(); return; }
+    window.__darts = view; hud(); view.hint('HOLD TO AIM · LET GO TO THROW');
+  } catch (err) { lobbyPaused = false; if (!closed) openMini('darts', true); }           // no 3D on this device: the simple version still works
+}
 // Simple timing games: stop the marker as close to the centre as you can.
-function openMini(kind) {
+function openMini(kind, classic) {
   const g = MINI[kind]; hub('mini:' + kind);
+  if (g.three && !classic) return openDarts();
   show(`<h2>${g.icon} ${g.title}</h2><p>Stop the marker in the gold zone. ${g.rounds} tries.</p><div class="stage" style="--c:#ffc93a;aspect-ratio:16/6"><canvas width="640" height="240" id="mcv"></canvas></div>
     <p id="mtxt" style="color:var(--gold)">&nbsp;</p><button class="btn go" id="mgo">${g.verb}</button><button class="btn" id="magain" hidden>PLAY AGAIN</button> <button class="btn" id="mvs">⚔ CHALLENGE A PLAYER</button>`, '#ffc93a');
   const cv = $('#mcv'), c = cv.getContext('2d'); let round = 0, total = 0, left = g.pool || 0, t0 = performance.now(), frozen = null, raf, done = false;
@@ -686,7 +718,7 @@ let live = null; // who's here, daily quests and the lobby bosses (live.js)
 // Moves and animation for avatars (moves.js). Actions are shared on the same live channel as positions.
 const moves = room ? createMoves({ room, P, peers, sid, closet: () => (me && me.closet) || [], skin: () => AV.skin[myAv.skin] || '#c68642', drawMine: (c, W, H, pose, tint) => drawAvatar(c, W, H, myAv, me ? me.name : '', myFit, null, pose, tint),
   blocked: () => !$('#gf').hidden || !panel.hidden || !$('#gate').hidden || !!xr, stand: () => { sitting = false; }, collide, toast, hub, event: (type, n) => { if (live) live.event(type, n); }, send: payload => { try { window.__bbaAct && window.__bbaAct(payload); } catch {} }, name: () => (me ? me.name : 'Player') }) : null;
-window.__bbaMoves = moves; window.__P = P; window.__bbaOpen = id => handlers[id] && handlers[id]();
+window.__bbaMoves = moves; window.__P = P; window.__bbaSid = sid; window.__bbaOpen = (id, arg) => handlers[id] && handlers[id](arg);
 const alerts = createAlerts({ toast, hub, call: async (action, body) => { const { data, error } = await supabase.rpc('bba_push', { p_action: action, p_body: { ...auth, ...body } }); if (error) throw new Error(error.message); return data; } });
 live = createLive({ room, P, peers, moves, toast, hub, collide, show, closePanel, pbody, onClose: fn => { cleanup = fn; }, alertsHtml: () => alerts.html(), alerts: want => alerts.toggle(want), alertsOn: () => alerts.on || !alerts.can,
   call: async (action, body) => { const { data, error } = await supabase.rpc('bba_daily', { p_action: action, p_body: { ...auth, ...body } }); if (error) throw new Error(error.message); return data; },
@@ -698,7 +730,7 @@ live = createLive({ room, P, peers, moves, toast, hub, collide, show, closePanel
 window.__bbaLive = live;
 // Voice chat (opt-in) and bar games against another player; both ride the same live channel as positions.
 const voice = createVoice({ sid, peers, P, toast, hub, show, pbody, closePanel, onClose: fn => { cleanup = fn; }, send: payload => { try { window.__bbaRtc && window.__bbaRtc(payload); } catch {} } });
-const versus = createVersus({ sid, peers, MINI, toast, hub, show, pbody, closePanel, voice, onClose: fn => { cleanup = fn; }, myName: () => (me ? me.name : 'Player'), solo: kind => openMini(kind), event: t => live && live.event(t, 1),
+const versus = createVersus({ sid, peers, MINI, toast, hub, show, pbody, closePanel, voice, onClose: fn => { cleanup = fn; }, myName: () => (me ? me.name : 'Player'), solo: kind => openMini(kind), event: t => live && live.event(t, 1), darts: dartsGame, pauseLobby: on => { lobbyPaused = on; }, muted: () => muted,
   send: payload => { try { window.__bbaMini && window.__bbaMini(payload); } catch {} } });
 window.__bbaVoice = voice; window.__bbaVersus = versus;
 if (moves) {

@@ -12,7 +12,7 @@ export function createVersus(ctx) {
   // ----- inviting -----
   function pick(kind) {
     const g = MINI[kind], list = [...peers.entries()].filter(([, p]) => !p.g && !p.away);
-    ctx.show(`<h2>${g.icon} ${g.title}: CHALLENGE A PLAYER</h2><p>Pick someone who is in the arcade right now. You take turns; highest score after ${g.rounds} tries each wins.</p>
+    ctx.show(`<h2>${g.icon} ${g.title}: CHALLENGE A PLAYER</h2><p>Pick someone who is in the arcade right now. You take turns; ${g.three ? 'three darts a turn, three turns each, highest total wins' : `highest score after ${g.rounds} tries each wins`}.</p>
       <ul class="list">${list.map(([id, p]) => `<li><span>${esc(p.name || 'Player')}${p.v ? ' 🎙' : ''}</span><button class="btn go" data-ch="${esc(id)}">CHALLENGE</button></li>`).join('') || '<li><span class="dim">Nobody else is in the arcade right now.</span></li>'}</ul>
       <p><button class="btn" data-solo="${kind}">PLAY SOLO INSTEAD</button></p>`, '#ffc93a');
     ctx.pbody.onclick = e => {
@@ -41,6 +41,7 @@ export function createVersus(ctx) {
   // ----- the match -----
   function start({ mid, kind, opp, oppName, first }) {
     const g = MINI[kind];
+    if (g.three && ctx.darts) return startDarts({ mid, opp, oppName, first });
     match = { mid, kind, g, opp, oppName, turn: first, me: { shots: 0, total: 0, left: g.pool || 0 }, them: { shots: 0, total: 0, left: g.pool || 0 }, t0: performance.now(), frozen: null, last: '', over: false, deadline: Date.now() + TURN_SECS * 1000, lastHeard: Date.now() };
     ctx.hub('versus_start:' + kind); ctx.event('mini');
     ctx.show(`<h2>${g.icon} ${g.title}: YOU vs ${esc(oppName.toUpperCase())}</h2><div class="stage" style="--c:#ffc93a;aspect-ratio:16/7"><canvas width="640" height="280" id="vscv"></canvas></div>
@@ -92,6 +93,65 @@ export function createVersus(ctx) {
       if (e.target.closest('#vsagain')) { const m2 = Math.random().toString(36).slice(2, 10); invite = { mid: m2, kind, to: opp, name: oppName, at: Date.now() }; ctx.send({ t: 'invite', mid: m2, kind, to: opp, from: sid, n: ctx.myName() }); ctx.toast('REMATCH SENT'); }
     };
     ctx.onClose(() => { cancelAnimationFrame(raf); ctx.pbody.onclick = null; if (match && match.mid === mid) { if (!match.over) ctx.send({ t: 'quit', mid, to: opp, from: sid }); match = null; } });
+  }
+
+  // ----- darts: the real 3D board (darts3d.js). Three darts a turn, three turns each. Both players watch every dart land. -----
+  async function startDarts({ mid, opp, oppName, first }) {
+    const kind = 'darts', PER = 3, ALL = 9, OPP = oppName.toUpperCase();
+    match = { mid, kind, g: MINI.darts, opp, oppName, turn: first, me: { shots: 0, total: 0 }, them: { shots: 0, total: 0 }, over: false, busy: false, deadline: Date.now() + TURN_SECS * 1000, lastHeard: Date.now(), last: '' };
+    const M = match; ctx.hub('versus_start:' + kind); ctx.event('mini');
+    ctx.show(`<h2>🎯 DARTS: YOU vs ${esc(OPP)}</h2><div class="dstage" id="dstage"><div class="dload">SETTING UP THE BOARD…</div></div>
+      <p id="vstxt" style="color:var(--gold)">&nbsp;</p><button class="btn" id="vsvoice">${ctx.voice && ctx.voice.on ? '🎙 VOICE IS ON' : '🎙 TALK: JOIN VOICE'}</button> <button class="btn" id="vsagain" hidden>REMATCH</button>`, '#ffc93a');
+    let view = null, closed = false, timer = 0; const early = [], live = () => match === M && !closed;
+    M.onShot = m => early.push(m); M.onQuit = () => finish('forfeit');
+    ctx.onClose(() => { closed = true; clearInterval(timer); if (ctx.pauseLobby) ctx.pauseLobby(false); if (view) view.destroy(); ctx.pbody.onclick = null; if (match === M) { if (!M.over) ctx.send({ t: 'quit', mid, to: opp, from: sid }); match = null; } });
+    ctx.pbody.onclick = e => {
+      if (e.target.closest('#vsvoice')) { if (ctx.voice) { if (ctx.voice.on) ctx.toast('VOICE IS ALREADY ON'); else ctx.voice.join().then(() => { const b = document.getElementById('vsvoice'); if (b && ctx.voice.on) b.textContent = '🎙 VOICE IS ON'; }); } return; }
+      if (e.target.closest('#vsagain')) { const m2 = Math.random().toString(36).slice(2, 10); invite = { mid: m2, kind, to: opp, name: oppName, at: Date.now() }; ctx.send({ t: 'invite', mid: m2, kind, to: opp, from: sid, n: ctx.myName() }); ctx.toast('REMATCH SENT'); }
+    };
+    const mine = () => M.turn === sid, say = t => { const el = document.getElementById('vstxt'); if (el && el.textContent !== t) el.textContent = t; };
+    const dots = s => { const left = s.shots >= ALL ? 0 : PER - s.shots % PER; return '<i></i>'.repeat(left) + '<i class="u"></i>'.repeat(PER - left); };
+    const hud = () => view && view.hud(`<span class="me">YOU <b>${M.me.total}</b></span><span class="dd">${dots(mine() ? M.me : M.them)}</span><span class="op"><b>${M.them.total}</b> ${esc(OPP)}</span>`);
+    function finish(how) {
+      if (M.over) return; M.over = true;
+      const a = M.me.total, b = M.them.total, won = how === 'forfeit' || a > b;
+      M.last = how === 'forfeit' ? `${OPP} LEFT. YOU WIN!` : a === b ? `DRAW ${a}-${b}` : won ? `YOU WIN ${a}-${b}!` : `${OPP} WINS ${b}-${a}`;
+      ctx.toast(M.last); ctx.hub(won && a !== b ? 'versus_win:' + kind : 'versus_done:' + kind, a); say(M.last);
+      if (view) { view.hint(''); view.pop(M.last, '', won ? '#3dff9a' : '#ffc93a'); }
+      const again = document.getElementById('vsagain'); if (again && how !== 'forfeit') again.hidden = false;
+    }
+    // a dart has landed (mine or theirs), or a turn timed out with nothing thrown
+    function count(s, pts) {
+      s.shots++; s.total += pts; M.busy = false; M.lastHeard = Date.now(); M.deadline = Date.now() + TURN_SECS * 1000; hud();
+      if (M.me.shots >= ALL && M.them.shots >= ALL) return finish();
+      if (s.shots % PER !== 0) return;                                                             // same player throws again
+      const other = s === M.me ? M.them : M.me; if (other.shots < ALL) M.turn = s === M.me ? opp : sid;
+      M.busy = true; setTimeout(() => { if (!live()) return; M.busy = false; M.deadline = Date.now() + TURN_SECS * 1000; if (view) view.clear(); hud(); }, 1400);   // a beat to look at the board, then pull the darts
+    }
+    const theirs = m => {
+      if (M.over || m.n !== M.them.shots || M.turn !== opp) return;
+      const x = +m.x, y = +m.y; M.lastHeard = Date.now();
+      if (!isFinite(x) || !isFinite(y) || Math.abs(x) > 4 || Math.abs(y) > 4) return count(M.them, m.x == null ? Math.max(0, Math.min(60, m.pts | 0)) : 0);   // ran out of time (or an older version of the game)
+      M.busy = true; view.throwAt(x, y);
+    };
+    try {
+      if (ctx.pauseLobby) ctx.pauseLobby(true);
+      const mod = await ctx.darts(); if (!live()) return;
+      view = await mod.createDarts(document.getElementById('dstage'), { muted: ctx.muted, canThrow: () => live() && !M.over && mine() && !M.busy,
+        onThrow: (x, y) => { M.busy = true; ctx.send({ t: 'shot', mid, to: opp, from: sid, n: M.me.shots, x, y, pts: mod.scoreAt ? mod.scoreAt(x, y).score : 0, f: 0.5 }); },
+        onLand: (hit, info) => { if (!live()) return; view.pop(hit.label, (info.remote ? OPP + ' ' : '') + (hit.score ? '+' + hit.score : 'NO SCORE'), info.remote ? '#31d7ff' : hit.score ? '#ffc93a' : '#ff5a6a'); count(info.remote ? M.them : M.me, hit.score); } });
+      if (!live()) { view.destroy(); return; }
+    } catch { if (live()) { ctx.toast('3D DARTS COULD NOT START ON THIS DEVICE'); ctx.closePanel(); } return; }
+    window.__dartsVs = { view, match: M };
+    M.onShot = theirs; for (const m of early.splice(0)) theirs(m); hud();
+    timer = setInterval(() => {
+      if (!live() || M.over) return;
+      const secs = Math.max(0, Math.ceil((M.deadline - Date.now()) / 1000));
+      say(mine() ? `YOUR THROW · ${secs}s` : `${OPP} IS AIMING…`); view.hint(mine() && !M.busy ? 'HOLD TO AIM · LET GO TO THROW' : '');
+      if (mine() && !M.busy && Date.now() > M.deadline) { ctx.send({ t: 'shot', mid, to: opp, from: sid, n: M.me.shots, x: 9, y: 9, pts: 0, f: 0 }); view.pop('TOO SLOW', 'NO SCORE', '#ff5a6a'); count(M.me, 0); }
+      if (!mine() && Date.now() - M.lastHeard > 40000) finish('forfeit');
+      if (!peers.has(opp) && Date.now() - M.lastHeard > 9000) finish('forfeit');
+    }, 300);
   }
 
   // ----- messages from the other player -----

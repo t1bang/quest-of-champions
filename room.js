@@ -1,6 +1,7 @@
 // Big Bang Arcade — real-time 3D room (WebGL, no libraries).
 // Lit 3D cabinets, coloured point lights, glossy reflective floor, neon glow.
 import { customCabinets } from './cabs.js';
+import { drawBoard } from './darts-rules.js';
 
 const VS = `attribute vec3 aP;attribute vec3 aN;attribute vec2 aU;uniform mat4 uVP;uniform mat4 uM;varying vec3 vP;varying vec3 vN;varying vec2 vU;
 void main(){vec4 w=uM*vec4(aP,1.);vP=w.xyz;vN=mat3(uM)*aN;vU=aU;gl_Position=uVP*w;}`;
@@ -294,7 +295,7 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = [], opts = {})
     couch('couch', { x: -798, z: 1740, th: Math.PI / 2 }); couch('couch2', { x: -570, z: LE - 2, th: Math.PI });
     // darts
     const DT = { x: -798, z: 1480, th: Math.PI / 2 };
-    const board = mat(tex(256, 256, (x, w) => { x.clearRect(0, 0, w, w); const cs = ['#111', '#e8e0c8']; for (let k = 0; k < 20; k++) { x.fillStyle = cs[k % 2]; x.beginPath(); x.moveTo(128, 128); x.arc(128, 128, 118, k / 20 * 6.2832, (k + 1) / 20 * 6.2832); x.fill(); } x.strokeStyle = '#d2142a'; x.lineWidth = 10; x.beginPath(); x.arc(128, 128, 112, 0, 7); x.stroke(); x.strokeStyle = '#1d7a3e'; x.beginPath(); x.arc(128, 128, 66, 0, 7); x.stroke(); x.fillStyle = '#1d7a3e'; x.beginPath(); x.arc(128, 128, 20, 0, 7); x.fill(); x.fillStyle = '#d2142a'; x.beginPath(); x.arc(128, 128, 9, 0, 7); x.fill(); }), { emis: 0.8, blend: true, spec: 0 });
+    const board = mat(tex(256, 256, (x, w) => drawBoard(x, w)), { emis: 0.8, blend: true, spec: 0 });   // the same board face the darts game scores on
     box(solid('#2a1a10', 0, 0.3), DT, -90, 90, 200, 400, 0, 8); quad(board, DT, [-75, 375, 10], [75, 375, 10], [75, 225, 10], [-75, 225, 10]);
     quad(neon('DARTS', '#35e06f'), DT, [-90, 470, 4], [90, 470, 4], [90, 415, 4], [-90, 415, 4]); add('darts', 'PLAY DARTS', DT, 220, 10, 420, () => handlers.mini('darts'));
     // pool table + air hockey

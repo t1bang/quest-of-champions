@@ -189,3 +189,10 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+
+three.js (vendor/three: three.module.min.js, GLTFLoader.js, BufferGeometryUtils.js, RoomEnvironment.js)
+MIT License. Copyright © 2010-2024 three.js authors. Full text: vendor/three/LICENSE
+
+meshoptimizer decoder (vendor/three/meshopt_decoder.module.js)
+MIT License. Copyright (c) 2016-2024 Arseny Kapoulkine.
