@@ -285,7 +285,7 @@ const LEVELS={
         {o:{skin:'#5a3a22',hair:{type:'short'},top:'#fff',jersey:{number:'8',color:'#007a33',text:'#fff'},pants:'#007a33',boots:'#000',size:3}},
         {o:{skin:'#e3b58a',hair:{type:'short',color:'#5a3a1a'},top:'#fff',jersey:{number:'13',color:'#ce1141',text:'#fff'},pants:'#ce1141',boots:'#fff',size:3,holding:'ball'},ranged:'ball'}]},
      assists:[{name:'IKE MIDAS',key:'keg',o:{sprite:'ike',skin:'#6b3f22',hair:{type:'short'},hat:{type:'cap',color:'#f2c94c'},top:'#111',topAccent:'#f2c94c',pants:'#2a2a2a',boots:'#111',size:3}},
-              {name:'DACHAMAN',key:'micdrop',o:DACHAMAN}],
+              {name:'DACHAMAN',key:'micdrop',o:Object.assign({},DACHAMAN,{sprite:'dcf'})}],
      boss:{name:'KING RING BARRER',o:{skin:'#6b3f22',hair:{type:'crown'},top:'#552583',jersey:{number:'1',color:'#fdb927',text:'#552583'},pants:'#552583',boots:'#000',size:4.6,big:true,holding:'ball',face:{beard:true}},hp:50,speed:1.3,moves:['fireball','jumpslam']},
      reward:'ring'},
   2:{name:'VICTORY LAP',sub:'Level 2 · The Gridiron',song:'audio/victory.mp3',theme:'field',length:5800,
@@ -891,7 +891,7 @@ SPRITES.dcm={h:150,walk:['walk1','walk2','walk3','walk4','walk5','walk6'],idleCy
 // Tevin, DaChaMan and LyriKal are built on Tone's painted body frames
 function toneBody(prefix,h){const A={idle:[.46,1],idle2:[.5,1],walk1:[.5,1],walk2:[.5,1],punch:[.3,1],kick:[.22,1],jump:[.5,.85],hit:[.55,1],duck0:[.5,1],duck:[.5,1],knockback:[.5,1],down:[.5,1],getup:[.5,1]};
   const fr={};for(const k in A)fr[k]={src:`sprites/${prefix}_${k}.png`,ax:A[k][0],ay:A[k][1]};return {h,frames:fr,idleCycle:['idle','idle2'],idleRate:28};}
-SPRITES.tv=toneBody('tv',150);SPRITES.dc=toneBody('dc',150);SPRITES.lk=toneBody('lk',176);
+SPRITES.tv=toneBody('tv',150);SPRITES.dc=toneBody('dc',150);SPRITES.dcf=toneBody('dcf',150);SPRITES.lk=toneBody('lk',176);
 // every champion renders at Tone's height
 for(const k in SPRITES)if(k!=='ike'&&k!=='achia'&&k!=='nik'&&k!=='kam'&&k!=='lk')SPRITES[k].h=150;
 const IMG={};
@@ -926,7 +926,7 @@ function pickFrame(e){
   return 'idle';
 }
 // big red DJ controller; (x,y) is where the hand grips its bottom edge
-function drawDJBoard(x,y,k,rot,hit,flat,tuck){ctx.save();ctx.translate(x,y);ctx.rotate(rot);if(flat)ctx.scale(k,k*0.45);else if(tuck){ctx.rotate(-Math.PI/2+0.18);ctx.scale(k*0.95,k*0.95);ctx.translate(46,-22);}else{ctx.scale(k*0.72,k*0.72);ctx.translate(0,-30);}
+function drawDJBoard(x,y,k,rot,hit,flat,tuck){ctx.save();ctx.translate(x,y);ctx.rotate(rot);if(flat)ctx.scale(k,k*0.45);else if(tuck){ctx.rotate(-Math.PI/2+0.18);ctx.scale(k*0.95,k*0.95);ctx.translate(40,-40);}else{ctx.scale(k*0.72,k*0.72);ctx.translate(0,-30);}
   ctx.fillStyle='#1a0507';roundRect(-56,-30,112,60,8);ctx.fill();ctx.fillStyle='#d81e2a';roundRect(-53,-27,106,54,7);ctx.fill();ctx.fillStyle='#ff6a6a';ctx.fillRect(-50,-26,100,4);ctx.fillStyle='#9a1018';ctx.fillRect(-50,20,100,5);
   for(const jx of [-28,28]){ctx.fillStyle='#111';ctx.beginPath();ctx.arc(jx,0,17,0,7);ctx.fill();ctx.strokeStyle='#444';ctx.lineWidth=2;ctx.beginPath();ctx.arc(jx,0,12,0,7);ctx.stroke();ctx.fillStyle='#777';ctx.beginPath();ctx.arc(jx,0,5,0,7);ctx.fill();
     const a=t/6*(jx<0?1:-1);ctx.fillStyle='#eee';ctx.fillRect(jx+Math.cos(a)*10-2,Math.sin(a)*10-2,4,4);}
