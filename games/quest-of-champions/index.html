@@ -847,8 +847,8 @@ const SPRITES={
     down:{src:'sprites/tone_down.png',ax:0.5,ay:0.926,hand:[0.69, 0.8, 1.3]},
     getup:{src:'sprites/tone_getup.png',ax:0.5,ay:1.0,hand:[0.25, 0.73, 0.2]},
     beltup:{src:'sprites/tone_beltup.png',ax:0.303,ay:1.0},
-    swing:{src:'sprites/tone_swing.png',ax:0.3,ay:1.0,hand:[0.746,0.383]},
-    swingup:{src:'sprites/tone_swingup.png',ax:0.31,ay:1.0,hand:[0.77,0.19]},
+    swing:{src:'sprites/tone_swing.png',ax:0.46,ay:1.0,hand:[0.69,0.44]},
+    swingup:{src:'sprites/tone_swingup.png',ax:0.511,ay:1.0,hand:[0.187,0.134]},
     raise:{src:'sprites/tone_raise.png',ax:0.31,ay:1.0,hand:[0.24, 0.56, -0.2]}},idleCycle:['idle','idle2'],idleRate:28},
   ike:{h:150,frames:{
     idle:{src:'sprites/ike_idle.png',ax:0.5,ay:1},
@@ -960,7 +960,7 @@ function drawSprite(e){
   ctx.imageSmoothingEnabled=true;
   if(e.hurt>0&&t%4<2)ctx.globalAlpha=0.7;
   const fN=pickFrame(e);const tuck=e.o.djBoard&&!e.turbo&&!e.djing&&fr.hand;const sw=fN==='swing'||fN==='swingup';
-  const bk=sw?k*1.2:k*0.95,brot=fN==='swing'?0.45:(fN==='swingup'?-0.12:0),bhit=fN==='swing'&&e.superP<12;
+  const bk=sw?k*1.15:k*0.95,brot=fN==='swing'?1.3:(fN==='swingup'?-0.35:0),bhit=fN==='swing'&&e.superP<12;
   const armL=tuck?TONE_ARM[fN]:null;
   // frames without a separate arm layer: board goes behind him so his hand stays visible
   if(tuck&&!armL)drawDJBoard(-w*fr.ax+w*fr.hand[0],-h*fr.ay+h*fr.hand[1]+3,bk,brot,bhit,false,false);
