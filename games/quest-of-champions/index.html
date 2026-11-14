@@ -570,7 +570,7 @@ function update(){
     if(ch>=CH*2&&p.o.djBoard){p.attack=1;p.punchCd=22;flash=5;shake=12;p.superP=22;puff(p.x+p.face*70,p.y-60,'#e0202a',14,5);floatText(p.x+p.face*70,p.y-130,'SMACK!','#e0202a');
       for(const e of allEnemies())if(Math.abs(e.x-(p.x+p.face*60))<75&&Math.abs(e.z-p.z)<LANE+18&&Math.abs(e.y-p.y)<80)damageEnemy(e,8,p.face,false,true,false);}
     else if(ch>=CH&&!p.o.djBoard){p.attack=1;p.punchCd=16;flash=3;p.superP=16;for(let i=-1;i<=1;i++)projs.push({x:p.x+p.face*30,y:p.y-56,z:p.z,vx:p.face*9,vy:i*1.2,type:'note',friendly:true,life:70,dmg:2,c:['#e0202a','#f2c94c','#fff'][i+1]});}
-    else if(p.punchCd<=0){p.attack=1;p.punchCd=14;for(const e of allEnemies())if(Math.abs(e.x-(p.x+p.face*48))<40&&sameLane(e,p)&&Math.abs(e.y-p.y)<60)damageEnemy(e,p.o.djBoard?2:1,p.face,false,true,false);}}
+    else if(p.punchCd<=0){p.attack=1;p.punchCd=14;for(const e of allEnemies())if(Math.abs(e.x-(p.x+p.face*48))<40&&sameLane(e,p)&&Math.abs(e.y-p.y)<60)damageEnemy(e,1,p.face,false,true,false);}}
   // KICK: tap = flaming kick. Hold 2s + release = low fireball. In the air = flaming spin kick.
   if(held('kick')&&p.hurt<=0&&p.stun<=0&&!p.air){p.chargeK++;if(p.chargeK>=CH&&t%3===0)puff(p.x+p.face*22,p.y-16+rnd(-6,6),'#ff6a00',1,1.5);}
   if(pressed('kick')&&p.kickCd<=0&&p.hurt<=0&&p.air){p.kick=1;p.kickCd=22;p.flame=22;p.vy=-4;puff(p.x,p.y-30,'#ff6a00',14,5);
@@ -824,7 +824,7 @@ const SPRITES={
     idle:{src:'sprites/tone_idle.png',ax:0.46,ay:1,hand:[0.15, 0.75, -0.3]},
     walk1:{src:'sprites/tone_walk1.png',ax:0.5,ay:1,hand:[0.11, 0.73, -0.3]},
     walk2:{src:'sprites/tone_walk2.png',ax:0.5,ay:1,hand:[0.69, 0.61, 0.2]},
-    punch:{src:'sprites/tone_punch.png',ax:0.3,ay:1,hand:[0.23, 0.53, -0.2],hand2:[0.87, 0.42, 0.1]},
+    punch:{src:'sprites/tone_punch.png',ax:0.3,ay:1,hand:[0.13,0.53],hand2:[0.87, 0.42, 0.1]},
     kick:{src:'sprites/tone_kick.png',ax:0.22,ay:1,hand:[0.05, 0.62, -0.4]},
     jump:{src:'sprites/tone_jump.png',ax:0.5,ay:0.85,hand:[0.15, 0.44, -0.5]},
     hit:{src:'sprites/tone_hit.png',ax:0.55,ay:1,hand:[0.25, 0.62, 0.3]},
@@ -847,6 +847,7 @@ const SPRITES={
     down:{src:'sprites/tone_down.png',ax:0.5,ay:0.926,hand:[0.69, 0.8, 1.3]},
     getup:{src:'sprites/tone_getup.png',ax:0.5,ay:1.0,hand:[0.25, 0.73, 0.2]},
     beltup:{src:'sprites/tone_beltup.png',ax:0.303,ay:1.0},
+    swing:{src:'sprites/tone_swing.png',ax:0.3,ay:1.0,hand:[0.79,0.43]},
     raise:{src:'sprites/tone_raise.png',ax:0.31,ay:1.0,hand:[0.24, 0.56, -0.2]}},idleCycle:['idle','idle2'],idleRate:28},
   ike:{h:150,frames:{
     idle:{src:'sprites/ike_idle.png',ax:0.5,ay:1},
@@ -924,7 +925,7 @@ function pickFrame(e){
   if(e===player&&win&&e.o.djBoard&&state!=='rescue')return 'idle';
   if(e===player&&win&&spf.victory&&state!=='rescue')return 'victory';
   if(e.superK>0&&spf.firekick2)return 'firekick2';
-  if(e.superP>0&&e.o.djBoard)return 'punch';
+  if(e.superP>0&&e.o.djBoard)return 'swing';
   if(e.superP>0&&spf.micblast)return 'micblast';
   if(e.kick>0&&e.air&&spf.airkick)return 'airkick';
   if((e.chargeK||0)>=60&&spf.fcharge1)return t%10<5?'fcharge1':'fcharge2';
@@ -941,7 +942,7 @@ function pickFrame(e){
   return 'idle';
 }
 // big red DJ controller; (x,y) is where the hand grips its bottom edge
-const TONE_ARM={};for(const f of ['idle','idle2','walk1','walk2','kick','jump','hit']){const m=new Image();m.src=`sprites/tone_arm_${f}.png`;TONE_ARM[f]=m;}
+const TONE_ARM={};for(const f of ['idle','idle2','walk1','walk2','punch','kick','jump','hit']){const m=new Image();m.src=`sprites/tone_arm_${f}.png`;TONE_ARM[f]=m;}
 function drawDJBoard(x,y,k,rot,hit,flat,tuck){ctx.save();ctx.translate(x,y);ctx.rotate(rot);if(flat)ctx.scale(k,k*0.45);else if(tuck){ctx.rotate(-Math.PI/2+0.06);ctx.scale(k*0.84,k*0.84);ctx.translate(50,2);}else{ctx.scale(k*0.72,k*0.72);ctx.translate(0,-30);}
   ctx.fillStyle='#1a0507';roundRect(-56,-30,112,60,8);ctx.fill();ctx.fillStyle='#d81e2a';roundRect(-53,-27,106,54,7);ctx.fill();ctx.fillStyle='#ff6a6a';ctx.fillRect(-50,-26,100,4);ctx.fillStyle='#9a1018';ctx.fillRect(-50,20,100,5);
   for(const jx of [-28,28]){ctx.fillStyle='#111';ctx.beginPath();ctx.arc(jx,0,17,0,7);ctx.fill();ctx.strokeStyle='#444';ctx.lineWidth=2;ctx.beginPath();ctx.arc(jx,0,12,0,7);ctx.stroke();ctx.fillStyle='#777';ctx.beginPath();ctx.arc(jx,0,5,0,7);ctx.fill();
@@ -957,13 +958,16 @@ function drawSprite(e){
   ctx.save();ctx.translate(Math.round(e.x-camX),Math.round(e.y));ctx.scale(e.face<0?-1:1,(e.crouch&&!sp.frames.duck)?0.62:1);
   ctx.imageSmoothingEnabled=true;
   if(e.hurt>0&&t%4<2)ctx.globalAlpha=0.7;
-  const fN=pickFrame(e);const tuck=e.o.djBoard&&!e.turbo&&!e.djing&&fN!=='punch'&&fr.hand;
+  const fN=pickFrame(e);const tuck=e.o.djBoard&&!e.turbo&&!e.djing&&fN!=='swing'&&fr.hand;
+  const armL=tuck?TONE_ARM[fN]:null;
+  // frames without a separate arm layer: board goes behind him so his hand stays visible
+  if(tuck&&!armL)drawDJBoard(-w*fr.ax+w*fr.hand[0],-h*fr.ay+h*fr.hand[1]+3,k*0.95,0,false,false,false);
   ctx.drawImage(im,-w*fr.ax,-h*fr.ay,w,h);
-  if(tuck){const arm=TONE_ARM[fN];drawDJBoard(-w*fr.ax+w*fr.hand[0],-h*fr.ay+h*fr.hand[1],k,0,false,false,true);
+  if(tuck&&armL){const arm=armL;drawDJBoard(-w*fr.ax+w*fr.hand[0],-h*fr.ay+h*fr.hand[1]+3,k*0.95,0,false,false,false);
     // his arm goes back on top so it runs down the middle of the board
     if(arm&&arm.complete&&arm.naturalWidth)ctx.drawImage(arm,-w*fr.ax,-h*fr.ay,w,h);}
-  if(e.o.djBoard&&!e.turbo&&!e.djing&&fN==='punch'){const f=fN;const hd=(f==='punch'&&fr.hand2)?fr.hand2:fr.hand;
-    if(hd){const big=(f==='punch')?(e.superP>0?1.35:1.1):1;const sw=e.superP>0?(-1.9+2.3*(1-e.superP/22)):(hd[2]||0);drawDJBoard(-w*fr.ax+w*hd[0],-h*fr.ay+h*hd[1],k*big,sw,f==='punch'&&e.superP>0&&e.superP<12);}}
+  if(e.o.djBoard&&!e.turbo&&!e.djing&&fN==='swing'&&fr.hand){const sw=-1.5+1.7*(1-e.superP/22);
+    drawDJBoard(-w*fr.ax+w*fr.hand[0],-h*fr.ay+h*fr.hand[1]+4,k*1.25,sw,e.superP<12);}
   if(e.flame>0){ctx.globalAlpha=0.9;drawFireball(w*(1-fr.ax)*0.6,-h*0.35,34,t/60);}
   ctx.restore();ctx.imageSmoothingEnabled=false;return true;
 }
