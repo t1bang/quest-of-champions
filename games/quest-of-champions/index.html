@@ -926,7 +926,7 @@ function pickFrame(e){
   return 'idle';
 }
 // big red DJ controller; (x,y) is where the hand grips its bottom edge
-function drawDJBoard(x,y,k,rot,hit,flat){ctx.save();ctx.translate(x,y);ctx.rotate(rot);if(flat)ctx.scale(k,k*0.45);else{ctx.scale(k*0.72,k*0.72);ctx.translate(0,-30);}
+function drawDJBoard(x,y,k,rot,hit,flat,tuck){ctx.save();ctx.translate(x,y);ctx.rotate(rot);if(flat)ctx.scale(k,k*0.45);else if(tuck){ctx.rotate(-Math.PI/2+0.18);ctx.scale(k*0.95,k*0.95);ctx.translate(46,-22);}else{ctx.scale(k*0.72,k*0.72);ctx.translate(0,-30);}
   ctx.fillStyle='#1a0507';roundRect(-56,-30,112,60,8);ctx.fill();ctx.fillStyle='#d81e2a';roundRect(-53,-27,106,54,7);ctx.fill();ctx.fillStyle='#ff6a6a';ctx.fillRect(-50,-26,100,4);ctx.fillStyle='#9a1018';ctx.fillRect(-50,20,100,5);
   for(const jx of [-28,28]){ctx.fillStyle='#111';ctx.beginPath();ctx.arc(jx,0,17,0,7);ctx.fill();ctx.strokeStyle='#444';ctx.lineWidth=2;ctx.beginPath();ctx.arc(jx,0,12,0,7);ctx.stroke();ctx.fillStyle='#777';ctx.beginPath();ctx.arc(jx,0,5,0,7);ctx.fill();
     const a=t/6*(jx<0?1:-1);ctx.fillStyle='#eee';ctx.fillRect(jx+Math.cos(a)*10-2,Math.sin(a)*10-2,4,4);}
@@ -941,8 +941,10 @@ function drawSprite(e){
   ctx.save();ctx.translate(Math.round(e.x-camX),Math.round(e.y));ctx.scale(e.face<0?-1:1,(e.crouch&&!sp.frames.duck)?0.62:1);
   ctx.imageSmoothingEnabled=true;
   if(e.hurt>0&&t%4<2)ctx.globalAlpha=0.7;
+  const fN=pickFrame(e);const tuck=e.o.djBoard&&!e.turbo&&!e.djing&&fN!=='punch'&&fr.hand;
+  if(tuck)drawDJBoard(-w*fr.ax+w*fr.hand[0],-h*fr.ay+h*fr.hand[1],k,0,false,false,true);
   ctx.drawImage(im,-w*fr.ax,-h*fr.ay,w,h);
-  if(e.o.djBoard&&!e.turbo&&!e.djing){const f=pickFrame(e);const hd=(f==='punch'&&fr.hand2)?fr.hand2:fr.hand;
+  if(e.o.djBoard&&!e.turbo&&!e.djing&&fN==='punch'){const f=fN;const hd=(f==='punch'&&fr.hand2)?fr.hand2:fr.hand;
     if(hd){const big=(f==='punch')?(e.superP>0?1.35:1.1):1;drawDJBoard(-w*fr.ax+w*hd[0],-h*fr.ay+h*hd[1],k*big,hd[2]||0,f==='punch'&&e.superP>0);}}
   if(e.flame>0){ctx.globalAlpha=0.9;drawFireball(w*(1-fr.ax)*0.6,-h*0.35,34,t/60);}
   ctx.restore();ctx.imageSmoothingEnabled=false;return true;
