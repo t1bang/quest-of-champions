@@ -149,3 +149,5 @@ ul.quests li b{font-size:9px;color:var(--gold);white-space:nowrap}ul.quests li b
 /* voice chat button + a challenge from another player */
 #hud #vc.live{border-color:#3dff9a;color:#3dff9a;box-shadow:0 0 12px #3dff9a}
 #vsask{position:fixed;left:50%;top:calc(120px + env(safe-area-inset-top));transform:translateX(-50%);z-index:44;background:#0b0612;border:3px solid var(--gold);border-radius:8px;padding:12px 14px;text-align:center;font:10px/1.9 var(--pix);color:#fff;box-shadow:0 0 30px var(--gold);max-width:92vw}#vsask b{color:var(--gold)}#vsask .btn{margin-top:8px}
+/* drawn item pictures */
+canvas.ic{width:64px;height:64px;display:inline-block;vertical-align:middle}.card .ico canvas.ic{width:72px;height:72px}.wtile canvas.ic{width:48px;height:48px}.list canvas.ic{width:28px;height:28px;margin-right:4px}

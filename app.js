@@ -6,6 +6,7 @@ import { createAlerts } from './alerts.js';
 import { openBartender, BARTENDER } from './bartender.js';
 import { createVoice } from './voice.js';
 import { createVersus } from './versus.js';
+import { drawAvatar as artAvatar, paintIcons, iconTag } from './avatar.js';
 import { COVERS, playTrailer } from './art.js';
 import { buildRoom, DIMS } from './room.js';
 import { supabase, authHeaders, playerCall, enabledProviders, escapeHtml, createActivityTracker } from './player-services.js';
@@ -325,7 +326,7 @@ $('#act').onclick = () => near && near.open();
 // ---------------- panels ----------------
 let cleanup = null, panelVersion = 0;
 function closePanel() { panelVersion++; if (cleanup) { cleanup(); cleanup = null; } panel.hidden = true; pbody.innerHTML = ''; $('#act').hidden = !near; }
-function show(html, color) { closePanel(); pbody.innerHTML = html; panel.hidden = false; $('#act').hidden = true; panel.firstElementChild.style.borderColor = color || ''; panel.firstElementChild.scrollTop = 0; }
+function show(html, color) { closePanel(); pbody.innerHTML = html; paintIcons(pbody, findItem); panel.hidden = false; $('#act').hidden = true; panel.firstElementChild.style.borderColor = color || ''; panel.firstElementChild.scrollTop = 0; }
 panel.querySelector('.x').onclick = closePanel;
 panel.addEventListener('pointerdown', e => { if (e.target === panel) closePanel(); });
 const link = (label, url, cls = '') => url ? `<a class="btn ${cls}" href="${url}" target="_blank" rel="noopener">${label}</a>` : `<button class="btn off ${cls}" data-soon="1">${label}</button>`;
@@ -463,7 +464,7 @@ async function payReturn() {
 function openPrizes() {
   siteActivity.event('rewards_open');
   if (!auth.pid) { openProfile(); return toast('SIGN IN TO REACH THE PRIZE WALL'); }
-  const card = p => { const own = me && me.closet.includes(p.id) && !p.real, locked = !own && p.needs && !(me && me.closet.includes(p.needs)); return `<div class="card ${own ? 'on' : ''}"><div class="ico">${p.icon}</div><span>${p.name}</span>${p.about ? `<p class="about">${p.about}</p>` : ''}
+  const card = p => { const own = me && me.closet.includes(p.id) && !p.real, locked = !own && p.needs && !(me && me.closet.includes(p.needs)); return `<div class="card ${own ? 'on' : ''}"><div class="ico">${p.slot ? iconTag(p.id) : p.icon}</div><span>${p.name}</span>${p.about ? `<p class="about">${p.about}</p>` : ''}
       <button class="btn ${own || locked ? 'off' : 'go'}" data-buy="${p.id}" ${own || locked ? 'disabled' : ''}>${own ? 'OWNED' : locked ? 'GET LEVEL 2 FIRST' : '🪙 ' + p.cost}</button></div>`; };
   const real = PRIZES.filter(p => p.real && REAL_PRIZES_LIVE), songs = PRIZES.filter(p => p.file);
   const group = (label, list, note) => list.length ? `<h3>${label}</h3>${note ? `<p class="dim">${note}</p>` : ''}<div class="grid">${list.map(card).join('')}</div>` : '';
@@ -498,16 +499,16 @@ function openCloset() {
   const owned = slot => WEAR.filter(w => w.slot === slot && (w.cost === 0 || closet.includes(w.id)));
   const sw = (k, label, list) => `<h3>${label}</h3><div class="swatches">${list.map((c, i) => `<button class="sw ${myAv[k] === i ? 'on' : ''}" data-sw="${k}:${i}" style="background:${c}" aria-label="${label} ${i + 1}"></button>`).join('')}</div>`;
   const pick = (k, label, list) => `<h3>${label}</h3><div class="tabs">${list.map((t, i) => `<button class="btn ${myAv[k] === i ? 'on' : ''}" data-sw="${k}:${i}">${t}</button>`).join('')}</div>`;
-  const tile = (slot, w) => `<button class="wtile ${(w ? myFit[slot] === w.id : !myFit[slot]) ? 'on' : ''}" data-fit="${slot}:${w ? w.id : ''}">${w ? (w.c ? `<i style="background:${w.c}"></i>` : `<b>${w.icon}</b>`) : '<b>✕</b>'}<span>${w ? w.name : 'None'}</span>${w ? `<em>${w.loot ? w.loot.toUpperCase() + ' LOOT' : w.cost ? 'BOUGHT' : 'FREE'}</em>` : ''}</button>`;
+  const tile = (slot, w) => `<button class="wtile ${(w ? myFit[slot] === w.id : !myFit[slot]) ? 'on' : ''}" data-fit="${slot}:${w ? w.id : ''}">${w ? iconTag(w.id) : '<b>✕</b>'}<span>${w ? w.name : 'None'}</span>${w ? `<em>${w.loot ? w.loot.toUpperCase() + ' LOOT' : w.cost ? 'BOUGHT' : 'FREE'}</em>` : ''}</button>`;
   const section = ([slot, label]) => { const list = owned(slot), must = slot === 'shirt' || slot === 'pants' || slot === 'shoes'; if (!list.length) return `<h3>${label}</h3><p class="dim">Nothing yet. Find these on the prize wall.</p>`; return `<h3>${label}</h3><div class="wgrid">${must ? '' : tile(slot, null)}${list.map(w => tile(slot, w)).join('')}</div>`; };
   const songs = PRIZES.filter(p => p.file && closet.includes(p.id));
   show(`<h2>MY CLOSET</h2><p>Everything free and everything you bought. Tap an item to put it on.</p>
-    <div class="cols"><div><div class="stage" style="--c:#3ea8ff;aspect-ratio:3/4;max-width:240px"><canvas width="240" height="320" id="clav"></canvas></div><p class="dim" id="clsaved">&nbsp;</p>
+    <div class="cols"><div><div class="stage" style="--c:#3ea8ff;aspect-ratio:3/4;max-width:240px"><canvas width="480" height="640" id="clav"></canvas></div><p class="dim" id="clsaved">&nbsp;</p>
       ${sw('skin', 'SKIN', AV.skin)}${pick('hair', 'HAIR', AV.hair)}${sw('hc', 'HAIR COLOR', AV.hc)}</div>
     <div>${SLOTS.map(section).join('')}<button class="btn go" data-go="prizes" style="margin-top:14px">GET MORE ON THE PRIZE WALL</button></div></div>
     ${songs.length ? `<h3>MY SONG DOWNLOADS</h3><div class="grid">${songs.map(p => `<div class="card"><div class="ico">${p.icon}</div><span>${p.name}</span><a class="btn go" href="${p.file}" download="${p.name}.mp3">⬇ DOWNLOAD</a></div>`).join('')}</div>` : ''}
     ${me && me.claims && me.claims.length ? `<h3>REAL LIFE ITEMS: CLAIM CODES</h3><p>${CLAIM_HELP}</p>${me.claims.map(c => `<div><span class="code">${c.code}</span> ${c.name || (PRIZES.find(p => p.id === c.id) || {}).name || ''}${c.link ? ` <a class="btn go" href="${c.link}" target="_blank" rel="noopener">GET YOUR TICKETS</a>` : ''}</div>`).join('')}` : ''}`, '#3ea8ff');
-  const paint = () => drawAvatar($('#clav').getContext('2d'), 240, 320, myAv, me ? me.name : '', myFit); paint();
+  const paint = () => drawAvatar($('#clav').getContext('2d'), 480, 640, myAv, me ? me.name : '', myFit); paint();
   let saveT;
   const save = () => { // keep the old-style avatar in step so leaderboards show the right shirt, then save both
     const tee = WEAR.findIndex(w => w.id === myFit.shirt); if (tee > -1 && tee < 8) myAv.shirt = tee; myAv.shades = myFit.eyes === 'shades' ? 1 : 0;
@@ -615,57 +616,12 @@ let myAv = cleanAv(store.get('bba-av') || { skin: 3, hair: 0, hc: 0, shirt: 0, s
 const wearItem = id => WEAR.find(w => w.id === id);
 const cleanFit = (f, closet) => { const out = {}; for (const [slot] of SLOTS) { const w = wearItem((f || {})[slot]); if (w && w.slot === slot && (!closet || w.cost === 0 || closet.includes(w.id))) out[slot] = w.id; } if (!out.shirt) out.shirt = DEFAULT_FIT.shirt; if (!out.pants) out.pants = DEFAULT_FIT.pants; return out; };
 var myFit = cleanFit(store.get('bba-fit') || { ...DEFAULT_FIT, shirt: WEAR[myAv.shirt]?.id || DEFAULT_FIT.shirt, ...(myAv.shades ? { eyes: 'shades' } : {}) });
-function drawAvatar(x, W, H, a, name, fit, look) { // pixel person on a 24x40 grid; look = { goggles, curvy }
-  x.clearRect(0, 0, W, H); const u = Math.min(W / 24, (H - (name ? H * 0.12 : 0)) / 40), ox = (W - 24 * u) / 2, oy = H - 40 * u, R = (c, px, py, w, h) => { x.fillStyle = c; x.fillRect(Math.round(ox + px * u), Math.round(oy + py * u), Math.ceil(w * u), Math.ceil(h * u)); };
+// The avatar picture itself is drawn by avatar.js (cartoon art with poses). An avatar with no outfit saved gets the classic default.
+function drawAvatar(x, W, H, a, name, fit, look, pose, tint) {
   const f = fit || { shirt: WEAR[a.shirt]?.id || 'tee-red', pants: 'jeans-black', shoes: 'kicks', ...(a.shades ? { eyes: 'shades' } : {}) };
-  const sk = AV.skin[a.skin], hc = AV.hc[a.hc], G = '#ffc93a', GD = '#c98a12', top = wearItem(f.shirt) || {}, leg = wearItem(f.pants) || {}, shoe = wearItem(f.shoes) || {};
-  if (f.shirt === 'hoodie') R('#b00e1e', 5.5, 9, 13, 5);                       // hood behind the head
-  R('#000', 6.5, 1.5, 11, 11); R(sk, 7, 2, 10, 10); R(sk, 10, 12, 4, 2);
-  if (a.hair === 0) { R(hc, 6, 0, 12, 4); R(hc, 5, 3, 2, 13); R(hc, 17, 3, 2, 13); R(hc, 7, 3, 1, 9); R(hc, 16, 3, 1, 9); }
-  if (a.hair === 1) R(hc, 7, 1, 10, 3);
-  if (a.hair === 2) { R(hc, 5, -2, 14, 6); R(hc, 4, 1, 2, 5); R(hc, 18, 1, 2, 5); }
-  if (a.hair === 3) { R(hc, 6, 0, 12, 4); R(hc, 15, 3, 6, 1.5); }
-  if (f.hat === 'beanie') { R('#16161c', 6, -0.5, 12, 4.5); R('#2a2a34', 6, 3, 12, 1.2); }
-  if (f.hat === 'cap') { R('#d2142a', 6, -0.5, 12, 4); R('#8a0e1c', 3, 2.8, 9, 1.4); }
-  if (f.hat === 'loot-halo') { R('#000', 6.4, -3.3, 11.2, 2.2); R('#ffc93a', 7, -2.8, 10, 1.2); R('#fff', 8.5, -2.6, 7, 0.5); }
-  if (f.hat === 'crown') { R(G, 6.5, 0, 11, 3); for (const cx of [6.5, 10.5, 14.5]) R(G, cx, -2.5, 3, 2.5); R('#d2142a', 11.3, 1, 1.4, 1.2); }
-  if (f.eyes === 'loot-visor') { R('#000', 6.4, 4.9, 11.2, 3.2); R('#31d7ff', 7, 5.5, 10, 2); R('#fff', 8, 5.8, 2.4, 0.6); } else if (f.eyes === 'shades') { R('#000', 7, 5.5, 10, 2.5); R('#d2142a', 8, 6, 3, 1.5); R('#d2142a', 13, 6, 3, 1.5); } else { R('#000', 9, 6, 1.5, 1.5); R('#000', 13.5, 6, 1.5, 1.5); }
-  if (f.fangs === 'fangs') { R('#000', 10, 9.2, 4, 1.4); R(G, 10.4, 9.4, 1.2, 1.6); R(G, 12.4, 9.4, 1.2, 1.6); } else R('#000', 10.5, 9.5, 3, 0.8);
-  if (look?.goggles) { R('#16161c', 6.5, 4.8, 11, 3.6); R('#ffb400', 7.2, 5.6, 4, 2.4); R('#ffb400', 12.8, 5.6, 4, 2.4); R('#fff', 7.2, 5.2, 4, 0.9); R('#fff', 12.8, 5.2, 4, 0.9); }
-  const sh = top.c || '#e01226';
-  if (look?.curvy) { // how everybody looks through beer goggles
-    R(hc, 6, 0, 12, 4); R(hc, 4.6, 2.5, 2.4, 17); R(hc, 17, 2.5, 2.4, 17); R('#d2142a', 10.6, 9.4, 2.8, 1.1);
-    R('#000', 5, 13.6, 14, 6); R(sh, 5.5, 14, 13, 5.2); R('#000', 7.4, 19, 9.2, 4); R(sh, 7.9, 19, 8.2, 3.6);
-    R(sk, 3.2, 14.4, 2.2, 10); R(sk, 18.6, 14.4, 2.2, 10);
-    const hip = wearItem(f.pants)?.c || '#23232b'; R('#000', 4.5, 22.2, 15, 6.6); R(hip, 5, 22.6, 14, 5.8);
-    R(hip, 6.4, 28.4, 4.6, 8.6); R(hip, 13, 28.4, 4.6, 8.6); R('#d2142a', 6, 37, 5.2, 1.6); R('#d2142a', 12.8, 37, 5.2, 1.6); R('#d2142a', 6.4, 38.6, 1.4, 1.4); R('#d2142a', 13.2, 38.6, 1.4, 1.4);
-    if (f.chain === 'chain') { R(G, 9, 13.2, 6, 1); R(G, 11, 14.2, 2, 2.4); }
-    if (name) { x.font = `bold ${Math.round(H * 0.075)}px Impact,'Arial Black',sans-serif`; x.textAlign = 'center'; x.textBaseline = 'top'; x.lineWidth = Math.max(3, H * 0.02); x.strokeStyle = '#000'; x.strokeText(name, W / 2, 2); x.fillStyle = '#ffc93a'; x.fillText(name, W / 2, 2); }
-    return;
-  }
-  R('#000', 4.5, 13.5, 15, 13);
-  if (f.shirt === 'loot-jacket') { R('#16161c', 5, 14, 14, 12); R('#16161c', 2, 14, 3, 9); R('#16161c', 19, 14, 3, 9); R(G, 5, 14, 14, 0.9); R(G, 11.6, 14, 0.8, 12); R(G, 2, 21.8, 3, 1.2); R(G, 19, 21.8, 3, 1.2); R('#ff2a3c', 6.6, 16.6, 3.2, 3.2); R(G, 7.4, 17.4, 1.6, 1.6); }
-  else if (f.shirt === 'jersey') { R('#16161c', 5, 14, 14, 12); R(G, 5, 14, 1.2, 12); R(G, 17.8, 14, 1.2, 12); R(sk, 2, 14, 3, 9); R(sk, 19, 14, 3, 9); R(G, 9, 17, 2.5, 1); R(G, 9.8, 17, 1, 4.5); R(G, 13, 17, 1.2, 4.5); }
-  else if (f.shirt === 'suit') { R('#16161c', 5, 14, 14, 12); R('#16161c', 2, 14, 3, 9); R('#16161c', 19, 14, 3, 9); R('#fff', 10.5, 14, 3, 7); R('#d2142a', 11.4, 14.5, 1.2, 6); }
-  else if (f.shirt === 'hoodie') { R('#e01226', 5, 14, 14, 12); R('#e01226', 2, 14, 3, 9); R('#e01226', 19, 14, 3, 9); R('#b00e1e', 8, 21.5, 8, 3); R('#fff', 10.2, 16, 2, 0.8); R('#fff', 10.8, 16, 0.8, 3.5); R('#fff', 13, 16, 0.9, 3.5); }
-  else { R(sh, 5, 14, 14, 12); R(sh, 2, 14, 3, 5); R(sk, 2, 19, 3, 4); R(sh, 19, 14, 3, 5); R(sk, 19, 19, 3, 4); }
-  R(sk, 2, 23, 3, 2.5); R(sk, 19, 23, 3, 2.5);
-  if (f.chain === 'loot-chain') { R('#31d7ff', 9, 13.2, 6, 1); R('#31d7ff', 9, 14, 1, 2.2); R('#31d7ff', 14, 14, 1, 2.2); R('#000', 9.9, 15.6, 4.2, 4.2); R('#fff', 10.4, 16.1, 3.2, 3.2); R(G, 11.2, 16.9, 1.6, 1.6); }
-  if (f.chain === 'chain') { R(G, 9, 13.2, 6, 1); R(G, 9, 14, 1, 2.2); R(G, 14, 14, 1, 2.2); R(G, 10, 16, 4, 1); R(GD, 11, 17, 2, 2.6); R(G, 11.4, 17.4, 1.2, 1.8); }
-  if (f.rings === 'ring') { R(G, 2.2, 23.6, 2.6, 1); R(G, 19.2, 23.6, 2.6, 1); R(GD, 3, 24.6, 1, 0.8); R(GD, 20, 24.6, 1, 0.8); }
-  const lc = leg.c || '#23232b', short = f.pants === 'shorts-grey';
-  if (short) { R(lc, 6, 26, 5.5, 5); R(lc, 12.5, 26, 5.5, 5); R(sk, 6.8, 31, 4, 6); R(sk, 13.3, 31, 4, 6); }
-  else if (f.pants === 'pants-camo') { R('#4a5a2a', 6, 26, 5.5, 11); R('#4a5a2a', 12.5, 26, 5.5, 11); for (const [px, py] of [[7, 27], [9.5, 30.5], [6.5, 34], [13.5, 28.5], [16, 32], [13, 35]]) R('#2f3a18', px, py, 2, 1.6); for (const [px, py] of [[9, 28], [14.5, 30.5], [8, 33]]) R('#7a8a4a', px, py, 1.6, 1.2); }
-  else if (f.pants === 'pants-red') { R('#d2142a', 6, 26, 5.5, 11); R('#d2142a', 12.5, 26, 5.5, 11); R('#fff', 6, 26, 1, 11); R('#fff', 17, 26, 1, 11); }
-  else { R(lc, 6, 26, 5.5, 11); R(lc, 12.5, 26, 5.5, 11); }
-  if (f.belt === 'belt') { R('#16161c', 5, 24, 14, 2.6); R(G, 8.5, 23.2, 7, 4.2); R(GD, 10, 24.2, 4, 2.2); R(G, 11, 24.8, 2, 1); }
-  if (f.shoes === 'boots') { R('#c98a3a', 5, 34.5, 6.5, 5.5); R('#c98a3a', 12.5, 34.5, 6.5, 5.5); R('#8a5a1e', 5, 38.8, 6.5, 1.2); R('#8a5a1e', 12.5, 38.8, 6.5, 1.2); }
-  else { const kc = shoe.c || '#fff'; R(kc, 5, 37, 6.5, 3); R(kc, 12.5, 37, 6.5, 3); R('#d2142a', 5, 37, 6.5, 1.2); R('#d2142a', 12.5, 37, 6.5, 1.2); }
-  if (f.hand === 'loot-gloves') { for (const gx of [1.4, 18.4]) { R('#000', gx - 0.4, 21.6, 5, 4.6); R('#b06cff', gx, 22, 4.2, 3.8); R('#fff', gx + 0.8, 22.6, 1, 1); R('#ffc93a', gx, 22, 4.2, 0.8); } }
-  if (f.hand === 'mic') { R('#d8d8e0', 19.3, 17.2, 3, 3); R(G, 20, 20, 1.6, 4.5); }
-  if (f.hand === 'record') { R(G, 17.5, 19, 6, 6); R(GD, 19, 20.5, 3, 3); R('#16161c', 20, 21.5, 1, 1); }
-  if (name) { x.font = `bold ${Math.round(H * 0.075)}px Impact,'Arial Black',sans-serif`; x.textAlign = 'center'; x.textBaseline = 'top'; x.lineWidth = Math.max(3, H * 0.02); x.strokeStyle = '#000'; x.strokeText(name, W / 2, 2); x.fillStyle = '#ffc93a'; x.fillText(name, W / 2, 2); }
+  artAvatar(x, W, H, a, name, f, look, pose || 'idle', tint, AV, WEAR);
 }
+const findItem = id => WEAR.find(w => w.id === id) || PRIZES.find(q => q.id === id) || null;
 // Creating your avatar happens in the closet now.
 function openAvatar() { siteActivity.event('avatar_open'); openCloset(); }
 function openAvatarOld() {
@@ -688,7 +644,7 @@ function openMoves() {
     <div class="cols"><div class="stage" style="--c:#31d7ff;aspect-ratio:1/1;max-width:240px"><canvas width="256" height="256" id="mvc"></canvas></div>
     <div><ul class="list movelist">${basics.map(([i, n, k]) => `<li><span>${i} ${n}<small>KEY ${k}</small></span></li>`).join('')}</ul></div></div>
     <h3>YOUR LEVELS</h3><p>💪 POWER LV ${lv('power')} · ⏱️ SPEED LV ${lv('speed')} · 🔆 BLAST LV ${lv('blast')}</p>
-    <h3>SPECIAL MOVE</h3>${have.length ? `<ul class="list">${have.map(m => `<li><span>${m.icon} ${m.name}<small style="display:block;color:var(--dim);font-size:8px">${m.about}</small></span><button class="btn ${moves.special === m.id ? 'off' : 'go'}" data-eq="${m.id}" ${moves.special === m.id ? 'disabled' : ''}>${moves.special === m.id ? 'EQUIPPED' : 'EQUIP'}</button></li>`).join('')}</ul>` : '<p class="dim">You have no special move yet.</p>'}
+    <h3>SPECIAL MOVE</h3>${have.length ? `<ul class="list">${have.map(m => `<li><span>${iconTag(m.id)} ${m.name}<small style="display:block;color:var(--dim);font-size:8px">${m.about}</small></span><button class="btn ${moves.special === m.id ? 'off' : 'go'}" data-eq="${m.id}" ${moves.special === m.id ? 'disabled' : ''}>${moves.special === m.id ? 'EQUIPPED' : 'EQUIP'}</button></li>`).join('')}</ul>` : '<p class="dim">You have no special move yet.</p>'}
     <button class="btn go" id="mvshop">GET MORE MOVES + UPGRADES</button> <button class="btn" id="mvbot">WALK TO OPP-BOT</button>`, '#31d7ff');
   const c = $('#mvc').getContext('2d'), seq = ['idle', 'walk1', 'walk2', 'punch', 'kick', 'jump', 'spin', 'blast', 'wave', 'dance1', 'dance2']; let n = 0;
   const paint = () => { moves.preview(c, 256, 256, seq[n++ % seq.length], moves.special); }; paint(); const timer = setInterval(paint, 420);
@@ -701,14 +657,14 @@ function openMoves() {
 const peers = new Map(), sid = Math.random().toString(36).slice(2, 10);
 let live = null; // who's here, daily quests and the lobby bosses (live.js)
 // Moves and animation for avatars (moves.js). Actions are shared on the same live channel as positions.
-const moves = room ? createMoves({ room, P, peers, sid, closet: () => (me && me.closet) || [], skin: () => AV.skin[myAv.skin] || '#c68642', drawMine: (c, W, H) => drawAvatar(c, W, H, myAv, me ? me.name : '', myFit),
+const moves = room ? createMoves({ room, P, peers, sid, closet: () => (me && me.closet) || [], skin: () => AV.skin[myAv.skin] || '#c68642', drawMine: (c, W, H, pose, tint) => drawAvatar(c, W, H, myAv, me ? me.name : '', myFit, null, pose, tint),
   blocked: () => !$('#gf').hidden || !panel.hidden || !$('#gate').hidden || !!xr, stand: () => { sitting = false; }, collide, toast, hub, event: (type, n) => { if (live) live.event(type, n); }, send: payload => { try { window.__bbaAct && window.__bbaAct(payload); } catch {} }, name: () => (me ? me.name : 'Player') }) : null;
-window.__bbaMoves = moves; window.__P = P;
+window.__bbaMoves = moves; window.__P = P; window.__bbaOpen = id => handlers[id] && handlers[id]();
 const alerts = createAlerts({ toast, hub, call: async (action, body) => { const { data, error } = await supabase.rpc('bba_push', { p_action: action, p_body: { ...auth, ...body } }); if (error) throw new Error(error.message); return data; } });
 live = createLive({ room, P, peers, moves, toast, hub, collide, show, closePanel, pbody, onClose: fn => { cleanup = fn; }, alertsHtml: () => alerts.html(), alerts: want => alerts.toggle(want), alertsOn: () => alerts.on || !alerts.can,
   call: async (action, body) => { const { data, error } = await supabase.rpc('bba_daily', { p_action: action, p_body: { ...auth, ...body } }); if (error) throw new Error(error.message); return data; },
   signedUp: () => !!(auth.pid && me && !me.local), setPlayer: ({ tokens, earned, closet }) => { if (me) { me.tokens = tokens; if (earned != null) me.earned = earned; if (Array.isArray(closet)) me.closet = closet; setMe(me); } },
-  itemInfo: id => WEAR.find(w => w.id === id) || PRIZES.find(x => x.id === id) || null, itemIcon: it => it.icon || '🎁',
+  itemInfo: id => WEAR.find(w => w.id === id) || PRIZES.find(x => x.id === id) || null, itemIcon: it => it.slot ? iconTag(it.id) : it.icon || '🎁', paintIcons: root => paintIcons(root, findItem),
   equip: id => { const w = wearItem(id); if (w) { myFit[w.slot] = w.id; myFit = cleanFit(myFit, me ? me.closet : null); store.set('bba-fit', myFit); api('wear', { outfit: myFit }).then(x => x?.player && setMe(x.player)).catch(() => {}); toast(w.name.toUpperCase() + ' IS ON YOUR AVATAR'); } else if (/^move-/.test(id) && moves) { moves.setSpecial(id); toast('EQUIPPED! PRESS Q OR ★ TO USE IT'); } },
   blocked: () => !$('#gf').hidden || !panel.hidden || !$('#gate').hidden || !!xr, inGame: () => !$('#gf').hidden,
   gameTitle: id => (GAMES.find(g => g.id === id) || {}).title, myName: () => (me ? me.name : 'You'), sendBoss: payload => { try { window.__bbaBoss && window.__bbaBoss(payload); } catch {} } });
@@ -732,7 +688,7 @@ function peerSeen(d) {
   const x = Math.max(AXA, Math.min(WXB, +d.x || 0)), z = Math.max(HEND, Math.min(LZ1, +d.z || 0)); // anywhere you can walk: main floor, hallway, lounge, East Wing
   let p = peers.get(d.id); if (!p) { p = { x, z }; peers.set(d.id, p); if (live) live.joined(name); }
   p.name = name; p.g = g; p.away = away; p.v = !!d.v;
-  if (p.key !== key && room) { if (moves) moves.freePeer(p); p.draw = (c, W, H) => drawAvatar(c, W, H, av, tag, fit, look); p.key = key; }
+  if (p.key !== key && room) { if (moves) moves.freePeer(p); p.draw = (c, W, H, pose, tint) => drawAvatar(c, W, H, av, tag, fit, look, pose, tint); p.key = key; }
   p.tx = x; p.tz = z; p.sit = !!d.s; p.drunk = !!d.d; p.last = d; p.seen = performance.now();
 }
 window.__bbaPeer = peerSeen;

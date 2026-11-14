@@ -213,10 +213,10 @@ export function createLive(ctx) {
   function showLoot(loot, gained, b) {
     const [label, col] = RARITY[loot.rarity] || RARITY.common, info = loot.item ? ctx.itemInfo(loot.item) : null, canUse = loot.item && !loot.dupe && info && (info.slot && info.slot !== 'upgrade');
     let el = document.getElementById('loot'); if (!el) { el = document.createElement('div'); el.id = 'loot'; document.body.appendChild(el); }
-    el.innerHTML = `<div class="lootcard" style="--c:${col}"><small>${esc(b.name)} DEFEATED</small><b>${label} DROP</b><div class="ico">${info ? ctx.itemIcon(info) : '🪙'}</div><h3>${esc(loot.name || 'Loot')}</h3>
+    el.innerHTML = `<div class="lootcard" style="--c:${col}"><small>${esc(b.name)} DEFEATED</small><b>${label} DROP</b><div class="ico">${info ? ctx.itemIcon(info) : ctx.itemIcon({ slot: 'coin', id: 'tokens-5' })}</div><h3>${esc(loot.name || 'Loot')}</h3>
       <p>${loot.dupe ? `You already own this, so it turned into 🪙 ${loot.tokens}.` : loot.item ? (info && info.slot === 'move' ? 'New special move unlocked.' : info && info.slot === 'upgrade' ? 'Upgrade applied to every move.' : 'Added to your closet.') : ''}</p>
       <p class="tot">+${gained} TOKENS</p>${canUse ? `<button class="btn go" data-use="${esc(loot.item)}">${info.slot === 'move' ? 'EQUIP THIS MOVE' : 'PUT IT ON'}</button>` : ''}<button class="btn" data-x>${canUse ? 'LATER' : 'NICE'}</button>${ctx.alertsOn && !ctx.alertsOn() ? '<p style="margin-top:12px">Want to know when the next boss spawns? <button class="btn" data-alerts="on">🔔 GET BOSS ALERTS</button></p>' : ''}</div>`;
-    el.hidden = false; el.className = 'in';
+    el.hidden = false; el.className = 'in'; if (ctx.paintIcons) ctx.paintIcons(el);
     el.onclick = e => { const al = e.target.closest('[data-alerts]'); if (al && ctx.alerts) { ctx.alerts('on'); al.closest('p').remove(); return; } const u = e.target.closest('[data-use]'); if (u) ctx.equip(u.dataset.use); if (u || e.target.closest('[data-x]') || e.target === el) { el.hidden = true; el.innerHTML = ''; } };
   }
   // ---------- the quest tracker on screen + the panel ----------
