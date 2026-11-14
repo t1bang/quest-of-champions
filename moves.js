@@ -87,15 +87,21 @@ export function createMoves(ctx) {
 
   // ----- what a hit does -----
   function spark(x, z, y, key = 'spark', size = 70) { sparks.push({ x, z, y, key, size, t: 0.22 }); }
+  const emit = (type, n) => { try { ctx.event && ctx.event(type, n); } catch {} };
+  function landed(dmg) { combo++; comboDmg += Math.round(dmg); comboAt = now(); showCombo(); emit('hit', Math.round(dmg)); if (combo === 10) emit('combo10', 1); }
   function hitBot(dmg, key) {
     if (bot.state === 'ko') return;
     bot.hp -= dmg; bot.state = 'hit'; bot.until = now() + 0.22; bot.wob = 1; spark(bot.x, bot.z, 190, key);
-    combo++; comboDmg += Math.round(dmg); comboAt = now(); showCombo();
-    if (bot.hp <= 0) { bot.state = 'ko'; bot.until = now() + 3.2; ctx.toast('SPAR-BOT K.O.!  COMBO x' + combo); ctx.hub('spar_ko', comboDmg); }
+    landed(dmg);
+    if (bot.hp <= 0) { bot.state = 'ko'; bot.until = now() + 3.2; ctx.toast('SPAR-BOT K.O.!  COMBO x' + combo); ctx.hub('spar_ko', comboDmg); emit('ko', 1); }
   }
+  // Other things you can hit (the lobby bosses): { x, z, r, y, alive(), hit(dmg, key) }
+  const targets = [];
+  function hitTarget(tg, dmg, key) { tg.hit(dmg, key); spark(tg.x + (Math.random() - 0.5) * tg.r, tg.z, tg.y || 220, key, 90); landed(dmg); }
   function strike(reach, dmg, key, cone) { // close-range hit from where I stand
     let landed = false;
     if (inFront(bot.x, bot.z, reach, cone)) { hitBot(dmg, key); landed = true; }
+    for (const tg of targets) if (tg.alive() && inFront(tg.x, tg.z, reach + tg.r, cone)) { hitTarget(tg, dmg, key); landed = true; }
     for (const p of peers.values()) if (inFront(p.x, p.z, reach, cone)) { spark(p.x, p.z, 170, key); landed = true; }
     return landed;
   }
@@ -118,6 +124,7 @@ export function createMoves(ctx) {
   }
   function doMove(name) {
     if (!can(name)) return false;
+    if (name !== 'special' || (SPECIAL[special] && owned(special))) emit('move:' + name, 1);
     ctx.stand(); emote = null;
     const pw = POWER[level('power')], sp = SPEED[level('speed')];
     if (name === 'jump') { if (jumpY > 0) return false; jumpV = 760; ready.jump = now() + BASE.jump.cd * sp; setAct({ m: 'jump', dur: BASE.jump.dur }, true); return true; }
@@ -135,7 +142,7 @@ export function createMoves(ctx) {
     }
     return false;
   }
-  function doEmote(kind) { if (ctx.blocked()) return; emote = emote === kind ? null : kind; ctx.send({ id: ctx.sid, m: 'emote', k: emote || '', n: ctx.name() }); }
+  function doEmote(kind) { if (ctx.blocked()) return; emote = emote === kind ? null : kind; if (emote) emit('emote', 1); ctx.send({ id: ctx.sid, m: 'emote', k: emote || '', n: ctx.name() }); }
 
   // ----- another player did something -----
   function onAct(d) {
@@ -163,7 +170,7 @@ export function createMoves(ctx) {
   function update(dt, sprites) {
     const t = now(), pw = POWER[level('power')];
     // jump arc
-    if (jumpV || jumpY > 0) { jumpY += jumpV * dt; jumpV -= 2300 * dt; if (jumpY <= 0) { jumpY = 0; jumpV = 0; if (act && act.m === 'special' && act.k === 'move-slam' && !act.done) { act.done = true; shake = 0.8; ring(P.x, P.z, 'move-slam'); const s = SPECIAL['move-slam']; if (Math.hypot(bot.x - P.x, bot.z - P.z) < s.reach) hitBot(s.dmg * pw, 'move-slam'); } } }
+    if (jumpV || jumpY > 0) { jumpY += jumpV * dt; jumpV -= 2300 * dt; if (jumpY <= 0) { jumpY = 0; jumpV = 0; if (act && act.m === 'special' && act.k === 'move-slam' && !act.done) { act.done = true; shake = 0.8; ring(P.x, P.z, 'move-slam'); const s = SPECIAL['move-slam']; if (Math.hypot(bot.x - P.x, bot.z - P.z) < s.reach) hitBot(s.dmg * pw, 'move-slam'); for (const tg of targets) if (tg.alive() && Math.hypot(tg.x - P.x, tg.z - P.z) < s.reach + tg.r) hitTarget(tg, s.dmg * pw, 'move-slam'); } } }
     if (act) {
       const k = (t - act.t0) / act.dur;
       if (act.m === 'combo') { const n = Math.min(4, Math.floor(k * 4) + 1); while (act.ticks < n) { act.ticks++; strike(BASE.combo.reach, BASE.combo.dmg * pw * (act.ticks === 4 ? 2 : 1), 'spark'); } }
@@ -182,6 +189,7 @@ export function createMoves(ctx) {
       const r = s.size * 0.6 + 50;
       if (!s.fx) {
         if (s.mine && bot.state !== 'ko' && !s.hit.has('bot') && Math.hypot(bot.x - s.x, bot.z - s.z) < r) { s.hit.add('bot'); hitBot(s.dmg, s.key); if (!s.big) s.life = Math.min(s.life, 0.05); }
+        if (s.mine) for (const tg of targets) if (tg.alive() && !s.hit.has(tg) && Math.hypot(tg.x - s.x, tg.z - s.z) < r + tg.r) { s.hit.add(tg); hitTarget(tg, s.dmg, s.key); if (!s.big) s.life = Math.min(s.life, 0.05); }
         if (s.mine) for (const [id, p] of peers) if (!s.hit.has(id) && Math.hypot(p.x - s.x, p.z - s.z) < r) { s.hit.add(id); spark(p.x, p.z, 170, s.key); }
         if (!s.mine && !s.hit.has('me') && Math.hypot(P.x - s.x, P.z - s.z) < r && !ctx.blocked()) { s.hit.add('me'); gotHit(s.from, s.big); ctx.send({ id: ctx.sid, m: 'hit', n: ctx.name() }); }
       }
@@ -257,5 +265,6 @@ export function createMoves(ctx) {
     get special() { return special; }, setSpecial(id) { special = id; try { localStorage.setItem('bba-move', id || ''); } catch {} },
     cooldown: name => Math.max(0, (ready[name] || 0) - now()), myPose: () => (act ? act.m : emote), bot,
     specials: () => MOVES.filter(m => owned(m.id)), SPECIAL, UPGRADES,
+    addTarget: tg => targets.push(tg), stagger: (by, big, stun) => { gotHit(by, big); if (stun && act) { act.dur = stun; act.lock = true; } }, airborne: () => jumpY > 45, ring, spark,
   };
 }

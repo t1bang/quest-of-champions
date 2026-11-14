@@ -123,3 +123,16 @@ ol.rank small.lv.ok{color:#35e06f}
 #combo b{display:block;font-size:44px;line-height:1;color:var(--gold);text-shadow:0 0 14px var(--gold),3px 3px 0 var(--red)}#combo span{display:block;font:9px var(--pix);color:#fff;margin-top:4px}
 #combo.pop b{animation:combopop .18s}@keyframes combopop{from{transform:scale(1.5)}}
 .movelist li small{display:block;color:var(--dim);font-size:8px;margin-top:3px}.card p.about{font:9px/1.5 var(--pix);color:var(--dim);margin:4px 0}
+/* who's here radar, daily quest tracker, boss bar */
+#radar{position:fixed;top:calc(58px + env(safe-area-inset-top));right:calc(10px + env(safe-area-inset-right));width:96px;height:96px;z-index:5;cursor:pointer;image-rendering:auto}
+#qtrack{position:fixed;top:158px;left:14px;z-index:5;max-width:230px;text-align:left;background:rgba(11,6,18,.85);border:2px solid var(--gold);border-radius:6px;padding:8px 9px;font:8px var(--pix);color:#fff;line-height:1.5;box-shadow:3px 3px 0 #000}
+#qtrack b{display:block;color:var(--gold);margin-bottom:4px}#qtrack span{display:block;margin-top:3px}#qtrack span.ok{color:#3dff9a}#qtrack i{font-style:normal;color:var(--gold);white-space:nowrap}#qtrack span.ok i{color:#3dff9a}
+body:has(#gate:not([hidden])) #qtrack,body:has(#panel:not([hidden])) #qtrack,body:has(#gf:not([hidden])) #qtrack,#qtrack[hidden],#radar[hidden],#bossbar[hidden]{display:none}
+#bossbar{--c:#ff2a3c;position:fixed;left:50%;top:calc(58px + env(safe-area-inset-top));transform:translateX(-50%);z-index:5;width:min(520px,calc(100vw - 520px));min-width:250px;pointer-events:none;text-align:center;font:8px var(--pix);color:#fff;text-shadow:1px 1px 0 #000,0 0 6px #000}
+#bossbar>b{display:block;font:20px var(--big);color:var(--c);text-shadow:0 0 10px var(--c),2px 2px 0 #000;letter-spacing:1px}#bossbar>b small{font:8px var(--pix);color:#fff;text-shadow:1px 1px 0 #000;margin-left:6px}
+#bossbar .hp{position:relative;height:18px;margin:5px 0;background:#1a1026;border:3px solid #000;outline:2px solid var(--c);border-radius:3px;overflow:hidden}#bossbar .hp i{position:absolute;left:0;top:0;bottom:0;background:linear-gradient(#ff5a6a,#d2142a);transition:width .25s}#bossbar .hp span{position:relative;line-height:18px;font-size:8px}
+body:has(#bossbar:not([hidden])) #combo{top:calc(176px + env(safe-area-inset-top))}body:has(#bossbar:not([hidden])) #toast{top:calc(134px + env(safe-area-inset-top))}body:has(#bossbar:not([hidden])) #hint{opacity:0!important}
+.qbar{display:block;height:6px;margin-top:5px;background:#1a1026;border:1px solid #3a2a55;border-radius:3px;overflow:hidden;min-width:140px}.qbar i{display:block;height:100%;background:var(--gold)}
+ul.quests li b{font-size:9px;color:var(--gold);white-space:nowrap}ul.quests li b.ok{color:#3dff9a}ul.quests li>span{flex:1}
+@media(max-width:900px),(max-height:520px){#qtrack span{display:none}#qtrack b{margin:0}#qtrack{top:150px}}
+@media(max-width:600px){#radar{width:72px;height:72px;top:calc(98px + env(safe-area-inset-top))}#qtrack{top:132px;left:8px;font-size:7px;padding:6px 7px}#bossbar{top:calc(178px + env(safe-area-inset-top));width:calc(100vw - 24px)}#bossbar>b{font-size:15px}body:has(#bossbar:not([hidden])) #combo{top:calc(266px + env(safe-area-inset-top))}body:has(#bossbar:not([hidden])) #toast{top:calc(64px + env(safe-area-inset-top))}}

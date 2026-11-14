@@ -1,6 +1,7 @@
 import { GAMES, SONGS, MUSIC_PAGES, DONATE, SOCIALS, CLAIM_HELP, BGM, SOON, VAULT, SOCIAL_AUTH, JUKEBOX_PLAYLIST, WALL_VIDEO, WALL_SONG } from './config.js';
 import { PRIZES, REWARDS, REAL_PRIZES_LIVE, BAR, TOKEN_PACK, WEAR, SLOTS, JEWELRY, DEFAULT_FIT, MOVES, UPGRADES } from './prizes.js';
 import { createMoves, SPRITE } from './moves.js';
+import { createLive } from './live.js';
 import { COVERS, playTrailer } from './art.js';
 import { buildRoom, DIMS } from './room.js';
 import { supabase, authHeaders, playerCall, enabledProviders, escapeHtml, createActivityTracker } from './player-services.js';
@@ -8,7 +9,7 @@ import { GAME_SERVICES, saveFor, createSiteTracker } from './game-services.js';
 
 const $ = s => document.querySelector(s);
 // anonymous activity counts for the admin hub (hub.js loads after this file, so early calls wait for it)
-const hub = (kind, val, tries = 0) => { try { if (window.bbHub) window.bbHub(kind, val); else if (tries < 20) setTimeout(() => hub(kind, val, tries + 1), 300); } catch {} };
+const hub = (kind, val, tries = 0) => { try { if (!tries && window.__bbaLive) { const k = String(kind); if (k.startsWith('open:')) window.__bbaLive.event('game', k.slice(5)); else if (k.startsWith('mini:')) window.__bbaLive.event('mini', 1); } } catch {} try { if (window.bbHub) window.bbHub(kind, val); else if (tries < 20) setTimeout(() => hub(kind, val, tries + 1), 300); } catch {} };
 const view = $('#view'), panel = $('#panel'), pbody = $('#pbody');
 const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; };
 let toastT;
@@ -44,7 +45,7 @@ function setMe(p) {
 }
 async function earn(why, game, score) {
   if (!auth.pid) return;
-  try { const r = await api('earn', { why, game, score }); setMe(r.player); if (r.gained) toast(why === 'daily' && r.streak ? `DAY ${r.streak} STREAK: +${r.gained} TOKENS` : `+${r.gained} TOKENS`); } catch {}
+  try { const r = await api('earn', { why, game, score }); setMe(r.player); if (r.gained && (why === 'minute' || why === 'trailer') && window.__bbaLive) window.__bbaLive.event(why, 1); if (r.gained) toast(why === 'daily' && r.streak ? `DAY ${r.streak} STREAK: +${r.gained} TOKENS` : `+${r.gained} TOKENS`); } catch {}
 }
 async function join(name) {
   name = String(name).replace(/[^A-Za-z0-9 _-]/g, '').trim().slice(0,16);
@@ -181,7 +182,7 @@ function frame(now, xf) {
   P.eye = P.eyeBase + Math.sin(walkT) * (moving ? 5 : 0);
   if (xr) xrDraw(xf, now / 1000, dt);
   else if (room && !window.__skip) {
-    const t = now / 1000, spr = peerSprites(dt), mv = moves ? moves.update(dt, spr) : null;      // moves add blasts, sparks and the sparring bot, and lift or shake the view
+    const t = now / 1000, spr = peerSprites(dt), mv = moves ? moves.update(dt, spr) : null; if (live) live.update(dt, spr);      // moves add blasts, sparks and the sparring bot, and lift or shake the view
     const V = mv && (mv.lift || mv.shakeX || mv.shakeY || mv.spin) ? { ...P, eye: P.eye + mv.lift + mv.shakeY, yaw: P.yaw + mv.shakeX + mv.spin } : P;
     room.render(drunk ? { ...V, yaw: V.yaw + Math.sin(t * 1.3) * 0.03 * drunk, pitch: V.pitch + Math.sin(t * 0.9) * 0.018 * drunk } : V, t, spr); placeWall();
   }
@@ -248,7 +249,7 @@ function xrDraw(xf, time, dt) {
     if (i === 0 && hit) xr.aim = hit.s;
     xr.rays.push({ o: ray.o, d: ray.d, len, w: 2.5, c: hit ? [1, 0.79, 0.23] : [0.55, 0.85, 1] });
   });
-  const spr = peerSprites(dt).slice(), a = xr.aim;
+  const spr = peerSprites(dt).slice(), a = xr.aim; if (live) live.update(dt, spr);
   if (a) {
     const key = a.id + (xr.armed === a.id ? '!' : '');
     if (key !== xr.labelKey) { if (xr.label) room.freeTex(xr.label); xr.labelKey = key; xr.label = xrSign([a.label, xr.armed === a.id ? 'TRIGGER AGAIN TO OPEN (LEAVES VR)' : 'PULL TRIGGER TO GO THERE'], '#31d7ff'); }
@@ -673,10 +674,17 @@ function openMoves() {
 }
 // Other players: positions are shared live through a Supabase Realtime channel.
 const peers = new Map(), sid = Math.random().toString(36).slice(2, 10);
+let live = null; // who's here, daily quests and the lobby bosses (live.js)
 // Moves and animation for avatars (moves.js). Actions are shared on the same live channel as positions.
 const moves = room ? createMoves({ room, P, peers, sid, closet: () => (me && me.closet) || [], skin: () => AV.skin[myAv.skin] || '#c68642', drawMine: (c, W, H) => drawAvatar(c, W, H, myAv, me ? me.name : '', myFit),
-  blocked: () => !$('#gf').hidden || !panel.hidden || !$('#gate').hidden || !!xr, stand: () => { sitting = false; }, collide, toast, hub, send: payload => { try { window.__bbaAct && window.__bbaAct(payload); } catch {} }, name: () => (me ? me.name : 'Player') }) : null;
+  blocked: () => !$('#gf').hidden || !panel.hidden || !$('#gate').hidden || !!xr, stand: () => { sitting = false; }, collide, toast, hub, event: (type, n) => { if (live) live.event(type, n); }, send: payload => { try { window.__bbaAct && window.__bbaAct(payload); } catch {} }, name: () => (me ? me.name : 'Player') }) : null;
 window.__bbaMoves = moves;
+live = createLive({ room, P, peers, moves, toast, hub, collide, show, closePanel, pbody, onClose: fn => { cleanup = fn; },
+  call: async (action, body) => { const { data, error } = await supabase.rpc('bba_daily', { p_action: action, p_body: { ...auth, ...body } }); if (error) throw new Error(error.message); return data; },
+  signedUp: () => !!(auth.pid && me && !me.local), setTokens: (t, e) => { if (me) { me.tokens = t; if (e != null) me.earned = e; setMe(me); } },
+  blocked: () => !$('#gf').hidden || !panel.hidden || !$('#gate').hidden || !!xr, inGame: () => !$('#gf').hidden,
+  gameTitle: id => (GAMES.find(g => g.id === id) || {}).title, myName: () => (me ? me.name : 'You'), sendBoss: payload => { try { window.__bbaBoss && window.__bbaBoss(payload); } catch {} } });
+window.__bbaLive = live;
 if (moves) {
   $('#mv').onclick = openMoves;
   const pad = $('#moves');
@@ -686,17 +694,19 @@ if (moves) {
 
 function peerSeen(d) {
   if (!d || typeof d.id !== 'string' || d.id === sid || (peers.size >= 40 && !peers.has(d.id))) return;
-  const name = String(d.n || 'Player').replace(/[^A-Za-z0-9 _-]/g, '').slice(0, 16), av = cleanAv(d.av), fit = d.fit ? cleanFit(d.fit) : null, look = { goggles: !!d.d, curvy: drunk > 0 }, key = name + JSON.stringify(av) + JSON.stringify(fit) + JSON.stringify(look);
-  const x = Math.max(-760, Math.min(760, +d.x || 0)), z = Math.max(-1450, Math.min(1880, +d.z || 0));
-  let p = peers.get(d.id); if (!p) { p = { x, z }; peers.set(d.id, p); }
-  if (p.key !== key && room) { if (moves) moves.freePeer(p); p.draw = (c, W, H) => drawAvatar(c, W, H, av, name, fit, look); p.key = key; }
+  const name = String(d.n || 'Player').replace(/[^A-Za-z0-9 _-]/g, '').slice(0, 16), av = cleanAv(d.av), fit = d.fit ? cleanFit(d.fit) : null, look = { goggles: !!d.d, curvy: drunk > 0 };
+  const g = typeof d.g === 'string' && /^[a-z0-9-]{2,24}$/.test(d.g) ? d.g : '', away = !!d.h && !g, tag = name + (g ? ' ▶' : away ? ' …' : ''), key = tag + JSON.stringify(av) + JSON.stringify(fit) + JSON.stringify(look);
+  const x = Math.max(-XMAX, Math.min(WXB, +d.x || 0)), z = Math.max(HEND, Math.min(LZ1, +d.z || 0)); // anywhere you can walk: main floor, hallway, lounge, East Wing
+  let p = peers.get(d.id); if (!p) { p = { x, z }; peers.set(d.id, p); if (live) live.joined(name); }
+  p.name = name; p.g = g; p.away = away;
+  if (p.key !== key && room) { if (moves) moves.freePeer(p); p.draw = (c, W, H) => drawAvatar(c, W, H, av, tag, fit, look); p.key = key; }
   p.tx = x; p.tz = z; p.sit = !!d.s; p.drunk = !!d.d; p.last = d; p.seen = performance.now();
 }
 window.__bbaPeer = peerSeen;
 function peerSprites(dt) {
   const out = [], now = performance.now();
   for (const [id, p] of peers) {
-    if (now - p.seen > 8000) { if (moves) moves.freePeer(p); peers.delete(id); continue; }
+    if (now - p.seen > 13000) { if (moves) moves.freePeer(p); peers.delete(id); continue; }
     if (!p.key && p.last) { const seen = p.seen; peerSeen(p.last); p.seen = seen; } // redraw after my own drinks change how I see people
     p.x += (p.tx - p.x) * Math.min(1, dt * 5); p.z += (p.tz - p.z) * Math.min(1, dt * 5);
     const wob = p.drunk && !p.sit ? now / 260 + id.charCodeAt(0) : 0; // a stumble: sway side to side and dip
@@ -712,12 +722,17 @@ async function startPresence() {
     const c = await sb(), ch = c.channel('bba-arcade-room', { config: { broadcast: { self: false } } });
     ch.on('broadcast', { event: 'pos' }, m => peerSeen(m.payload));
     ch.on('broadcast', { event: 'act' }, m => moves && moves.onAct(m.payload));
+    ch.on('broadcast', { event: 'boss' }, m => live && live.onBoss(m.payload));
+    window.__bbaBoss = payload => { if (auth.pid && me) ch.send({ type: 'broadcast', event: 'boss', payload }); };
     window.__bbaAct = payload => { if (auth.pid && me) ch.send({ type: 'broadcast', event: 'act', payload }); };
     let timer, previous = '', sentAt = 0;
     ch.subscribe(st => { clearInterval(timer); if (st === 'SUBSCRIBED') timer = setInterval(() => {
-      if (document.hidden || !$('#gf').hidden || !auth.pid || !me) return;
-      const payload = { id:sid, n:me.name, av:myAv, fit:myFit, d:drunk ? 1 : 0, x:Math.round(P.x), z:Math.round(P.z), s:sitting ? 1 : 0 }, next = JSON.stringify(payload);
-      if (next === previous && Date.now()-sentAt < 4000) return;
+      if (!auth.pid || !me) return;
+      // Players stay visible while they are inside a game or on another tab: a slow heartbeat says where they are standing and what they are doing.
+      const inGame = !$('#gf').hidden, idle = document.hidden || inGame;
+      const payload = { id:sid, n:me.name, av:myAv, fit:myFit, d:drunk ? 1 : 0, x:Math.round(P.x), z:Math.round(P.z), s:sitting ? 1 : 0, ...(inGame ? { g: $('#gf').dataset.game || 'game' } : document.hidden ? { h: 1 } : {}) }, next = JSON.stringify(payload);
+      const gap = idle ? 4000 : peers.size > 24 ? 1400 : peers.size > 12 ? 1000 : 0;   // a busy room sends positions a little less often
+      if (Date.now()-sentAt < gap || (next === previous && Date.now()-sentAt < 4000)) return;
       previous = next; sentAt = Date.now(); ch.send({ type:'broadcast', event:'pos', payload });
     }, 700); });
     addEventListener('pagehide', () => { clearInterval(timer); c.removeChannel(ch); }, { once:true });
