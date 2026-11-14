@@ -279,7 +279,7 @@ const HELPER_SCALE=1.18;   // assists stand taller than the champions
 const REF={o:{skin:'#c58a5a',hair:{type:'short',color:'#3a2a1a'},top:'#f4f4f4',stripes:true,sleeve:'#c58a5a',pants:'#111',boots:'#111',size:3.6,big:true,face:{}},hp:10,speed:1.6};
 const LEVELS={
   1:{name:'GIMME MY RING',sub:'Level 1 · The Court',song:'audio/ring.mp3',theme:'court',length:5400,
-     team:{name:'STEP CURLY',o:{skin:'#c58a5a',hair:{type:'short'},top:'#1d428a',jersey:{number:'30',color:'#ffc72c',text:'#1d428a'},pants:'#1d428a',boots:'#fff',size:3,holding:'ball'},proj:'ball'},
+     team:{name:'STEP CURLY',o:{sprite:'currySheet',skin:'#c58a5a',hair:{type:'short'},top:'#1d428a',jersey:{number:'30',color:'#ffc72c',text:'#1d428a'},pants:'#1d428a',boots:'#fff',size:3.6,holding:'ball'},proj:'ball'},
      enemy:{kinds:[
         {o:{skin:'#8d5a3b',hair:{type:'headband',color:'#fff'},top:'#fff',jersey:{number:'23',color:'#552583',text:'#fdb927'},pants:'#552583',boots:'#fff',size:3,holding:'ball'},ranged:'ball'},
         {o:{skin:'#5a3a22',hair:{type:'short'},top:'#fff',jersey:{number:'8',color:'#007a33',text:'#fff'},pants:'#007a33',boots:'#000',size:3}},
@@ -967,7 +967,45 @@ function drawToneCar(h){const x=h.x-camX,y=h.z,b=Math.sin(t/3)*1.5;
   const bx=x-10,by=y-190+b;ctx.fillStyle='#fff';roundRect(bx-90,by-26,180,48,16);ctx.fill();ctx.strokeStyle='#111';ctx.lineWidth=3;ctx.stroke();
   ctx.fillStyle='#fff';ctx.beginPath();ctx.moveTo(bx-30,by+20);ctx.lineTo(bx-46,by+44);ctx.lineTo(bx-12,by+21);ctx.fill();ctx.beginPath();ctx.moveTo(bx-30,by+21);ctx.lineTo(bx-46,by+44);ctx.lineTo(bx-12,by+22);ctx.stroke();
   outlined("IT'S TONE!!",bx,by-1,28,'#e0202a');}
+// Level 1 basketball partner: seven frames from the supplied Curry sprite sheet.
+// Source is at repository root; remove the green matte once and cache transparent crops.
+const currySheetImage=new Image();currySheetImage.src='../../steph-curry-sprites.png';
+const curryCrops={
+ idle:[55,8,255,390],walk1:[355,8,295,390],walk2:[700,8,305,390],
+ punch:[1020,18,510,380],kick:[45,505,490,405],
+ jump:[550,490,345,415],hit:[1045,515,425,390]
+};
+const curryFrames={};
+function curryFrame(name){
+ if(curryFrames[name])return curryFrames[name];
+ if(!currySheetImage.complete||!currySheetImage.naturalWidth)return null;
+ const b=curryCrops[name]||curryCrops.idle;
+ const cv=document.createElement('canvas');cv.width=b[2];cv.height=b[3];
+ const cx=cv.getContext('2d',{willReadFrequently:true});
+ cx.drawImage(currySheetImage,...b,0,0,b[2],b[3]);
+ const im=cx.getImageData(0,0,cv.width,cv.height),d=im.data;
+ for(let i=0;i<d.length;i+=4){
+   const rr=d[i],gg=d[i+1],bb=d[i+2];
+   // Bright green matte; keep dark outlines, clothing and gold effects.
+   if(gg>95&&gg>rr*1.42&&gg>bb*1.4)d[i+3]=0;
+ }
+ cx.putImageData(im,0,0);curryFrames[name]=cv;return cv;
+}
+function drawCurryPartner(e){
+ let name=e.hurt>0?'hit':e.kick>0?'kick':e.attack>0?'punch':
+   e.air?'jump':e.moving?(Math.floor(e.walk*1.6)%2?'walk2':'walk1'):'idle';
+ const im=curryFrame(name);if(!im)return false;
+ // 180 px character height versus Tone's 150 px sprite.
+ const targetHeight=180,scale=targetHeight/390*(e.scale||1);
+ const w=im.width*scale,h=im.height*scale;
+ ctx.save();ctx.translate(Math.round(e.x-camX),Math.round(e.y));
+ ctx.scale(e.face<0?-1:1,1);ctx.imageSmoothingEnabled=false;
+ if(e.hurt>0&&t%4<2)ctx.globalAlpha=.7;
+ ctx.drawImage(im,-w*.5,-h,w,h);
+ ctx.restore();return true;
+}
 function drawEntity(e){
+  if(e.o&&e.o.sprite==='currySheet'&&drawCurryPartner(e))return;
   if(e.o&&e.o.sprite&&drawSprite(e))return;
   if(e.scale&&e.scale!==1){const x=e.x-camX,y=e.y;ctx.save();ctx.translate(x,y);ctx.scale(e.scale,e.scale);ctx.translate(-x,-y);const sc=e.scale;e.scale=1;drawEntity(e);e.scale=sc;ctx.restore();return;}
   const f={walk:e.walk,attack:e.attack,kick:e.kick||0,air:e.air,hurt:e.hurt>0&&(t%4<2),face:e.face,flame:e.flame>0,crouch:e.crouch||0,scared:e.scared>0};
