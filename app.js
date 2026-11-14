@@ -460,7 +460,7 @@ function openPrizes() {
     <div id="paybox"></div>
     <section id="pw-avatar">${group('AVATAR HATS', bySlot(['hat']))}${group('AVATAR CLOTHES', bySlot(['shirt', 'pants', 'shoes', 'eyes']))}
     ${group('AVATAR JEWELRY', bySlot(JEWELRY))}${group('AVATAR EXTRAS', bySlot(['hand']))}</section>
-    <section id="pw-moves">${group('SPECIAL MOVES', MOVES, 'Punch, kick, jump, combo and blast are free. Buy a special move once, then press Q (or ★) to use it. Try them on SPAR-BOT on the main floor.')}${group('MOVE UPGRADES', UPGRADES, 'Upgrades make every move you have hit harder, recharge faster or blast bigger.')}</section>
+    <section id="pw-moves">${group('SPECIAL MOVES', MOVES, 'Punch, kick, jump, combo and blast are free. Buy a special move once, then press Q (or ★) to use it. Try them on OPP-BOT on the main floor.')}${group('MOVE UPGRADES', UPGRADES, 'Upgrades make every move you have hit harder, recharge faster or blast bigger.')}</section>
     <section id="pw-songs">${group('SONG DOWNLOADS', songs)}</section>
     <section id="pw-real">${group('REAL LIFE ITEMS', real, 'Sign in to redeem. Your claim code and any ticket link are emailed to you.')}</section>
     <h3>HOW TO WIN TOKENS</h3><p class="dim">Every minute you play +${REWARDS.minute} · Beat a Quest of Champions level +${REWARDS.level} · T1 Versus fatality +${REWARDS.fatality} · Each game costs 1 token to start · Sign-in bonus +${REWARDS.signup} (one time) · Daily streak +${REWARDS.daily} on day 1 up to +${REWARDS.daily * REWARDS.streakMax} a day by day ${REWARDS.streakMax} · Game scores up to +${REWARDS.scoreMax} a run</p>`, '#ffc93a');
@@ -485,7 +485,7 @@ function openCloset() {
   const owned = slot => WEAR.filter(w => w.slot === slot && (w.cost === 0 || closet.includes(w.id)));
   const sw = (k, label, list) => `<h3>${label}</h3><div class="swatches">${list.map((c, i) => `<button class="sw ${myAv[k] === i ? 'on' : ''}" data-sw="${k}:${i}" style="background:${c}" aria-label="${label} ${i + 1}"></button>`).join('')}</div>`;
   const pick = (k, label, list) => `<h3>${label}</h3><div class="tabs">${list.map((t, i) => `<button class="btn ${myAv[k] === i ? 'on' : ''}" data-sw="${k}:${i}">${t}</button>`).join('')}</div>`;
-  const tile = (slot, w) => `<button class="wtile ${(w ? myFit[slot] === w.id : !myFit[slot]) ? 'on' : ''}" data-fit="${slot}:${w ? w.id : ''}">${w ? (w.c ? `<i style="background:${w.c}"></i>` : `<b>${w.icon}</b>`) : '<b>✕</b>'}<span>${w ? w.name : 'None'}</span>${w ? `<em>${w.cost ? 'BOUGHT' : 'FREE'}</em>` : ''}</button>`;
+  const tile = (slot, w) => `<button class="wtile ${(w ? myFit[slot] === w.id : !myFit[slot]) ? 'on' : ''}" data-fit="${slot}:${w ? w.id : ''}">${w ? (w.c ? `<i style="background:${w.c}"></i>` : `<b>${w.icon}</b>`) : '<b>✕</b>'}<span>${w ? w.name : 'None'}</span>${w ? `<em>${w.loot ? w.loot.toUpperCase() + ' LOOT' : w.cost ? 'BOUGHT' : 'FREE'}</em>` : ''}</button>`;
   const section = ([slot, label]) => { const list = owned(slot), must = slot === 'shirt' || slot === 'pants' || slot === 'shoes'; if (!list.length) return `<h3>${label}</h3><p class="dim">Nothing yet. Find these on the prize wall.</p>`; return `<h3>${label}</h3><div class="wgrid">${must ? '' : tile(slot, null)}${list.map(w => tile(slot, w)).join('')}</div>`; };
   const songs = PRIZES.filter(p => p.file && closet.includes(p.id));
   show(`<h2>MY CLOSET</h2><p>Everything free and everything you bought. Tap an item to put it on.</p>
@@ -606,8 +606,9 @@ function drawAvatar(x, W, H, a, name, fit, look) { // pixel person on a 24x40 gr
   if (a.hair === 3) { R(hc, 6, 0, 12, 4); R(hc, 15, 3, 6, 1.5); }
   if (f.hat === 'beanie') { R('#16161c', 6, -0.5, 12, 4.5); R('#2a2a34', 6, 3, 12, 1.2); }
   if (f.hat === 'cap') { R('#d2142a', 6, -0.5, 12, 4); R('#8a0e1c', 3, 2.8, 9, 1.4); }
+  if (f.hat === 'loot-halo') { R('#000', 6.4, -3.3, 11.2, 2.2); R('#ffc93a', 7, -2.8, 10, 1.2); R('#fff', 8.5, -2.6, 7, 0.5); }
   if (f.hat === 'crown') { R(G, 6.5, 0, 11, 3); for (const cx of [6.5, 10.5, 14.5]) R(G, cx, -2.5, 3, 2.5); R('#d2142a', 11.3, 1, 1.4, 1.2); }
-  if (f.eyes === 'shades') { R('#000', 7, 5.5, 10, 2.5); R('#d2142a', 8, 6, 3, 1.5); R('#d2142a', 13, 6, 3, 1.5); } else { R('#000', 9, 6, 1.5, 1.5); R('#000', 13.5, 6, 1.5, 1.5); }
+  if (f.eyes === 'loot-visor') { R('#000', 6.4, 4.9, 11.2, 3.2); R('#31d7ff', 7, 5.5, 10, 2); R('#fff', 8, 5.8, 2.4, 0.6); } else if (f.eyes === 'shades') { R('#000', 7, 5.5, 10, 2.5); R('#d2142a', 8, 6, 3, 1.5); R('#d2142a', 13, 6, 3, 1.5); } else { R('#000', 9, 6, 1.5, 1.5); R('#000', 13.5, 6, 1.5, 1.5); }
   if (f.fangs === 'fangs') { R('#000', 10, 9.2, 4, 1.4); R(G, 10.4, 9.4, 1.2, 1.6); R(G, 12.4, 9.4, 1.2, 1.6); } else R('#000', 10.5, 9.5, 3, 0.8);
   if (look?.goggles) { R('#16161c', 6.5, 4.8, 11, 3.6); R('#ffb400', 7.2, 5.6, 4, 2.4); R('#ffb400', 12.8, 5.6, 4, 2.4); R('#fff', 7.2, 5.2, 4, 0.9); R('#fff', 12.8, 5.2, 4, 0.9); }
   const sh = top.c || '#e01226';
@@ -622,11 +623,13 @@ function drawAvatar(x, W, H, a, name, fit, look) { // pixel person on a 24x40 gr
     return;
   }
   R('#000', 4.5, 13.5, 15, 13);
-  if (f.shirt === 'jersey') { R('#16161c', 5, 14, 14, 12); R(G, 5, 14, 1.2, 12); R(G, 17.8, 14, 1.2, 12); R(sk, 2, 14, 3, 9); R(sk, 19, 14, 3, 9); R(G, 9, 17, 2.5, 1); R(G, 9.8, 17, 1, 4.5); R(G, 13, 17, 1.2, 4.5); }
+  if (f.shirt === 'loot-jacket') { R('#16161c', 5, 14, 14, 12); R('#16161c', 2, 14, 3, 9); R('#16161c', 19, 14, 3, 9); R(G, 5, 14, 14, 0.9); R(G, 11.6, 14, 0.8, 12); R(G, 2, 21.8, 3, 1.2); R(G, 19, 21.8, 3, 1.2); R('#ff2a3c', 6.6, 16.6, 3.2, 3.2); R(G, 7.4, 17.4, 1.6, 1.6); }
+  else if (f.shirt === 'jersey') { R('#16161c', 5, 14, 14, 12); R(G, 5, 14, 1.2, 12); R(G, 17.8, 14, 1.2, 12); R(sk, 2, 14, 3, 9); R(sk, 19, 14, 3, 9); R(G, 9, 17, 2.5, 1); R(G, 9.8, 17, 1, 4.5); R(G, 13, 17, 1.2, 4.5); }
   else if (f.shirt === 'suit') { R('#16161c', 5, 14, 14, 12); R('#16161c', 2, 14, 3, 9); R('#16161c', 19, 14, 3, 9); R('#fff', 10.5, 14, 3, 7); R('#d2142a', 11.4, 14.5, 1.2, 6); }
   else if (f.shirt === 'hoodie') { R('#e01226', 5, 14, 14, 12); R('#e01226', 2, 14, 3, 9); R('#e01226', 19, 14, 3, 9); R('#b00e1e', 8, 21.5, 8, 3); R('#fff', 10.2, 16, 2, 0.8); R('#fff', 10.8, 16, 0.8, 3.5); R('#fff', 13, 16, 0.9, 3.5); }
   else { R(sh, 5, 14, 14, 12); R(sh, 2, 14, 3, 5); R(sk, 2, 19, 3, 4); R(sh, 19, 14, 3, 5); R(sk, 19, 19, 3, 4); }
   R(sk, 2, 23, 3, 2.5); R(sk, 19, 23, 3, 2.5);
+  if (f.chain === 'loot-chain') { R('#31d7ff', 9, 13.2, 6, 1); R('#31d7ff', 9, 14, 1, 2.2); R('#31d7ff', 14, 14, 1, 2.2); R('#000', 9.9, 15.6, 4.2, 4.2); R('#fff', 10.4, 16.1, 3.2, 3.2); R(G, 11.2, 16.9, 1.6, 1.6); }
   if (f.chain === 'chain') { R(G, 9, 13.2, 6, 1); R(G, 9, 14, 1, 2.2); R(G, 14, 14, 1, 2.2); R(G, 10, 16, 4, 1); R(GD, 11, 17, 2, 2.6); R(G, 11.4, 17.4, 1.2, 1.8); }
   if (f.rings === 'ring') { R(G, 2.2, 23.6, 2.6, 1); R(G, 19.2, 23.6, 2.6, 1); R(GD, 3, 24.6, 1, 0.8); R(GD, 20, 24.6, 1, 0.8); }
   const lc = leg.c || '#23232b', short = f.pants === 'shorts-grey';
@@ -637,6 +640,7 @@ function drawAvatar(x, W, H, a, name, fit, look) { // pixel person on a 24x40 gr
   if (f.belt === 'belt') { R('#16161c', 5, 24, 14, 2.6); R(G, 8.5, 23.2, 7, 4.2); R(GD, 10, 24.2, 4, 2.2); R(G, 11, 24.8, 2, 1); }
   if (f.shoes === 'boots') { R('#c98a3a', 5, 34.5, 6.5, 5.5); R('#c98a3a', 12.5, 34.5, 6.5, 5.5); R('#8a5a1e', 5, 38.8, 6.5, 1.2); R('#8a5a1e', 12.5, 38.8, 6.5, 1.2); }
   else { const kc = shoe.c || '#fff'; R(kc, 5, 37, 6.5, 3); R(kc, 12.5, 37, 6.5, 3); R('#d2142a', 5, 37, 6.5, 1.2); R('#d2142a', 12.5, 37, 6.5, 1.2); }
+  if (f.hand === 'loot-gloves') { for (const gx of [1.4, 18.4]) { R('#000', gx - 0.4, 21.6, 5, 4.6); R('#b06cff', gx, 22, 4.2, 3.8); R('#fff', gx + 0.8, 22.6, 1, 1); R('#ffc93a', gx, 22, 4.2, 0.8); } }
   if (f.hand === 'mic') { R('#d8d8e0', 19.3, 17.2, 3, 3); R(G, 20, 20, 1.6, 4.5); }
   if (f.hand === 'record') { R(G, 17.5, 19, 6, 6); R(GD, 19, 20.5, 3, 3); R('#16161c', 20, 21.5, 1, 1); }
   if (name) { x.font = `bold ${Math.round(H * 0.075)}px Impact,'Arial Black',sans-serif`; x.textAlign = 'center'; x.textBaseline = 'top'; x.lineWidth = Math.max(3, H * 0.02); x.strokeStyle = '#000'; x.strokeText(name, W / 2, 2); x.fillStyle = '#ffc93a'; x.fillText(name, W / 2, 2); }
@@ -664,12 +668,12 @@ function openMoves() {
     <div><ul class="list movelist">${basics.map(([i, n, k]) => `<li><span>${i} ${n}<small>KEY ${k}</small></span></li>`).join('')}</ul></div></div>
     <h3>YOUR LEVELS</h3><p>💪 POWER LV ${lv('power')} · ⏱️ SPEED LV ${lv('speed')} · 🔆 BLAST LV ${lv('blast')}</p>
     <h3>SPECIAL MOVE</h3>${have.length ? `<ul class="list">${have.map(m => `<li><span>${m.icon} ${m.name}<small style="display:block;color:var(--dim);font-size:8px">${m.about}</small></span><button class="btn ${moves.special === m.id ? 'off' : 'go'}" data-eq="${m.id}" ${moves.special === m.id ? 'disabled' : ''}>${moves.special === m.id ? 'EQUIPPED' : 'EQUIP'}</button></li>`).join('')}</ul>` : '<p class="dim">You have no special move yet.</p>'}
-    <button class="btn go" id="mvshop">GET MORE MOVES + UPGRADES</button> <button class="btn" id="mvbot">WALK TO SPAR-BOT</button>`, '#31d7ff');
+    <button class="btn go" id="mvshop">GET MORE MOVES + UPGRADES</button> <button class="btn" id="mvbot">WALK TO OPP-BOT</button>`, '#31d7ff');
   const c = $('#mvc').getContext('2d'), seq = ['idle', 'walk1', 'walk2', 'punch', 'kick', 'jump', 'spin', 'blast', 'wave', 'dance1', 'dance2']; let n = 0;
   const paint = () => { moves.preview(c, 256, 256, seq[n++ % seq.length], moves.special); }; paint(); const timer = setInterval(paint, 420);
   pbody.onclick = e => { const b = e.target.closest('[data-eq]'); if (b) { moves.setSpecial(b.dataset.eq); clearInterval(timer); openMoves(); } };
   $('#mvshop').onclick = () => { clearInterval(timer); openPrizes(); setTimeout(() => $('#pw-moves')?.scrollIntoView({ block: 'start' }), 60); };
-  $('#mvbot').onclick = () => { clearInterval(timer); closePanel(); const b = moves.bot; P.x = b.x + 20; P.z = b.z + 215; P.yaw = Math.atan2(b.x - P.x, -(b.z - P.z)); P.pitch = 0; collide(); toast('SPAR-BOT IS RIGHT IN FRONT OF YOU'); };
+  $('#mvbot').onclick = () => { clearInterval(timer); closePanel(); const b = moves.bot; P.x = b.x + 20; P.z = b.z + 215; P.yaw = Math.atan2(b.x - P.x, -(b.z - P.z)); P.pitch = 0; collide(); toast('OPP-BOT IS RIGHT IN FRONT OF YOU'); };
   cleanup = () => { clearInterval(timer); pbody.onclick = null; };
 }
 // Other players: positions are shared live through a Supabase Realtime channel.
@@ -681,7 +685,9 @@ const moves = room ? createMoves({ room, P, peers, sid, closet: () => (me && me.
 window.__bbaMoves = moves;
 live = createLive({ room, P, peers, moves, toast, hub, collide, show, closePanel, pbody, onClose: fn => { cleanup = fn; },
   call: async (action, body) => { const { data, error } = await supabase.rpc('bba_daily', { p_action: action, p_body: { ...auth, ...body } }); if (error) throw new Error(error.message); return data; },
-  signedUp: () => !!(auth.pid && me && !me.local), setTokens: (t, e) => { if (me) { me.tokens = t; if (e != null) me.earned = e; setMe(me); } },
+  signedUp: () => !!(auth.pid && me && !me.local), setPlayer: ({ tokens, earned, closet }) => { if (me) { me.tokens = tokens; if (earned != null) me.earned = earned; if (Array.isArray(closet)) me.closet = closet; setMe(me); } },
+  itemInfo: id => WEAR.find(w => w.id === id) || PRIZES.find(x => x.id === id) || null, itemIcon: it => it.icon || '🎁',
+  equip: id => { const w = wearItem(id); if (w) { myFit[w.slot] = w.id; myFit = cleanFit(myFit, me ? me.closet : null); store.set('bba-fit', myFit); api('wear', { outfit: myFit }).then(x => x?.player && setMe(x.player)).catch(() => {}); toast(w.name.toUpperCase() + ' IS ON YOUR AVATAR'); } else if (/^move-/.test(id) && moves) { moves.setSpecial(id); toast('EQUIPPED! PRESS Q OR ★ TO USE IT'); } },
   blocked: () => !$('#gf').hidden || !panel.hidden || !$('#gate').hidden || !!xr, inGame: () => !$('#gf').hidden,
   gameTitle: id => (GAMES.find(g => g.id === id) || {}).title, myName: () => (me ? me.name : 'You'), sendBoss: payload => { try { window.__bbaBoss && window.__bbaBoss(payload); } catch {} } });
 window.__bbaLive = live;

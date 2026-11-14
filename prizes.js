@@ -39,6 +39,12 @@ export const WEAR = [
   // in hand
   { id: 'mic', name: 'Gold Mic', slot: 'hand', cost: 60, icon: '🎤' },
   { id: 'record', name: 'Golden Record', slot: 'hand', cost: 80, icon: '📀' },
+  // boss loot only: these drop from lobby bosses and are never sold (loot = rarity)
+  { id: 'loot-visor', name: 'Glitch Visor', slot: 'eyes', cost: 300, icon: '🥽', loot: 'rare' },
+  { id: 'loot-halo', name: 'Neon Halo', slot: 'hat', cost: 500, icon: '😇', loot: 'legendary' },
+  { id: 'loot-gloves', name: 'Crunch Gauntlets', slot: 'hand', cost: 500, icon: '🥊', loot: 'legendary' },
+  { id: 'loot-jacket', name: 'Boss Slayer Jacket', slot: 'shirt', cost: 900, icon: '🧥', loot: 'exotic' },
+  { id: 'loot-chain', name: 'Supernova Chain', slot: 'chain', cost: 900, icon: '🌟', loot: 'exotic' },
 ];
 // MOVES: what an avatar can do in the lobby. Punch, kick, jump, combo and blast are free for everyone.
 // Special moves are bought once and then equipped (one at a time); upgrades make every move stronger or faster.
@@ -62,7 +68,7 @@ export const DEFAULT_FIT = { shirt: 'tee-red', pants: 'jeans-black', shoes: 'kic
 
 // Everything that costs tokens: avatar items, real life items (500-2000 tokens) and song downloads.
 export const PRIZES = [
-  ...WEAR.filter(w => w.cost > 0),
+  ...WEAR.filter(w => w.cost > 0 && !w.loot),
   ...MOVES, ...UPGRADES,
   // real life items
   { id: 'real-tickets', name: 'Stevie Stone GOAT Talk Tour Tickets', icon: '🎟️', cost: 500, real: true, kind: 'ticket' },

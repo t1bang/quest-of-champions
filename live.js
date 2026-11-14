@@ -4,8 +4,8 @@
 // The day turns over at midnight Central; the weekly boss turns over on Monday.
 
 export const QUESTS = {
-  'q-hits': { icon: '👊', text: 'Land 30 hits on SPAR-BOT or a boss', ev: 'hit', n: 30, count: true },
-  'q-bot': { icon: '🤖', text: 'Knock out SPAR-BOT', ev: 'ko', n: 1 },
+  'q-hits': { icon: '👊', text: 'Land 30 hits on OPP-BOT or a boss', ev: 'hit', n: 30, count: true },
+  'q-bot': { icon: '🤖', text: 'Knock out OPP-BOT', ev: 'ko', n: 1 },
   'q-boss': { icon: '👾', text: 'Deal 300 damage to a boss', ev: 'bossdmg', n: 300 },
   'q-blast': { icon: '💥', text: 'Fire 15 blasts', ev: 'move:blast', n: 15 },
   'q-combo': { icon: '🌀', text: 'Throw 8 combos', ev: 'move:combo', n: 8 },
@@ -18,12 +18,15 @@ export const QUESTS = {
   'q-trailer': { icon: '🎬', text: 'Watch a game trailer', ev: 'trailer', n: 1 },
   'q-dodge': { icon: '🦘', text: 'Jump over 3 boss slams', ev: 'dodge', n: 3 },
 };
-const DAILY_NAMES = ['OVERHEAT', 'GLITCH', 'STATIC', 'TILT', 'LAG SPIKE', 'BUG', 'CRASH'];        // Sunday..Saturday
-const DAILY_TINTS = ['#ff7a1a', '#ff2a3c', '#31d7ff', '#ffc93a', '#3dff9a', '#b06cff', '#ff4fd8'];
+const BOSS_NAMES = ['OVERHEAT', 'GLITCH', 'STATIC', 'TILT', 'LAG SPIKE', 'BUG', 'CRASH', 'BLUE SCREEN', 'FIRMWARE', 'TURBO'];
+const BOSS_TINTS = ['#ff7a1a', '#ff2a3c', '#31d7ff', '#ffc93a', '#3dff9a', '#b06cff', '#ff4fd8', '#3ea8ff', '#9aff3d', '#ff5a5a'];
+// Where a boss can appear. The database picks the spot number for each spawn.
+export const SPOTS = [{ x: 560, z: 200, label: 'MAIN FLOOR' }, { x: -560, z: -320, label: 'MAIN FLOOR' }, { x: 1900, z: -100, label: 'EAST WING' }, { x: 0, z: 330, label: 'MAIN FLOOR' }];
 export const BOSSES = {
-  daily: { x: 560, z: 200, r: 90, w: 400, h: 400, y: 260, cycle: 6.5, range: 430, ring: 'move-uppercut', label: 'DAILY BOSS' },
-  weekly: { x: 2050, z: -100, r: 140, w: 600, h: 600, y: 360, cycle: 5, range: 560, ring: 'move-slam', label: 'WEEKLY BOSS', name: 'THE BIG CRUNCH', tint: '#b06cff' },
+  spawn: { x: 560, z: 200, r: 90, w: 400, h: 400, y: 260, cycle: 6.5, range: 430, ring: 'move-uppercut', label: 'BOSS', art: 'daily', place: 'MAIN FLOOR' },
+  weekly: { x: 2300, z: -100, r: 140, w: 600, h: 600, y: 360, cycle: 5, range: 560, ring: 'move-slam', label: 'WEEKLY BOSS', name: 'THE BIG CRUNCH', tint: '#b06cff', art: 'weekly', place: 'EAST WING' },
 };
+export const RARITY = { common: ['COMMON', '#c8c8d0'], uncommon: ['UNCOMMON', '#3dff9a'], rare: ['RARE', '#3ea8ff'], legendary: ['LEGENDARY', '#b06cff'], exotic: ['EXOTIC', '#ffc93a'] };
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 // ---------- boss art ----------
@@ -83,24 +86,34 @@ export function createLive(ctx) {
   }
   function apply(r) {
     if (!r || !r.day) return;
-    if (r.tokens != null) ctx.setTokens(r.tokens, r.earned);
+    if (r.tokens != null) ctx.setPlayer({ tokens: r.tokens, earned: r.earned, closet: r.closet });
     if (r.day !== prog.day) { prog = { day: r.day, c: {}, seen: {} }; save(); }
     day = r.day; state = r; lastFetch = now();
-    for (const k of ['daily', 'weekly']) {
+    for (const k of ['spawn', 'weekly']) {
       const b = boss[k], s = r.bosses && r.bosses[k]; if (!s) continue;
-      if (b.s && s.kills > b.s.kills) { b.koUntil = now() + 7; ctx.toast(`${b.name} IS DOWN!  IT WILL BE BACK STRONGER`); if (b.pendingKo) ctx.hub('boss_ko:' + k, s.level - 1); }
+      const key = k === 'spawn' ? r.day + ':' + s.idx : r.week;
+      if (b.key !== key) {                       // a different boss than last time: start clean
+        b.key = key; b.pending = 0; b.cast = 0; b.localMine = 0; b.koUntil = 0; b.s = null; b.told = false;
+        if (k === 'spawn' && s.idx != null) { const n = (dayNum(r.day) * 3 + s.idx) % BOSS_NAMES.length, sp = SPOTS[(s.spot || 0) % SPOTS.length]; b.name = BOSS_NAMES[n]; b.tint = BOSS_TINTS[n]; b.x = sp.x; b.z = sp.z; b.place = sp.label; b.level = 0; }
+      }
+      if (b.s && s.kills > b.s.kills) { b.koUntil = now() + 7; ctx.toast(`${b.name} IS DOWN!`); if (b.pendingKo) ctx.hub('boss_ko:' + k, s.level - 1); }
       b.pendingKo = false;
-      const mine = Math.max(s.mine || 0, b.s && b.s.kills === s.kills ? b.localMine || 0 : 0);
-      b.s = { ...s }; b.hp = Math.max(0, s.hp - b.pending); b.localMine = mine;
+      b.s = { ...s }; b.fetched = now(); b.hp = Math.max(0, s.hp - b.pending); b.localMine = Math.max(s.mine || 0, b.localMine || 0);
       if (b.level !== s.level) { b.level = s.level; for (const t of Object.values(b.tex)) t.redraw(); }
+      if (s.active && !b.told) { b.told = true; if (!ctx.inGame()) ctx.toast(`⚠ ${b.name} JUST SPAWNED · ${b.place} · ${Math.max(1, Math.round(s.ends_in / 60))} MIN LEFT`); }
       if (s.kills >= 1 && (s.mine || 0) >= s.need && !s.claimed && !claiming[k]) {
         claiming[k] = true;
-        call('claim', { boss: k }).then(x => { claiming[k] = false; if (x && x.gained) { ctx.toast(`${b.label} REWARD: +${x.gained} TOKENS`); ctx.hub('boss_reward:' + k, x.gained); } });
+        call('claim', { boss: k, idx: s.idx }).then(x => { claiming[k] = false; if (x && x.gained) { ctx.hub('boss_reward:' + k, x.gained); if (x.loot) { ctx.hub('loot:' + x.loot.rarity, x.gained); showLoot(x.loot, x.gained, b); } else ctx.toast(`${b.label} REWARD: +${x.gained} TOKENS`); } });
       }
     }
     paintTrack(); if (panelKind === 'quests') paintQuests();
   }
+  const dayNum = d => Math.floor(Date.parse(d + 'T00:00:00Z') / 864e5);
   const refresh = () => { if (fetching) return; fetching = true; call('state').finally(() => { fetching = false; lastFetch = now(); }); };
+  // is this boss out right now? (the database says how long it has left; the clock runs here between check-ins)
+  const out = b => !!b.s && !!b.s.active && now() - b.fetched < b.s.ends_in;
+  const leftSecs = b => Math.max(0, b.s.ends_in - (now() - b.fetched));
+  const nextAt = b => b.s && b.s.next_in != null ? new Date(Date.now() + (b.s.next_in - (now() - b.fetched)) * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
 
   // ---------- quests ----------
   const todays = () => (state && state.quests && state.quests.ids || []).filter(id => QUESTS[id]);
@@ -127,15 +140,14 @@ export function createLive(ctx) {
   // ---------- bosses ----------
   const boss = {};
   for (const [k, def] of Object.entries(BOSSES)) {
-    const dow = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Chicago' })).getDay();
-    const b = boss[k] = { ...def, kind: k, name: def.name || DAILY_NAMES[dow], tint: def.tint || DAILY_TINTS[dow], s: null, hp: 1, level: 1, pending: 0, cast: 0, localMine: 0, flash: 0, koUntil: 0, prev: 0, tex: {}, barPct: -1, pendingKo: false };
+    const b = boss[k] = { ...def, kind: k, name: def.name || BOSS_NAMES[0], tint: def.tint || BOSS_TINTS[0], s: null, hp: 1, level: 1, pending: 0, cast: 0, localMine: 0, flash: 0, koUntil: 0, prev: 0, tex: {}, barPct: -1, pendingKo: false, fetched: 0, key: '', told: false };
     if (room) {
-      for (const st of ['idle', 'wind', 'hit', 'ko']) b.tex[st] = room.tex(256, 256, (c, W, H) => drawBoss(c, W, H, k, st, b.name, b.level, b.tint));
+      for (const st of ['idle', 'wind', 'hit', 'ko']) b.tex[st] = room.tex(256, 256, (c, W, H) => drawBoss(c, W, H, b.art, st, b.name, b.level, b.tint));
       b.bar = room.tex(256, 32, (c, W, H) => drawBar(c, W, H, b.barPct < 0 ? 1 : b.barPct, b.tint));
     }
     if (moves) moves.addTarget({
       get x() { return b.x; }, get z() { return b.z; }, r: b.r, y: b.y * 0.6,
-      alive: () => !!b.s && b.hp > 0 && now() > b.koUntil,
+      alive: () => out(b) && b.hp > 0 && now() > b.koUntil,
       hit(dmg) {
         dmg = Math.round(dmg); b.pending += dmg; b.cast += dmg; b.hp = Math.max(0, b.hp - dmg); b.localMine += dmg; b.flash = now() + 0.16;
         event('bossdmg', dmg); if (b.hp <= 0) { b.pendingKo = true; flush(b); }
@@ -150,9 +162,11 @@ export function createLive(ctx) {
     if (!r || r.error) b.pending += dmg;            // keep it for the next try
   }
   setInterval(() => {
-    for (const b of Object.values(boss)) { flush(b); if (b.cast > 0) { ctx.sendBoss({ b: b.kind, d: b.cast }); b.cast = 0; } }
-    const idle = document.hidden || ctx.inGame();
-    if (ctx.signedUp() && !fetching && now() - lastFetch > (idle ? 120 : state ? 20 : 3)) refresh();
+    for (const b of Object.values(boss)) { if (out(b)) flush(b); else b.pending = 0; if (b.cast > 0) { ctx.sendBoss({ b: b.kind, d: b.cast }); b.cast = 0; } }
+    const idle = document.hidden || ctx.inGame(), sp = boss.spawn;
+    const due = sp.s && (sp.s.active ? now() - sp.fetched > sp.s.ends_in : sp.s.next_in != null && now() - sp.fetched > sp.s.next_in);   // a boss just left or just arrived
+    if (ctx.signedUp() && !fetching && (now() - lastFetch > (idle ? 120 : state ? 20 : 3) || (due && now() - lastFetch > 4))) refresh();
+    paintTrack();
   }, 2000);
   function onBoss(d) { // another player hit a boss
     const b = d && boss[d.b]; if (!b || !b.s) return;
@@ -164,7 +178,7 @@ export function createLive(ctx) {
   function update(dt, sprites) {
     const t = now(), clock = Date.now() / 1000; let show = null;
     for (const b of Object.values(boss)) {
-      if (!b.s || !room) continue;
+      if (!b.s || !room || !(out(b) || t < b.koUntil)) continue;
       const ko = t < b.koUntil || b.hp <= 0, phase = clock % b.cycle, wind = !ko && phase > b.cycle - 1.3;
       if (!ko && phase < b.prev && t - startAt > 2) {                     // the slam lands as the cycle wraps
         moves && moves.ring(b.x, b.z, b.ring);
@@ -183,23 +197,36 @@ export function createLive(ctx) {
     }
     paintBossBar(show);
   }
+  const mins = s => s >= 3600 ? `${Math.floor(s / 3600)}H ${Math.floor(s % 3600 / 60)}M` : `${Math.max(1, Math.ceil(s / 60))} MIN`;
   // the boss you are standing near, shown at the top of the screen
   let barEl = null, barKey = '';
   function paintBossBar(b) {
     if (!barEl) { barEl = document.createElement('div'); barEl.id = 'bossbar'; barEl.hidden = true; document.body.appendChild(barEl); }
     const hide = !b || ctx.blocked(); if (hide) { if (!barEl.hidden) { barEl.hidden = true; barKey = ''; } return; }
-    const ko = now() < b.koUntil || b.hp <= 0, key = [b.kind, Math.round(b.hp), b.level, Math.round(b.localMine), ko, b.s.fighters].join('|');
+    const ko = now() < b.koUntil || b.hp <= 0, key = [b.kind, Math.round(b.hp), b.level, Math.round(b.localMine), ko, b.s.fighters, Math.ceil(leftSecs(b) / 60)].join('|');
     if (key === barKey) return; barKey = key; barEl.hidden = false; barEl.style.setProperty('--c', b.tint);
     const need = b.s.need, mine = Math.round(b.localMine);
-    barEl.innerHTML = `<b>${esc(b.name)} <small>${b.label} · LV ${b.level}</small></b><div class="hp"><i style="width:${Math.max(0, Math.min(100, b.hp / Math.max(1, b.s.max) * 100)).toFixed(1)}%"></i><span>${ko ? 'K.O.' : Math.round(b.hp) + ' / ' + b.s.max}</span></div>
-      <small>YOU ${mine} DMG${b.s.claimed ? ' · REWARD CLAIMED' : mine >= need ? ' · REWARD READY WHEN IT FALLS' : ` · ${need - mine} MORE FOR THE ${b.s.reward}-TOKEN REWARD`} · JUMP WHEN IT WINDS UP</small>`;
+    barEl.innerHTML = `<b>${esc(b.name)} <small>${b.label} · LV ${b.level} · ${mins(leftSecs(b))} LEFT</small></b><div class="hp"><i style="width:${Math.max(0, Math.min(100, b.hp / Math.max(1, b.s.max) * 100)).toFixed(1)}%"></i><span>${ko ? 'K.O.' : Math.round(b.hp) + ' / ' + b.s.max}</span></div>
+      <small>YOU ${mine} DMG${b.s.claimed ? ' · LOOT CLAIMED' : mine >= need ? ' · LOOT DROPS WHEN IT FALLS' : ` · ${need - mine} MORE TO EARN LOOT`} · JUMP WHEN IT WINDS UP</small>`;
+  }
+  // ---------- loot: what dropped when the boss fell ----------
+  function showLoot(loot, gained, b) {
+    const [label, col] = RARITY[loot.rarity] || RARITY.common, info = loot.item ? ctx.itemInfo(loot.item) : null, canUse = loot.item && !loot.dupe && info && (info.slot && info.slot !== 'upgrade');
+    let el = document.getElementById('loot'); if (!el) { el = document.createElement('div'); el.id = 'loot'; document.body.appendChild(el); }
+    el.innerHTML = `<div class="lootcard" style="--c:${col}"><small>${esc(b.name)} DEFEATED</small><b>${label} DROP</b><div class="ico">${info ? ctx.itemIcon(info) : '🪙'}</div><h3>${esc(loot.name || 'Loot')}</h3>
+      <p>${loot.dupe ? `You already own this, so it turned into 🪙 ${loot.tokens}.` : loot.item ? (info && info.slot === 'move' ? 'New special move unlocked.' : info && info.slot === 'upgrade' ? 'Upgrade applied to every move.' : 'Added to your closet.') : ''}</p>
+      <p class="tot">+${gained} TOKENS</p>${canUse ? `<button class="btn go" data-use="${esc(loot.item)}">${info.slot === 'move' ? 'EQUIP THIS MOVE' : 'PUT IT ON'}</button>` : ''}<button class="btn" data-x>${canUse ? 'LATER' : 'NICE'}</button></div>`;
+    el.hidden = false; el.className = 'in';
+    el.onclick = e => { const u = e.target.closest('[data-use]'); if (u) ctx.equip(u.dataset.use); if (u || e.target.closest('[data-x]') || e.target === el) { el.hidden = true; el.innerHTML = ''; } };
   }
   // ---------- the quest tracker on screen + the panel ----------
   let track = null, trackKey = '', panelKind = '';
   function paintTrack() {
     if (!track) { track = document.createElement('button'); track.id = 'qtrack'; track.onclick = openQuests; document.body.appendChild(track); }
     const ids = todays(); track.hidden = !ids.length;
-    const n = ids.filter(done).length, html = `<b>DAILY QUESTS ${n}/${ids.length}</b>` + ids.map(id => `<span class="${done(id) ? 'ok' : ''}">${done(id) ? '✔' : QUESTS[id].icon} ${esc(QUESTS[id].text)} <i>${count(id)}/${QUESTS[id].n}</i></span>`).join('');
+    const live = Object.values(boss).filter(out), sp = boss.spawn;
+    const bossLine = live.length ? live.map(b => `<span class="boss on" style="color:${b.tint}">👾 ${esc(b.name)} IS OUT · ${b.place} · ${mins(leftSecs(b))}</span>`).join('') : sp.s && sp.s.next_in != null ? `<span class="boss">👾 NEXT BOSS ${nextAt(sp)}</span>` : '';
+    const n = ids.filter(done).length, html = `<b>DAILY QUESTS ${n}/${ids.length}</b>` + ids.map(id => `<span class="${done(id) ? 'ok' : ''}">${done(id) ? '✔' : QUESTS[id].icon} ${esc(QUESTS[id].text)} <i>${count(id)}/${QUESTS[id].n}</i></span>`).join('') + bossLine;
     if (html !== trackKey) { trackKey = html; track.innerHTML = html; }
   }
   const left = () => { const s = state ? Math.max(0, state.secs_left - (now() - lastFetch)) : 0; return `${Math.floor(s / 3600)}H ${Math.floor(s % 3600 / 60)}M`; };
@@ -208,22 +235,26 @@ export function createLive(ctx) {
     if (!state) return '<p class="dim">Loading today\'s quests…</p>';
     const ids = todays(), q = state.quests;
     const row = id => { const d = QUESTS[id], c = count(id), ok = done(id); return `<li><span>${d.icon} ${esc(d.text)}<small class="qbar"><i style="width:${(c / d.n * 100).toFixed(0)}%"></i></small></span><b class="${ok ? 'ok' : ''}">${ok ? '✔ DONE' : `${c}/${d.n} · 🪙 ${q.reward}`}</b></li>`; };
-    const bossRow = k => { const b = boss[k], s = b.s; if (!s) return ''; const mine = Math.round(b.localMine);
-      return `<li><span><b style="color:${b.tint}">${esc(b.name)}</b> · ${b.label} · LV ${b.level}<small class="qbar"><i style="width:${(b.hp / Math.max(1, s.max) * 100).toFixed(0)}%;background:${b.tint}"></i></small>
-        <small style="display:block;color:var(--dim);font-size:8px;margin-top:4px">${Math.round(b.hp)} / ${s.max} HP · BEATEN ${s.kills} TIME${s.kills === 1 ? '' : 'S'} ${k === 'daily' ? 'TODAY' : 'THIS WEEK'} · YOU ${mine} DMG · ${s.claimed ? 'REWARD CLAIMED' : `DEAL ${s.need}+ AND BEAT IT FOR 🪙 ${s.reward}`}</small>
-        ${(s.top || []).length ? `<small style="display:block;font-size:8px;margin-top:4px">TOP: ${s.top.map(x => esc(x.name) + ' ' + x.dmg).join(' · ')}</small>` : ''}</span><button class="btn go" data-boss="${k}">GO FIGHT</button></li>`; };
+    const bossRow = k => { const b = boss[k], s = b.s; if (!s) return ''; const mine = Math.round(b.localMine), on = out(b);
+      const head = on ? `<b style="color:${b.tint}">${esc(b.name)}</b> · ${b.label} · LV ${b.level} · ${b.place} · ${mins(leftSecs(b))} LEFT` : `<b style="color:${b.tint}">${k === 'weekly' ? esc(b.name) : 'RANDOM BOSS'}</b> · ${b.label} · ${s.next_in != null ? `NEXT AT ${nextAt(b)} (IN ${mins(Math.max(0, s.next_in - (now() - b.fetched)))})` : 'RESTING'}`;
+      const body = on || k === 'weekly' ? `<small class="qbar"><i style="width:${(b.hp / Math.max(1, s.max) * 100).toFixed(0)}%;background:${b.tint}"></i></small>
+        <small style="display:block;color:var(--dim);font-size:8px;margin-top:4px">${Math.round(b.hp)} / ${s.max} HP · BEATEN ${s.kills} TIME${s.kills === 1 ? '' : 'S'}${k === 'weekly' ? ' THIS WEEK' : ''} · YOU ${mine} DMG · ${s.claimed ? 'LOOT CLAIMED' : `DEAL ${s.need}+ AND BEAT IT FOR 🪙 ${s.reward} + ${k === 'weekly' ? 'BETTER ' : ''}LOOT`}</small>
+        ${(s.top || []).length ? `<small style="display:block;font-size:8px;margin-top:4px">TOP: ${s.top.map(x => esc(x.name) + ' ' + x.dmg).join(' · ')}</small>` : ''}` : `<small style="display:block;color:var(--dim);font-size:8px;margin-top:4px">${s.today || 'SEVERAL'} SPAWNS TODAY · 20 MINUTES EACH · A DIFFERENT SPOT EVERY TIME</small>`;
+      return `<li><span>${head}${body}</span>${on ? `<button class="btn go" data-boss="${k}">GO FIGHT</button>` : ''}</li>`; };
+    const rar = Object.values(RARITY).map(([l, c]) => `<b style="color:${c}">${l}</b>`).join(' · ');
     return `<p>Three new quests every day. Each pays 🪙 ${q.reward}, and finishing all three pays 🪙 ${q.bonus_reward} more. New quests in <b style="color:var(--gold)">${left()}</b>.</p>
       <ul class="list quests">${ids.map(row).join('')}</ul>${q.bonus ? '<p style="color:var(--gold)">★ ALL THREE DONE TODAY</p>' : ''}
-      <h3>LOBBY BOSSES</h3><p>Everyone in the arcade wears down the same boss. Each time it falls it comes back a level stronger. Jump when it winds up to dodge its slam.</p>
-      <ul class="list quests">${bossRow('daily')}${bossRow('weekly')}</ul>`;
+      <h3>LOBBY BOSSES</h3><p>A boss spawns at a random spot several times a day and stays 20 minutes. Everyone wears down the same health bar. Beat it for tokens and one loot drop: ${rar}. Loot can be tokens, clothes, jewelry, special moves or upgrades. Jump when it winds up to dodge its slam.</p>
+      <ul class="list quests">${bossRow('spawn')}${bossRow('weekly')}</ul><div id="alertbox">${ctx.alertsHtml ? ctx.alertsHtml() : ''}</div>`;
   }
   let questsShown = ''; function paintQuests() { const el = $('#qbody'), html = questsHtml(); if (el && html !== questsShown) { questsShown = html; el.innerHTML = html; } }
-  function goBoss(k) { const b = boss[k]; ctx.closePanel(); P.x = b.x; P.z = b.z + b.r + 220; P.yaw = 0; P.pitch = 0; ctx.collide(); ctx.toast(`${b.name}: PUNCH, KICK AND BLAST IT. JUMP WHEN IT WINDS UP`); }
+  function goBoss(k) { const b = boss[k]; if (!out(b)) return; ctx.closePanel(); P.x = b.x; P.z = b.z + b.r + 220; P.yaw = 0; P.pitch = 0; ctx.collide(); P.yaw = Math.atan2(b.x - P.x, -(b.z - P.z)); ctx.toast(`${b.name}: PUNCH, KICK AND BLAST IT. JUMP WHEN IT WINDS UP`); }
   function openQuests() {
-    ctx.show(`<h2>QUESTS + BOSSES</h2><div id="qbody">${questsHtml()}</div>`, '#ffc93a'); panelKind = 'quests'; refresh();
-    ctx.pbody.onclick = e => { const b = e.target.closest('[data-boss]'); if (b) goBoss(b.dataset.boss); };
+    questsShown = questsHtml(); ctx.show(`<h2>QUESTS + BOSSES</h2><div id="qbody">${questsShown}</div>`, '#ffc93a'); panelKind = 'quests'; refresh();
+    ctx.pbody.onclick = e => { const b = e.target.closest('[data-boss]'); if (b) return goBoss(b.dataset.boss); const a = e.target.closest('[data-alerts]'); if (a && ctx.alerts) ctx.alerts(a.dataset.alerts).then(() => { questsShown = ''; paintQuests(); }); };
     ctx.onClose(() => { panelKind = ''; ctx.pbody.onclick = null; });
   }
+
 
   // ---------- who is here: radar + list ----------
   const area = p => p.g ? 'PLAYING ' + String(ctx.gameTitle(p.g) || 'A GAME').toUpperCase() : p.away ? 'AWAY' : p.x > 1090 ? 'EAST WING' : p.z > 790 ? 'THE LOUNGE' : p.z < -780 ? 'BACK HALLWAY' : 'MAIN FLOOR';
@@ -236,7 +267,7 @@ export function createLive(ctx) {
     rc.strokeStyle = 'rgba(255,255,255,.14)'; rc.lineWidth = 2; rc.beginPath(); rc.arc(c, c, (c - 4) / 2, 0, 7); rc.stroke();
     const dot = (wx, wz, col, r) => { const dx = wx - P.x, dz = wz - P.z; let sx = dx * co + dz * s, sy = -(dx * s - dz * co), d = Math.hypot(sx, sy), k = (c - 14) / R; if (d * k > c - 14) { sx *= (c - 14) / (d * k); sy *= (c - 14) / (d * k); } rc.fillStyle = '#000'; rc.beginPath(); rc.arc(c + sx * k, c + sy * k, r + 3, 0, 7); rc.fill(); rc.fillStyle = col; rc.beginPath(); rc.arc(c + sx * k, c + sy * k, r, 0, 7); rc.fill(); };
     if (moves) dot(moves.bot.x, moves.bot.z, '#31d7ff', 5);
-    for (const b of Object.values(boss)) if (b.s) dot(b.x, b.z, now() < b.koUntil ? '#666' : b.tint, b.kind === 'weekly' ? 12 : 9);
+    for (const b of Object.values(boss)) if (out(b)) dot(b.x, b.z, now() < b.koUntil ? '#666' : b.tint, b.kind === 'weekly' ? 12 : 9);
     for (const p of peers.values()) dot(p.x, p.z, p.g || p.away ? '#9a8fb0' : '#fff', 7);
     rc.fillStyle = '#ffc93a'; rc.beginPath(); rc.moveTo(c, c - 13); rc.lineTo(c + 9, c + 9); rc.lineTo(c, c + 4); rc.lineTo(c - 9, c + 9); rc.fill();
     rc.font = "bold 22px Impact,'Arial Black',sans-serif"; rc.textAlign = 'center'; rc.lineWidth = 5; rc.strokeStyle = '#000'; const n = '👥 ' + (peers.size + 1); rc.strokeText(n, c, W - 14); rc.fillStyle = '#fff'; rc.fillText(n, c, W - 14);
@@ -244,7 +275,7 @@ export function createLive(ctx) {
   setInterval(paintRadar, 160);
   function peopleHtml() {
     const rows = [...peers.entries()].map(([id, p]) => `<li><span>${esc(p.name || 'Player')}<small style="display:block;color:var(--dim);font-size:8px">${area(p)}</small></span><button class="btn go" data-peer="${esc(id)}">GO TO</button></li>`).join('');
-    return `<p><b style="color:var(--gold)">${peers.size + 1}</b> in the arcade right now, counting you. The dots on the radar are other players (white), bosses (colour) and SPAR-BOT (blue).</p>
+    return `<p><b style="color:var(--gold)">${peers.size + 1}</b> in the arcade right now, counting you. The dots on the radar are other players (white), bosses (colour) and OPP-BOT (blue).</p>
       <ul class="list"><li><span>${esc(ctx.myName())}<small style="display:block;color:var(--dim);font-size:8px">YOU · ${area(P)}</small></span></li>${rows}</ul>${peers.size ? '' : '<p class="dim">Nobody else is in right now. Share the link and they will show up here the moment they walk in.</p>'}`;
   }
   function openPeople() {
@@ -257,5 +288,5 @@ export function createLive(ctx) {
   function joined(name) { if (now() - startAt > 8 && !ctx.blocked()) ctx.toast(String(name || 'A PLAYER').toUpperCase() + ' WALKED IN'); }
 
   paintTrack();
-  return { event, update, onBoss, openQuests, openPeople, joined, refresh, boss, get state() { return state; }, area };
+  return { event, update, onBoss, openQuests, openPeople, joined, refresh, boss, showLoot, out, get state() { return state; }, area };
 }

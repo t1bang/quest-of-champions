@@ -136,3 +136,11 @@ body:has(#bossbar:not([hidden])) #combo{top:calc(176px + env(safe-area-inset-top
 ul.quests li b{font-size:9px;color:var(--gold);white-space:nowrap}ul.quests li b.ok{color:#3dff9a}ul.quests li>span{flex:1}
 @media(max-width:900px),(max-height:520px){#qtrack span{display:none}#qtrack b{margin:0}#qtrack{top:150px}}
 @media(max-width:600px){#radar{width:72px;height:72px;top:calc(98px + env(safe-area-inset-top))}#qtrack{top:132px;left:8px;font-size:7px;padding:6px 7px}#bossbar{top:calc(178px + env(safe-area-inset-top));width:calc(100vw - 24px)}#bossbar>b{font-size:15px}body:has(#bossbar:not([hidden])) #combo{top:calc(266px + env(safe-area-inset-top))}body:has(#bossbar:not([hidden])) #toast{top:calc(64px + env(safe-area-inset-top))}}
+/* boss line in the tracker + loot drop card */
+#qtrack span.boss{display:block!important;margin-top:5px;color:var(--gold)}#qtrack span.boss.on{animation:bosspulse 1s infinite alternate}@keyframes bosspulse{to{filter:brightness(1.6)}}
+#loot{position:fixed;inset:0;z-index:45;display:grid;place-items:center;background:rgba(5,2,10,.78);padding:16px}#loot[hidden]{display:none}
+.lootcard{--c:#fff;width:min(360px,100%);text-align:center;background:linear-gradient(#1a1026,#0b0612);border:4px solid var(--c);border-radius:10px;padding:18px 16px;box-shadow:0 0 40px var(--c),0 0 0 4px #000;animation:lootin .35s cubic-bezier(.2,1.6,.4,1)}
+@keyframes lootin{from{transform:scale(.4) rotate(-6deg);opacity:0}}
+.lootcard small{display:block;font:8px var(--pix);color:#fff;opacity:.8}.lootcard>b{display:block;font:26px var(--big);color:var(--c);text-shadow:0 0 14px var(--c),2px 2px 0 #000;margin:6px 0}
+.lootcard .ico{font-size:64px;line-height:1.1;filter:drop-shadow(0 0 14px var(--c));margin:6px 0}.lootcard .ico canvas,.lootcard .ico img{width:96px;height:96px}
+.lootcard h3{font:13px var(--pix);color:#fff;margin:6px 0}.lootcard p{font:9px var(--pix);color:var(--dim);margin:6px 0;line-height:1.6}.lootcard p.tot{color:var(--gold);font-size:12px}.lootcard .btn{margin:8px 4px 0}

@@ -57,7 +57,7 @@ function drawOrb(x, W, H, color) { // a hard-edged pixel orb (sprites are drawn 
   for (const [r, col] of [[0.48, color], [0.34, '#ffffff'], [0.2, color]]) { x.fillStyle = col; x.beginPath(); x.arc(c, c, W * r, 0, 7); x.fill(); }
   x.fillStyle = '#fff'; x.fillRect(c - W * 0.06, c - W * 0.3, W * 0.12, W * 0.12);
 }
-function drawBot(x, W, H, state) { // SPAR-BOT: a training robot
+function drawBot(x, W, H, state) { // OPP-BOT: a training robot
   x.clearRect(0, 0, W, H); const u = Math.min(W / 24, H * 0.86 / 44), ox = (W - 24 * u) / 2, oy = H - 40 * u;
   const R = (c, gx, gy, w, h) => { x.fillStyle = c; x.fillRect(Math.round(ox + gx * u), Math.round(oy + gy * u), Math.ceil(w * u), Math.ceil(h * u)); };
   const body = state === 'hit' ? '#ff6a7a' : state === 'ko' ? '#5a5a66' : '#c9ced8', eye = state === 'ko' ? '#16161c' : state === 'hit' ? '#fff' : '#31d7ff';
@@ -67,7 +67,7 @@ function drawBot(x, W, H, state) { // SPAR-BOT: a training robot
   R(body, 0.5, 14.5, 3, 10); R(body, 20.5, 14.5, 3, 10); R('#ff2a3c', 0, 24, 4, 4); R('#ff2a3c', 20, 24, 4, 4);
   R('#16161c', 6, 28, 5, 9); R('#16161c', 13, 28, 5, 9); R(body, 5, 37, 7, 3); R(body, 12, 37, 7, 3);
   if (state === 'ko') x.restore();
-  x.font = `bold ${Math.round(H * 0.07)}px Impact,'Arial Black',sans-serif`; x.textAlign = 'center'; x.textBaseline = 'top'; x.lineWidth = 4; x.strokeStyle = '#000'; x.strokeText('SPAR-BOT', W / 2, 2); x.fillStyle = '#31d7ff'; x.fillText('SPAR-BOT', W / 2, 2);
+  x.font = `bold ${Math.round(H * 0.07)}px Impact,'Arial Black',sans-serif`; x.textAlign = 'center'; x.textBaseline = 'top'; x.lineWidth = 4; x.strokeStyle = '#000'; x.strokeText('OPP-BOT', W / 2, 2); x.fillStyle = '#31d7ff'; x.fillText('OPP-BOT', W / 2, 2);
 }
 
 // ---------- the system ----------
@@ -93,7 +93,7 @@ export function createMoves(ctx) {
     if (bot.state === 'ko') return;
     bot.hp -= dmg; bot.state = 'hit'; bot.until = now() + 0.22; bot.wob = 1; spark(bot.x, bot.z, 190, key);
     landed(dmg);
-    if (bot.hp <= 0) { bot.state = 'ko'; bot.until = now() + 3.2; ctx.toast('SPAR-BOT K.O.!  COMBO x' + combo); ctx.hub('spar_ko', comboDmg); emit('ko', 1); }
+    if (bot.hp <= 0) { bot.state = 'ko'; bot.until = now() + 3.2; ctx.toast('OPP-BOT K.O.!  COMBO x' + combo); ctx.hub('spar_ko', comboDmg); emit('ko', 1); }
   }
   // Other things you can hit (the lobby bosses): { x, z, r, y, alive(), hit(dmg, key) }
   const targets = [];
