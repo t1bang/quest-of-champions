@@ -103,3 +103,12 @@ ol.rank small.lv.ok{color:#35e06f}
 .wgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:8px}.wtile{display:flex;flex-direction:column;align-items:center;gap:4px;background:#1b112b;border:2px solid #3a2a55;border-radius:8px;padding:8px 4px;font-size:8px;line-height:1.4;color:#fff;min-height:84px}.wtile.on{border-color:var(--gold);box-shadow:0 0 12px -2px var(--gold)}.wtile b{font-size:24px;line-height:1;font-weight:400}.wtile i{width:26px;height:26px;border-radius:6px;border:2px solid #000;display:block}.wtile em{font-style:normal;color:var(--dim);font-size:7px}
 
 #wallvid{position:fixed;left:0;top:0;width:640px;height:360px;border:0;background:#000;transform-origin:0 0;pointer-events:none;visibility:hidden}
+
+#jukedock{position:fixed;right:10px;bottom:calc(10px + env(safe-area-inset-bottom));z-index:7;width:220px;background:#120a1e;border:3px solid #ff4fd8;border-radius:8px;overflow:hidden;box-shadow:0 0 24px -6px #ff4fd8}
+#jukedock iframe{display:block;width:100%;aspect-ratio:16/9;border:0;background:#000}
+#jukedock div{display:flex;align-items:center;gap:6px;padding:5px 6px;font-size:8px}#jukedock b{flex:1;color:var(--gold);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#jukedock button{background:var(--red);border:0;border-radius:4px;padding:6px;color:#000;font-size:8px}
+@media (max-width:640px){#jukedock{width:150px}}
+#drink{position:fixed;left:50%;bottom:-140px;z-index:45;font-size:130px;line-height:1;pointer-events:none;transform-origin:50% 80%;animation:drink 1.9s ease-in-out forwards}
+@keyframes drink{0%{transform:translate(-50%,0) rotate(0)}25%{transform:translate(-50%,-46vh) rotate(0)}45%,75%{transform:translate(-50%,-52vh) rotate(-55deg)}100%{transform:translate(-50%,10vh) rotate(0)}}
+.pwmenu{position:sticky;top:0;z-index:1;background:#120a1e;padding:6px 0}

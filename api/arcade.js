@@ -141,7 +141,7 @@ const actions = {
   },
   // Bar: a beer costs BEER tokens; a tip is 1-20 tokens.
   async spend(b) {
-    const p = await auth(b), cost = b.what === 'beer' ? BAR.beer : b.what === 'tip' ? Math.max(1, Math.min(20, Math.floor(Number(b.amount) || 0))) : 0;
+    const p = await auth(b), cost = b.what === 'play' ? BAR.play : b.what === 'beer' ? BAR.beer : b.what === 'tip' ? Math.max(1, Math.min(20, Math.floor(Number(b.amount) || 0))) : 0;
     if (!cost) throw fail(400, 'Unknown order');
     if (p.tokens < cost) throw fail(400, 'Not enough tokens yet');
     p.tokens -= cost; if (b.what === 'beer') p.beers = (p.beers || 0) + 1;

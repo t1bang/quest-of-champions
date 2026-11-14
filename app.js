@@ -165,21 +165,21 @@ function frame(now, xf) {
   if (f || st) { goal = null; sitting = false; }
   let moving = false;
   if (goal) {
-    const w = goal.path[0], dx = w.x - P.x, dz = w.z - P.z, d = Math.hypot(dx, dz), step = 560 * dt, lastLeg = goal.path.length === 1;
+    const w = goal.path[0], dx = w.x - P.x, dz = w.z - P.z, d = Math.hypot(dx, dz), step = 560 * dt * (1 - (drunk || 0) * 0.17), lastLeg = goal.path.length === 1;
     if (d > step) { P.x += dx / d * step; P.z += dz / d * step; moving = true; } else { P.x = w.x; P.z = w.z; if (!lastLeg) goal.path.shift(); }
     const want = lastLeg && d < 260 ? goal.yaw : Math.atan2(dx, -dz), da = angDiff(d > step || lastLeg ? want : P.yaw, P.yaw);
     P.yaw += Math.abs(da) < 0.02 ? da : da * Math.min(1, dt * 6); P.pitch += ((lastLeg ? goal.pitch : 0) - P.pitch) * Math.min(1, dt * 5);
     goal.t += dt;
     if ((lastLeg && d <= step && Math.abs(angDiff(goal.yaw, P.yaw)) < 0.05) || goal.t > 16) { const id = goal.id; goal = null; stations[id].open(); }
   } else if (f || st) {
-    const sp = (xr ? 300 : 430) * dt, s = Math.sin(look), c = Math.cos(look);
+    const sp = (xr ? 300 : 430) * dt * (1 - (drunk || 0) * 0.17), s = Math.sin(look), c = Math.cos(look);
     P.x += (s * f + c * st) * sp; P.z += (-c * f + s * st) * sp; collide(); moving = true;
   }
   if (moving) walkT += dt * 11;
   P.eyeBase = (P.eyeBase || 300) + ((sitting ? 190 : 300) - (P.eyeBase || 300)) * Math.min(1, dt * 6);
   P.eye = P.eyeBase + Math.sin(walkT) * (moving ? 5 : 0);
   if (xr) xrDraw(xf, now / 1000, dt);
-  else if (room && !window.__skip) { room.render(P, now / 1000, peerSprites(dt)); placeWall(); }
+  else if (room && !window.__skip) { const t = now / 1000; room.render(drunk ? { ...P, yaw: P.yaw + Math.sin(t * 1.3) * 0.03 * drunk, pitch: P.pitch + Math.sin(t * 0.9) * 0.018 * drunk } : P, t, peerSprites(dt)); placeWall(); }
   let best = null, bd = 1e9;
   if (room) for (const s of Object.values(stations)) {
     const d = Math.hypot(s.x - P.x, s.z - P.z), a = Math.atan2(s.x - P.x, -(s.z - P.z));
@@ -321,12 +321,20 @@ async function board(game) {
   } catch { return api('board', null, '&game=' + game); }
 }
 
+// Every game costs 1 token to play. If the token bank cannot be reached, the game still opens.
+async function payToPlay(g) {
+  if (!auth.pid) { openProfile(); toast('PICK A PLAYER NAME: GAMES COST 1 TOKEN'); return false; }
+  if (me?.local) return true;
+  try { const r = await api('spend', { what: 'play', game: g.id }); setMe(r.player); toast('-1 TOKEN'); return true; }
+  catch (err) { if (/not enough/i.test(err.message)) { toast('YOU NEED 1 TOKEN TO PLAY'); return false; } return true; }
+}
 function openGame(g) {
+  if (drunk) { const others = GAMES.filter(x => x.play && x.id !== g.id); if (others.length) { g = others[Math.floor(Math.random() * others.length)]; setTimeout(() => toast('BEER GOGGLES... IS THIS THE ONE YOU PICKED?'), 300); } }
   siteActivity.event('cabinet_view',g.id); hub('view:' + g.id);
   show(`<span class="tag" style="--c:${g.color}">${g.genre.toUpperCase()}</span><h2>${g.title}</h2>
     <div class="stage" style="--c:${g.color}">${cover(g)}</div>
     <p>${g.blurb}</p>
-    <button class="btn go" id="gplay">▶ PLAY</button><button class="btn" id="gtrail">↻ TRAILER</button>
+    <button class="btn go" id="gplay">▶ PLAY · 🪙 1</button><button class="btn" id="gtrail">↻ TRAILER</button>
     <div class="cols"><section><h3>HIGH SCORES</h3><ol class="rank" id="grank"><li class="dim">Loading…</li></ol></section>
     <section><h3>COMMENTS</h3><form class="cf" id="gform"><input maxlength="280" placeholder="Say something about ${g.title}"><button class="btn go">POST</button></form><ul class="cm" id="gcm"></ul></section></div>`, g.color);
   const stage = pbody.querySelector('.stage'); let stop = null, timer, paid = false;
@@ -342,7 +350,8 @@ function openGame(g) {
   $('#gtrail').onclick = () => { clearTimeout(timer); if (stop) stop(); stop = null; stage.innerHTML = cover(g); timer = setTimeout(trailer, 1200); };
   $('#gplay').onclick = async () => {
     if (!g.play) return toast('PLAYABLE BUILD COMING SOON');
-    earn('play', g.id); closePanel();
+    if (!(await payToPlay(g))) return;
+    stopJuke(); closePanel();
     siteActivity.event('game_launch',g.id);
     activity.start(g.id, GAME_SERVICES[g.id]?.build || 'unknown');
     if (me?.linked && saveFor(g.id)) prepareCloudSave(g.id).catch(() => {});
@@ -367,7 +376,7 @@ function openGame(g) {
   };
 }
 let playTimer, passport = () => {};
-$('#gf button').onclick = () => { const gf = $('#gf'); clearInterval(playTimer); siteActivity.event('game_exit',gf.dataset.game); activity.stop(); gf.hidden = true; gf.querySelector('iframe').src = 'about:blank'; pauseBgm(false); };
+$('#gf button').onclick = () => { const gf = $('#gf'); clearInterval(playTimer); siteActivity.event('game_exit',gf.dataset.game); activity.stop(); gf.hidden = true; gf.querySelector('iframe').src = 'about:blank'; pauseBgm(false); if (drunk) { setDrunk(0); toast('YOU SOBERED UP'); } };
 // Games report scores with: parent.postMessage({ bba: 'score', score: 1234 }, '*')
 // and events with: parent.postMessage({ bba: 'level' }, '*')  or  { bba: 'fatality' }
 addEventListener('message', e => {
@@ -391,25 +400,29 @@ function openBigBox() {
   cleanup = () => { pbody.onclick = null; };
 }
 
+// The jukebox plays in a small player docked in the corner, so the music keeps going when you walk away.
+let jukeOn = false;
+const jukeDock = () => { let d = $('#jukedock'); if (!d) { d = el('div', '', '<iframe allow="autoplay; encrypted-media; fullscreen" title="Jukebox"></iframe><div><b>JUKEBOX</b><button aria-label="Stop the jukebox">■ STOP</button></div>'); d.id = 'jukedock'; d.hidden = true; document.body.append(d); d.querySelector('button').onclick = () => { stopJuke(); if ($('#jnow')) openJukebox(); }; } return d; };
+function playJuke(src, title) { const d = jukeDock(); d.querySelector('iframe').src = src; d.querySelector('b').textContent = title; d.hidden = false; jukeOn = true; pauseBgm(true); }
+function stopJuke() { if (!jukeOn) return; const d = jukeDock(); d.querySelector('iframe').src = 'about:blank'; d.hidden = true; jukeOn = false; pauseBgm(false); }
 function openJukebox() {
   const pl = ((JUKEBOX_PLAYLIST || '').match(/[?&]list=([\w-]+)/) || [])[1], ids = SONGS.map(s => s.yt).filter(Boolean);
-  const player = src => `<iframe src="${src}" allow="autoplay; fullscreen; encrypted-media" allowfullscreen></iframe>`;
-  show(`<h2>JUKEBOX</h2><p>Big Bang music. Pick a record and it plays right here.</p><div class="stage" id="jstage" style="--c:#ff4fd8" ${pl ? '' : 'hidden'}>${pl ? player(`https://www.youtube.com/embed/videoseries?list=${pl}&playsinline=1`) : ''}</div>
+  show(`<h2>JUKEBOX</h2><p>Pick a record. It keeps playing while you walk around the arcade.</p>
+    <p id="jnow" style="color:var(--gold)">${jukeOn ? 'NOW PLAYING: ' + jukeDock().querySelector('b').textContent : '&nbsp;'}</p>${jukeOn ? '<button class="btn" id="jstop">■ STOP THE MUSIC</button>' : ''}
+    ${pl ? '<button class="btn go" data-list="1">▶ PLAY THE FULL PLAYLIST</button>' : ''}
     <ul class="list">${SONGS.map((s, i) => `<li><span>${i + 1}. ${s.title}</span><button class="btn go" data-song="${i}">▶ PLAY</button></li>`).join('')}</ul>
-    <h3>ARCADE MUSIC</h3><button class="btn" id="jbgm">${muted ? 'TURN MUSIC ON' : 'TURN MUSIC OFF'}</button>
+    <h3>ARCADE MUSIC</h3><button class="btn" id="jbgm">${muted ? 'TURN SOUND ON' : 'TURN SOUND OFF'}</button>
     <h3>MORE MUSIC</h3>${MUSIC_PAGES.map(([n, u]) => link(n, u)).join('')}`, '#ff4fd8');
-  if (pl) pauseBgm(true);
   pbody.onclick = e => {
+    if (e.target.closest('[data-list]')) { playJuke(`https://www.youtube.com/embed/videoseries?list=${pl}&autoplay=1&playsinline=1`, 'BIG BANG PLAYLIST'); return openJukebox(); }
     const b = e.target.closest('[data-song]'); if (!b) return;
-    const i = +b.dataset.song, s = SONGS[i], a = $('#song'), st = $('#jstage'); earn('song');
-    if (s.yt) { // play this song, then carry on through the rest of the list
-      const rest = [...ids.slice(ids.indexOf(s.yt) + 1), ...ids.slice(0, ids.indexOf(s.yt))];
-      st.hidden = false; st.innerHTML = player(`https://www.youtube.com/embed/${s.yt}?autoplay=1&playsinline=1&playlist=${rest.join(',')}`); pauseBgm(true); panel.firstElementChild.scrollTop = 0; toast('NOW PLAYING: ' + s.title.toUpperCase());
-    } else if (s.file) { a.src = s.file; a.play(); pauseBgm(true); a.onended = () => pauseBgm(false); toast('NOW PLAYING: ' + s.title.toUpperCase()); }
+    const s = SONGS[+b.dataset.song]; earn('song');
+    if (s.yt) { const k = ids.indexOf(s.yt), rest = [...ids.slice(k + 1), ...ids.slice(0, k)]; playJuke(`https://www.youtube.com/embed/${s.yt}?autoplay=1&playsinline=1&playlist=${rest.join(',')}`, s.title.toUpperCase()); toast('NOW PLAYING: ' + s.title.toUpperCase()); openJukebox(); }
     else if (s.link) window.open(s.link, '_blank', 'noopener'); else toast('COMING SOON');
   };
   $('#jbgm').onclick = () => { toggleMute(); openJukebox(); };
-  cleanup = () => { pbody.onclick = null; pauseBgm(false); };
+  if ($('#jstop')) $('#jstop').onclick = () => { stopJuke(); openJukebox(); };
+  cleanup = () => { pbody.onclick = null; };
 }
 
 let payCfg;
@@ -435,13 +448,15 @@ function openPrizes() {
   const group = (label, list, note) => list.length ? `<h3>${label}</h3>${note ? `<p class="dim">${note}</p>` : ''}<div class="grid">${list.map(card).join('')}</div>` : '';
   const bySlot = slots => PRIZES.filter(p => slots.includes(p.slot));
   show(`<h2>PRIZE WALL</h2><p>You have <b style="color:var(--gold)">🪙 ${me ? me.tokens : 0}</b> tokens. Avatar items go in your closet. Plain tees, jeans and sneakers are already there for free.</p>
+    <div class="tabs pwmenu"><button class="btn on" data-jump="pw-avatar">AVATAR ITEMS</button><button class="btn" data-jump="pw-songs">SONGS</button><button class="btn" data-jump="pw-real">REAL LIFE ITEMS</button></div>
     <div id="paybox"></div>
-    ${group('REAL LIFE ITEMS', real, 'Sign in to redeem. Your claim code and any ticket link are emailed to you.')}
-    ${group('AVATAR HATS', bySlot(['hat']))}${group('AVATAR CLOTHES', bySlot(['shirt', 'pants', 'shoes', 'eyes']))}
-    ${group('AVATAR JEWELRY', bySlot(JEWELRY))}${group('AVATAR EXTRAS', bySlot(['hand']))}
-    ${group('SONG DOWNLOADS', songs)}
-    <h3>HOW TO WIN TOKENS</h3><p class="dim">Every minute you play +${REWARDS.minute} · Beat a Quest of Champions level +${REWARDS.level} · T1 Versus fatality +${REWARDS.fatality} · Sign-in bonus +${REWARDS.signup} (one time) · Daily streak +${REWARDS.daily} on day 1 up to +${REWARDS.daily * REWARDS.streakMax} a day by day ${REWARDS.streakMax} · Game scores up to +${REWARDS.scoreMax} a run</p>`, '#ffc93a');
+    <section id="pw-avatar">${group('AVATAR HATS', bySlot(['hat']))}${group('AVATAR CLOTHES', bySlot(['shirt', 'pants', 'shoes', 'eyes']))}
+    ${group('AVATAR JEWELRY', bySlot(JEWELRY))}${group('AVATAR EXTRAS', bySlot(['hand']))}</section>
+    <section id="pw-songs">${group('SONG DOWNLOADS', songs)}</section>
+    <section id="pw-real">${group('REAL LIFE ITEMS', real, 'Sign in to redeem. Your claim code and any ticket link are emailed to you.')}</section>
+    <h3>HOW TO WIN TOKENS</h3><p class="dim">Every minute you play +${REWARDS.minute} · Beat a Quest of Champions level +${REWARDS.level} · T1 Versus fatality +${REWARDS.fatality} · Each game costs 1 token to start · Sign-in bonus +${REWARDS.signup} (one time) · Daily streak +${REWARDS.daily} on day 1 up to +${REWARDS.daily * REWARDS.streakMax} a day by day ${REWARDS.streakMax} · Game scores up to +${REWARDS.scoreMax} a run</p>`, '#ffc93a');
   pbody.onclick = async e => {
+    const j = e.target.closest('[data-jump]'); if (j) { $('#' + j.dataset.jump)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); pbody.querySelectorAll('[data-jump]').forEach(x => x.classList.toggle('on', x === j)); return; }
     const b = e.target.closest('[data-buy]'); if (!b || !needMe()) return;
     try { const r = await api('buy', { id: b.dataset.buy }); setMe(r.player); hub('prize'); if (r.code || b.dataset.buy.startsWith('song-') || wearItem(b.dataset.buy)) { const w = wearItem(b.dataset.buy); if (w) { myFit[w.slot] = w.id; store.set('bba-fit', myFit); api('wear', { outfit: myFit }).then(x => x?.player && setMe(x.player)).catch(() => {}); } openCloset(); if (w) toast('BOUGHT! IT IS ON YOUR AVATAR'); if (r.code) toast(r.emailed ? 'REDEEMED! CHECK YOUR EMAIL' : 'REDEEMED! YOUR CODE IS IN YOUR CLOSET'); } else { toast('ADDED TO YOUR CLOSET'); openPrizes(); } } catch (err) { toast(err.message.toUpperCase()); if (/sign in/i.test(err.message)) openProfile(); }
   };
@@ -513,15 +528,20 @@ function sitDown(id) {
   const s = stations[id] || stations.couch; if (!s || !s.seat) return;
   goal = null; P.x = s.seat[0]; P.z = s.seat[2]; P.yaw = Math.PI - s.T.th; P.pitch = 0; sitting = true; toast('YOU SIT DOWN. MOVE TO STAND UP.');
 }
+// Drinks: each one makes the room blurrier and you slower (up to 3). Leaving a game sobers you up.
+var drunk = 0;
+function setDrunk(n) { drunk = Math.max(0, Math.min(3, n)); view.style.filter = drunk ? `blur(${0.8 + drunk * 0.9}px) saturate(${1 + drunk * 0.15})` : ''; for (const p of peers.values()) p.key = ''; }
+function drinkAnim() { const d = el('div', '', '🍺'); d.id = 'drink'; document.body.append(d); setTimeout(() => d.remove(), 1900); }
 function openBar() {
   if (!auth.pid) { openProfile(); return toast('SIGN IN TO ORDER AT THE BAR'); }
-  show(`<h2>THE BAR</h2><p>You have <b style="color:var(--gold)">🪙 ${me ? me.tokens : 0}</b> tokens${me && me.beers ? ` · ${me.beers} 🍺 ordered` : ''}.</p>
-    <div class="grid"><div class="card"><div class="ico">🍺</div><span>Beer</span><button class="btn go" data-bar="beer">🪙 ${BAR.beer}</button></div></div>
+  show(`<h2>THE BAR</h2><p>You have <b style="color:var(--gold)">🪙 ${me ? me.tokens : 0}</b> tokens${drunk ? ` · ${drunk} drink${drunk > 1 ? 's' : ''} in` : ''}.</p>
+    <div class="grid"><div class="card"><div class="ico">🍺</div><span>Drink</span><button class="btn go" data-bar="beer">🪙 ${BAR.beer}</button></div></div>
     <h3>LEAVE A TIP</h3>${BAR.tips.map(t => `<button class="btn" data-tip="${t}">🪙 ${t}</button>`).join('')}
-    <p class="dim">In-game drinks only. Tokens spent at the bar are gone for good.</p>`, '#ffb400');
+    <p class="dim">In-game drinks only. A drink blurs the room, slows you down and scrambles the game you pick. Play a game and leave it to sober up.</p>`, '#ffb400');
   pbody.onclick = async e => {
     const b = e.target.closest('[data-bar]'), t = e.target.closest('[data-tip]'); if (!b && !t) return;
-    try { const r = await api('spend', b ? { what: 'beer' } : { what: 'tip', amount: +t.dataset.tip }); setMe(r.player); openBar(); toast(b ? 'CHEERS! 🍺' : 'THANKS FOR THE TIP!'); } catch (err) { toast(err.message.toUpperCase()); }
+    try { const r = await api('spend', b ? { what: 'beer' } : { what: 'tip', amount: +t.dataset.tip }); setMe(r.player);
+      if (b) { closePanel(); drinkAnim(); setTimeout(() => { setDrunk(drunk + 1); toast('CHEERS! 🍺'); }, 1300); } else { openBar(); toast('THANKS FOR THE TIP!'); } } catch (err) { toast(err.message.toUpperCase()); }
   };
   cleanup = () => { pbody.onclick = null; };
 }
@@ -564,7 +584,7 @@ let myAv = cleanAv(store.get('bba-av') || { skin: 3, hair: 0, hc: 0, shirt: 0, s
 const wearItem = id => WEAR.find(w => w.id === id);
 const cleanFit = (f, closet) => { const out = {}; for (const [slot] of SLOTS) { const w = wearItem((f || {})[slot]); if (w && w.slot === slot && (!closet || w.cost === 0 || closet.includes(w.id))) out[slot] = w.id; } if (!out.shirt) out.shirt = DEFAULT_FIT.shirt; if (!out.pants) out.pants = DEFAULT_FIT.pants; return out; };
 var myFit = cleanFit(store.get('bba-fit') || { ...DEFAULT_FIT, shirt: WEAR[myAv.shirt]?.id || DEFAULT_FIT.shirt, ...(myAv.shades ? { eyes: 'shades' } : {}) });
-function drawAvatar(x, W, H, a, name, fit) { // pixel person on a 24x40 grid
+function drawAvatar(x, W, H, a, name, fit, look) { // pixel person on a 24x40 grid; look = { goggles, curvy }
   x.clearRect(0, 0, W, H); const u = Math.min(W / 24, (H - (name ? H * 0.12 : 0)) / 40), ox = (W - 24 * u) / 2, oy = H - 40 * u, R = (c, px, py, w, h) => { x.fillStyle = c; x.fillRect(Math.round(ox + px * u), Math.round(oy + py * u), Math.ceil(w * u), Math.ceil(h * u)); };
   const f = fit || { shirt: WEAR[a.shirt]?.id || 'tee-red', pants: 'jeans-black', shoes: 'kicks', ...(a.shades ? { eyes: 'shades' } : {}) };
   const sk = AV.skin[a.skin], hc = AV.hc[a.hc], G = '#ffc93a', GD = '#c98a12', top = wearItem(f.shirt) || {}, leg = wearItem(f.pants) || {}, shoe = wearItem(f.shoes) || {};
@@ -579,7 +599,18 @@ function drawAvatar(x, W, H, a, name, fit) { // pixel person on a 24x40 grid
   if (f.hat === 'crown') { R(G, 6.5, 0, 11, 3); for (const cx of [6.5, 10.5, 14.5]) R(G, cx, -2.5, 3, 2.5); R('#d2142a', 11.3, 1, 1.4, 1.2); }
   if (f.eyes === 'shades') { R('#000', 7, 5.5, 10, 2.5); R('#d2142a', 8, 6, 3, 1.5); R('#d2142a', 13, 6, 3, 1.5); } else { R('#000', 9, 6, 1.5, 1.5); R('#000', 13.5, 6, 1.5, 1.5); }
   if (f.fangs === 'fangs') { R('#000', 10, 9.2, 4, 1.4); R(G, 10.4, 9.4, 1.2, 1.6); R(G, 12.4, 9.4, 1.2, 1.6); } else R('#000', 10.5, 9.5, 3, 0.8);
+  if (look?.goggles) { R('#16161c', 6.5, 4.8, 11, 3.6); R('#ffb400', 7.2, 5.6, 4, 2.4); R('#ffb400', 12.8, 5.6, 4, 2.4); R('#fff', 7.2, 5.2, 4, 0.9); R('#fff', 12.8, 5.2, 4, 0.9); }
   const sh = top.c || '#e01226';
+  if (look?.curvy) { // how everybody looks through beer goggles
+    R(hc, 6, 0, 12, 4); R(hc, 4.6, 2.5, 2.4, 17); R(hc, 17, 2.5, 2.4, 17); R('#d2142a', 10.6, 9.4, 2.8, 1.1);
+    R('#000', 5, 13.6, 14, 6); R(sh, 5.5, 14, 13, 5.2); R('#000', 7.4, 19, 9.2, 4); R(sh, 7.9, 19, 8.2, 3.6);
+    R(sk, 3.2, 14.4, 2.2, 10); R(sk, 18.6, 14.4, 2.2, 10);
+    const hip = wearItem(f.pants)?.c || '#23232b'; R('#000', 4.5, 22.2, 15, 6.6); R(hip, 5, 22.6, 14, 5.8);
+    R(hip, 6.4, 28.4, 4.6, 8.6); R(hip, 13, 28.4, 4.6, 8.6); R('#d2142a', 6, 37, 5.2, 1.6); R('#d2142a', 12.8, 37, 5.2, 1.6); R('#d2142a', 6.4, 38.6, 1.4, 1.4); R('#d2142a', 13.2, 38.6, 1.4, 1.4);
+    if (f.chain === 'chain') { R(G, 9, 13.2, 6, 1); R(G, 11, 14.2, 2, 2.4); }
+    if (name) { x.font = `bold ${Math.round(H * 0.075)}px Impact,'Arial Black',sans-serif`; x.textAlign = 'center'; x.textBaseline = 'top'; x.lineWidth = Math.max(3, H * 0.02); x.strokeStyle = '#000'; x.strokeText(name, W / 2, 2); x.fillStyle = '#ffc93a'; x.fillText(name, W / 2, 2); }
+    return;
+  }
   R('#000', 4.5, 13.5, 15, 13);
   if (f.shirt === 'jersey') { R('#16161c', 5, 14, 14, 12); R(G, 5, 14, 1.2, 12); R(G, 17.8, 14, 1.2, 12); R(sk, 2, 14, 3, 9); R(sk, 19, 14, 3, 9); R(G, 9, 17, 2.5, 1); R(G, 9.8, 17, 1, 4.5); R(G, 13, 17, 1.2, 4.5); }
   else if (f.shirt === 'suit') { R('#16161c', 5, 14, 14, 12); R('#16161c', 2, 14, 3, 9); R('#16161c', 19, 14, 3, 9); R('#fff', 10.5, 14, 3, 7); R('#d2142a', 11.4, 14.5, 1.2, 6); }
@@ -616,19 +647,21 @@ function openAvatarOld() {
 const peers = new Map(), sid = Math.random().toString(36).slice(2, 10);
 function peerSeen(d) {
   if (!d || typeof d.id !== 'string' || d.id === sid || (peers.size >= 40 && !peers.has(d.id))) return;
-  const name = String(d.n || 'Player').replace(/[^A-Za-z0-9 _-]/g, '').slice(0, 16), av = cleanAv(d.av), fit = d.fit ? cleanFit(d.fit) : null, key = name + JSON.stringify(av) + JSON.stringify(fit);
+  const name = String(d.n || 'Player').replace(/[^A-Za-z0-9 _-]/g, '').slice(0, 16), av = cleanAv(d.av), fit = d.fit ? cleanFit(d.fit) : null, look = { goggles: !!d.d, curvy: drunk > 0 }, key = name + JSON.stringify(av) + JSON.stringify(fit) + JSON.stringify(look);
   const x = Math.max(-760, Math.min(760, +d.x || 0)), z = Math.max(-1450, Math.min(1880, +d.z || 0));
   let p = peers.get(d.id); if (!p) { p = { x, z }; peers.set(d.id, p); }
-  if (p.key !== key && room) { if (p.tex) room.freeTex(p.tex); p.tex = room.tex(128, 256, (c, W, H) => drawAvatar(c, W, H, av, name, fit)); p.key = key; }
-  p.tx = x; p.tz = z; p.sit = !!d.s; p.seen = performance.now();
+  if (p.key !== key && room) { if (p.tex) room.freeTex(p.tex); p.tex = room.tex(128, 256, (c, W, H) => drawAvatar(c, W, H, av, name, fit, look)); p.key = key; }
+  p.tx = x; p.tz = z; p.sit = !!d.s; p.drunk = !!d.d; p.last = d; p.seen = performance.now();
 }
 window.__bbaPeer = peerSeen;
 function peerSprites(dt) {
   const out = [], now = performance.now();
   for (const [id, p] of peers) {
     if (now - p.seen > 8000) { if (p.tex && room) room.freeTex(p.tex); peers.delete(id); continue; }
+    if (!p.key && p.last) { const seen = p.seen; peerSeen(p.last); p.seen = seen; } // redraw after my own drinks change how I see people
     p.x += (p.tx - p.x) * Math.min(1, dt * 5); p.z += (p.tz - p.z) * Math.min(1, dt * 5);
-    if (p.tex) out.push({ tex: p.tex, x: p.x, z: p.z, y: p.sit ? -70 : 0, w: 150, h: 300 });
+    const wob = p.drunk && !p.sit ? now / 260 + id.charCodeAt(0) : 0; // a stumble: sway side to side and dip
+    if (p.tex) out.push({ tex: p.tex, x: p.x + (wob ? Math.sin(wob) * 22 : 0), z: p.z + (wob ? Math.cos(wob * 0.7) * 14 : 0), y: (p.sit ? -70 : 0) - (wob ? Math.abs(Math.sin(wob)) * 10 : 0), w: 150, h: 300 });
   }
   return out;
 }
@@ -641,7 +674,7 @@ async function startPresence() {
     let timer, previous = '', sentAt = 0;
     ch.subscribe(st => { clearInterval(timer); if (st === 'SUBSCRIBED') timer = setInterval(() => {
       if (document.hidden || !$('#gf').hidden || !auth.pid || !me) return;
-      const payload = { id:sid, n:me.name, av:myAv, fit:myFit, x:Math.round(P.x), z:Math.round(P.z), s:sitting ? 1 : 0 }, next = JSON.stringify(payload);
+      const payload = { id:sid, n:me.name, av:myAv, fit:myFit, d:drunk ? 1 : 0, x:Math.round(P.x), z:Math.round(P.z), s:sitting ? 1 : 0 }, next = JSON.stringify(payload);
       if (next === previous && Date.now()-sentAt < 4000) return;
       previous = next; sentAt = Date.now(); ch.send({ type:'broadcast', event:'pos', payload });
     }, 700); });
@@ -660,7 +693,7 @@ function openVault() {
   pbody.onclick = e => {
     const b = e.target.closest('[data-vid]'); if (!b) return;
     const v = VAULT[b.dataset.vid], id = ytId(v.link), st = $('#vstage');
-    if (id) { st.hidden = false; st.innerHTML = `<iframe src="https://www.youtube.com/embed/${id}?autoplay=1&playsinline=1" allow="autoplay; fullscreen" allowfullscreen></iframe>`; pauseBgm(true); panel.firstElementChild.scrollTop = 0; }
+    if (id) { stopJuke(); st.hidden = false; st.innerHTML = `<iframe src="https://www.youtube.com/embed/${id}?autoplay=1&playsinline=1" allow="autoplay; fullscreen" allowfullscreen></iframe>`; pauseBgm(true); panel.firstElementChild.scrollTop = 0; }
     else window.open(v.link || 'https://www.youtube.com/results?search_query=' + encodeURIComponent(v.title), '_blank', 'noopener');
   };
   cleanup = () => { pbody.onclick = null; pauseBgm(false); };
@@ -949,7 +982,7 @@ const applyVol = () => {
   if (muted || held || document.hidden) bgm.pause(); else bgm.play().catch(() => {});
 };
 function startBgm() { started = true; startWall(); applyVol(); }
-function pauseBgm(on) { held = on; if (!on) $('#song').pause(); applyVol(); }
+function pauseBgm(on) { held = on || jukeOn; if (!on) $('#song').pause(); applyVol(); }
 function toggleMute() { muted = !muted; store.set('bba-mute', muted); started = true; applyVol(); }
 $('#snd').onclick = toggleMute; applyVol();
 document.addEventListener('visibilitychange', applyVol);

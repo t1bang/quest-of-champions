@@ -62,10 +62,10 @@ export const PRIZES = [
 // minute = each minute a game window is open; fatality = T1 Versus; level = beating a Quest of Champions level;
 // social = one-time bonus for signing in with Google or Facebook.
 // signup = one-time bonus when a player signs in (links an account); daily = 10 x the streak day, up to streakMax days (70 a day).
-export const REWARDS = { signup: 25, daily: 10, streakMax: 7, play: 5, trailer: 3, song: 1, scorePer100: 1, scoreMax: 50, minute: 1, fatality: 3, level: 5, social: 5 };
+export const REWARDS = { signup: 25, daily: 10, streakMax: 7, play: 0, trailer: 3, song: 1, scorePer100: 1, scoreMax: 50, minute: 1, fatality: 3, level: 5, social: 5 };
 
 // The bar in the lounge.
-export const BAR = { beer: 2, tips: [1, 2, 5] };
+export const BAR = { beer: 5, tips: [1, 2, 5], play: 1 }; // play = tokens to start a game
 
 // Tokens for real money (PayPal). cents is the price in US cents.
 export const TOKEN_PACK = { tokens: 100, cents: 500 };
