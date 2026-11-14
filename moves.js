@@ -18,7 +18,41 @@ const SPECIAL = {
   'move-wave': { cd: 5, dur: 1.5, dmg: 7, pose: 'blast', label: 'BIG BANG WAVE' },
   'move-meteor': { cd: 6, dur: 1.2, dmg: 60, pose: 'blast', label: 'METEOR BLAST' },
 };
-const COLORS = { blast: '#31d7ff', 'move-wave': '#ffc93a', 'move-meteor': '#ff7a1a', 'move-slam': '#b06cff', spark: '#ffffff', 'move-tornado': '#3dff9a', 'move-dash': '#ff4fd8', 'move-uppercut': '#ff2a3c' };
+const COLORS = { blast: '#b266ff', 'move-wave': '#39b6ff', 'move-meteor': '#ff7a1a', 'move-slam': '#ffc93a', spark: '#ffffff', 'move-tornado': '#3dff9a', 'move-dash': '#ff4fd8', 'move-uppercut': '#ff2a3c' };
+
+// ---------- painted sprite sheets (assets/fx/*.webp): 4 x 2 frames each ----------
+// First-person arms and the OPP-BOT. Each sheet loads the first time it is needed; until then (or if it fails)
+// the drawn art below is used. The arms are painted in one skin tone and recoloured to match the player's avatar.
+const hexRgb = h => { const n = parseInt(String(h).replace('#', ''), 16) || 0; return [n >> 16 & 255, n >> 8 & 255, n & 255]; };
+function tintSkin(c, w, h, [R, G, B]) {
+  const d = c.getImageData(0, 0, w, h), p = d.data;
+  for (let i = 0; i < p.length; i += 4) {
+    const r = p[i]; if (r < 105 || !p[i + 3]) continue;
+    const g = p[i + 1] / r, b = p[i + 2] / r;
+    if (g > 0.44 && g < 0.74 && b > 0.2 && b < 0.54) { const k = Math.min(1.25, r / 200); p[i] = Math.min(255, R * k); p[i + 1] = Math.min(255, G * k); p[i + 2] = Math.min(255, B * k); }   // skin only: bands, coin, meteor and glows fall outside this range
+  }
+  c.putImageData(d, 0, 0);
+}
+function createSheets(getSkin, onReady) {
+  const S = {}, scale = navigator.deviceMemory && navigator.deviceMemory <= 4 ? 0.75 : 1;   // smaller copies on low-memory phones
+  return function get(name) {
+    const skin = name === 'bot' ? 'none' : getSkin(), s = S[name] || (S[name] = { cv: null, skin: null, busy: false, dead: false, fw: 0 });
+    if (s.skin !== skin && !s.busy && !s.dead) {
+      s.busy = true; const im = new Image(); im.decoding = 'async';
+      im.onload = () => {
+        try {
+          const cv = document.createElement('canvas'); cv.width = Math.round(im.naturalWidth * scale); cv.height = Math.round(im.naturalHeight * scale);
+          const c = cv.getContext('2d'); c.drawImage(im, 0, 0, cv.width, cv.height); if (skin !== 'none') tintSkin(c, cv.width, cv.height, hexRgb(skin));
+          s.cv = cv; s.fw = cv.width / 4; s.skin = skin; if (onReady) onReady(name, s);
+        } catch { s.dead = true; }
+        s.busy = false;
+      };
+      im.onerror = () => { s.busy = false; s.dead = true; };
+      im.src = `assets/fx/${name}.webp`;
+    }
+    return s.cv ? s : null;
+  };
+}
 
 // ---------- pose art: the normal avatar picture with limbs moved or redrawn ----------
 // The avatar is drawn on a 24 x 40 grid; these helpers work in the same grid units.
@@ -62,6 +96,38 @@ export function createMoves(ctx) {
   const orbTex = key => orbs[key] || (orbs[key] = room.tex(64, 64, (c, W, H) => drawOrb(c, W, H, COLORS[key] || COLORS.blast)));
   const bot = { x: -560, z: 380, hp: 100, state: 'idle', until: 0, wob: 0, tex: {} };
   for (const s of ['idle', 'hit', 'ko']) bot.tex[s] = room.tex(TW, TH, (c, W, H) => drawBot(c, W, H, s));
+  // painted OPP-BOT: frame 0 stands, frames 1-6 are the recoil when it is hit, and a tipped-over grey frame is the K.O.
+  function botFrames(s) {
+    const label = (c, W, H) => { c.font = `${Math.round(H * 0.075)}px Bungee,Impact,'Arial Black',sans-serif`; c.textAlign = 'center'; c.textBaseline = 'top'; c.lineJoin = 'round'; c.lineWidth = 4; c.strokeStyle = '#000'; c.strokeText('OPP-BOT', W / 2, H * 0.085); c.fillStyle = '#31d7ff'; c.fillText('OPP-BOT', W / 2, H * 0.085); };
+    const cut = (c, f, W, H) => c.drawImage(s.cv, (f % 4) * s.fw + 0.5, (f >> 2) * s.fw + 0.5, s.fw - 1, s.fw - 1, 0, H * 0.08, W, H);
+    bot.frames = [0, 1, 2, 3, 4, 5, 6].map(f => room.tex(TW, TH, (c, W, H) => { c.clearRect(0, 0, W, H); cut(c, f, W, H); label(c, W, H); }));
+    bot.koTex = room.tex(TW, TH, (c, W, H) => { c.clearRect(0, 0, W, H); c.save(); c.translate(W * 0.5, H * 0.97); c.rotate(-1.32); c.translate(-W * 0.5, -H * 0.97 + H * 0.2); cut(c, 3, W, H); c.restore(); c.globalCompositeOperation = 'source-atop'; c.fillStyle = 'rgba(48,48,60,.6)'; c.fillRect(0, 0, W, H); c.globalCompositeOperation = 'source-over'; label(c, W, H); });
+  }
+  const sheets = createSheets(() => ctx.skin(), (name, s) => { if (name === 'bot') { try { botFrames(s); } catch {} } });
+  sheets('bot'); setTimeout(() => { sheets('guard'); sheets('jab'); sheets('kick'); }, 2500);       // the rest load the first time a move needs them
+  // which painted frames show for my own move: { name, t0, dur, pick(k, t) -> frame or [frame, options] }
+  let fp = null, guardUntil = 0, punches = 0, lastX = P.x, lastZ = P.z, walking = 0;
+  const jabF = k => 1 + Math.min(5, Math.floor(k * 6));
+  function setFp(m, key) {
+    const t0 = now(), flip = m === 'punch' && (punches++ & 1) === 1;
+    const F = (name, dur, pick, o) => { fp = { name, t0, dur, pick, o: o || {} }; sheets(name); };
+    if (m === 'punch') F('jab', 0.28, jabF, { flip });
+    else if (m === 'kick') F('kick', 0.36, k => Math.min(7, Math.floor(k * 8)));
+    else if (m === 'combo') { sheets('kick'); F('jab', 0.72, k => { const n = Math.min(3, Math.floor(k * 4)), kk = k * 4 - n; return n === 3 ? ['kick', Math.min(7, Math.floor(kk * 8))] : ['jab', jabF(kk), { flip: n === 1 }]; }); }
+    else if (m === 'blast') F('blast', 0.46, k => 2 + Math.min(5, Math.floor(k * 6)), { cx: 0.56 });
+    else if (m === 'toss') F('toss', 0.8, k => Math.min(7, Math.floor(k * 8)), { cx: 0.58 });
+    else if (m === 'special') {
+      if (key === 'move-wave') F('wave', 1.75, k => { const a = k * 1.75 / 1.5; return a < 0.33 ? Math.min(4, Math.floor(a / 0.33 * 5)) : a < 1 ? [null, 5, { jit: 1 }] : a < 1.08 ? 6 : 7; });
+      else if (key === 'move-meteor') F('meteor', 1.2, k => k < 0.3 ? Math.min(3, Math.floor(k / 0.3 * 4)) : 4 + Math.min(3, Math.floor((k - 0.3) / 0.45 * 4)));
+      else if (key === 'move-slam') F('hands', 1.2, k => { const a = k * 1.2 / 0.85; return a < 0.9 ? 1 + Math.min(3, Math.floor(a / 0.9 * 4)) : a < 1.2 ? [null, 5, { dy: 0.05 }] : a < 1.3 ? 6 : 7; });
+      else if (key === 'move-uppercut') F('jab', 0.5, k => [null, jabF(Math.min(1, k * 1.4)), { size: 0.92, dy: -0.12 * Math.sin(Math.min(1, k * 1.4) * Math.PI) }]);
+      else if (key === 'move-tornado') F('kick', 0.8, k => Math.floor(k * 20) % 8);
+      else if (key === 'move-dash') F('jab', 0.3, () => 4);
+      else fp = null;
+    } else return;
+    guardUntil = fp ? t0 + fp.dur + 2.6 : 0;
+  }
+  function toss() { if (ctx.blocked() || act || (fp && now() < fp.t0 + fp.dur)) return; const gu = guardUntil; setFp('toss'); guardUntil = gu; }
   const dir = (yaw = P.yaw) => [Math.sin(yaw), -Math.cos(yaw)];
   const inFront = (tx, tz, reach, cone = 0.75, from = P) => { const dx = tx - from.x, dz = tz - from.z, d = Math.hypot(dx, dz); if (d > reach) return false; const a = Math.atan2(dx, -dz), diff = Math.atan2(Math.sin(a - from.yaw), Math.cos(a - from.yaw)); return d < 60 || Math.abs(diff) < cone; };
 
@@ -71,7 +137,7 @@ export function createMoves(ctx) {
   function landed(dmg) { hitUntil = now() + 0.14; hitSide = Math.random() - 0.5; combo++; comboDmg += Math.round(dmg); comboAt = now(); showCombo(); emit('hit', Math.round(dmg)); if (combo === 10) emit('combo10', 1); }
   function hitBot(dmg, key) {
     if (bot.state === 'ko') return;
-    bot.hp -= dmg; bot.state = 'hit'; bot.until = now() + 0.22; bot.wob = 1; spark(bot.x, bot.z, 190, key);
+    bot.hp -= dmg; bot.state = 'hit'; bot.hitAt = now(); bot.until = now() + (bot.frames ? 0.42 : 0.22); bot.wob = bot.frames ? 0.35 : 1; spark(bot.x, bot.z, 190, key);
     landed(dmg);
     if (bot.hp <= 0) { bot.state = 'ko'; bot.until = now() + 3.2; ctx.toast('OPP-BOT K.O.!  COMBO x' + combo); ctx.hub('spar_ko', comboDmg); emit('ko', 1); }
   }
@@ -96,7 +162,7 @@ export function createMoves(ctx) {
   }
 
   // ----- starting a move -----
-  function setAct(a, share) { act = { ...a, t0: now() }; if (share) ctx.send({ id: ctx.sid, m: a.m, k: a.k || '', x: Math.round(P.x), z: Math.round(P.z), yaw: +P.yaw.toFixed(2), pw: level('power'), bl: level('blast'), n: ctx.name() }); }
+  function setAct(a, share) { act = { ...a, t0: now() }; if (a.m !== 'hit' && a.m !== 'jump') setFp(a.m, a.k); if (share) ctx.send({ id: ctx.sid, m: a.m, k: a.k || '', x: Math.round(P.x), z: Math.round(P.z), yaw: +P.yaw.toFixed(2), pw: level('power'), bl: level('blast'), n: ctx.name() }); }
   function can(name) { return !ctx.blocked() && now() >= (ready[name] || 0) && !(act && act.lock && now() < act.t0 + act.dur); }
   function shoot(key, opts = {}) {
     const [dx, dz] = dir(opts.yaw ?? P.yaw), sz = (opts.size || 90) * SIZE[opts.bl || level('blast')];
@@ -180,7 +246,9 @@ export function createMoves(ctx) {
     // the sparring bot
     if (bot.state !== 'idle' && t > bot.until) { if (bot.state === 'ko') bot.hp = 100; bot.state = 'idle'; }
     bot.wob *= Math.pow(0.002, dt);
-    sprites.push({ tex: bot.tex[bot.state], x: bot.x + Math.sin(t * 40) * 14 * bot.wob, z: bot.z, y: 0, w: SPRITE.w, h: SPRITE.h });
+    const botTex = !bot.frames ? bot.tex[bot.state] : bot.state === 'ko' ? bot.koTex : bot.state === 'hit' ? bot.frames[1 + Math.min(5, Math.floor((t - bot.hitAt) / 0.07))] : bot.frames[0];
+    sprites.push({ tex: botTex, x: bot.x + Math.sin(t * 40) * 14 * bot.wob, z: bot.z, y: 0, w: SPRITE.w, h: SPRITE.h });
+    walking += ((Math.hypot(P.x - lastX, P.z - lastZ) > 0.5 ? 1 : 0) - walking) * Math.min(1, dt * 8); lastX = P.x; lastZ = P.z;
     if (combo && t - comboAt > 2.2) { combo = 0; comboDmg = 0; const el = document.getElementById('combo'); if (el) el.style.opacity = 0; }
     shake *= Math.pow(0.004, dt); hitFlash *= Math.pow(0.01, dt);
     drawOverlay(t);
@@ -210,9 +278,11 @@ export function createMoves(ctx) {
   const fx = document.createElement('canvas'); fx.id = 'fx'; document.body.appendChild(fx); const g = fx.getContext('2d');
   let fxDirty = false;
   function drawOverlay(t) {
-    const live = (act && act.m !== 'hit') || hitFlash > 0.02 || jumpY > 0 || t < hitUntil;
+    if ((fp || guardUntil) && ctx.blocked()) { fp = null; guardUntil = 0; }
+    const live = (act && act.m !== 'hit') || hitFlash > 0.02 || jumpY > 0 || t < hitUntil || (fp && t < fp.t0 + fp.dur) || t < guardUntil;
     if (!live) { if (fxDirty) { g.clearRect(0, 0, fx.width, fx.height); fxDirty = false; } return; }
-    if (fx.width !== innerWidth || fx.height !== innerHeight) { fx.width = innerWidth; fx.height = innerHeight; }
+    const dpr = Math.min(window.devicePixelRatio || 1, 2), fw = Math.round(innerWidth * dpr), fh = Math.round(innerHeight * dpr);      // sharp on phone screens
+    if (fx.width !== fw || fx.height !== fh) { fx.width = fw; fx.height = fh; }
     const W = fx.width, H = fx.height, u = Math.max(8, Math.round(H * 0.022)), skin = ctx.skin(); g.clearRect(0, 0, W, H); fxDirty = true;
     const OLc = '#170c14', dark = shadeC(skin, -0.22);
     const path = (pts, fill, lw = 5) => { g.beginPath(); pts.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); g.closePath(); g.fillStyle = fill; g.fill(); if (lw) { g.strokeStyle = OLc; g.lineWidth = lw; g.lineJoin = 'round'; g.stroke(); } };
@@ -244,7 +314,30 @@ export function createMoves(ctx) {
     const beam = (cx, cy, col, k) => { const tx = W / 2, ty = H * 0.38, w = u * 3.2 * k; path([[cx - w, cy], [tx - w * 0.25, ty], [tx + w * 0.25, ty], [cx + w, cy]], col, 0); path([[cx - w * 0.45, cy], [tx - w * 0.1, ty], [tx + w * 0.1, ty], [cx + w * 0.45, cy]], '#fff', 0); };
     const burst = (cx, cy, r) => { const pts = []; for (let i = 0; i < 16; i++) { const a = i / 16 * 6.283 + 0.2, rr = i % 2 ? r * 0.5 : r; pts.push([cx + Math.cos(a) * rr, cy + Math.sin(a) * rr]); } path(pts, '#ffc93a', 5); const p2 = []; for (let i = 0; i < 16; i++) { const a = i / 16 * 6.283 + 0.2, rr = (i % 2 ? r * 0.5 : r) * 0.55; p2.push([cx + Math.cos(a) * rr, cy + Math.sin(a) * rr]); } path(p2, '#fff', 0); };
     if (t < hitUntil) burst(W * 0.5 + (hitSide || 0) * W * 0.04, H * 0.45, u * 6.5);
-    if (act && act.m !== 'hit') {
+    // a painted frame, anchored to the bottom of the screen (the arms are cut off at the bottom edge of each frame)
+    const frame = (name, f, o = {}) => {
+      const s = sheets(name); if (!s) return false;
+      const size = Math.min(H * 0.78, W * (W < H ? 1.35 : 0.96)) * (o.size || 1), fw = s.fw, j = o.jit ? u * 0.5 : 0;   // on a tall phone the arms are drawn larger so they clear the buttons
+      g.save(); g.translate(W * (o.cx || 0.5) + (Math.random() - 0.5) * j, H + (o.dy || 0) * size + (Math.random() - 0.5) * j); if (o.flip) g.scale(-1, 1);
+      g.drawImage(s.cv, (f % 4) * fw + 0.5, (f >> 2) * fw + 0.5, fw - 1, fw - 1, -size / 2, -size, size, size); g.restore(); return true;
+    };
+    const dashLines = col => { g.strokeStyle = col; g.lineWidth = 5; for (let i = 0; i < 14; i++) { const y = (i * 97 % H), x = (i * 211 % W); g.beginPath(); g.moveTo(x, y); g.lineTo(x + (x < W / 2 ? -1 : 1) * W * 0.12, y); g.stroke(); } };
+    let painted = false;
+    if (fp && t < fp.t0 + fp.dur) {
+      const r = fp.pick((t - fp.t0) / fp.dur, t), arr = Array.isArray(r);
+      painted = frame((arr && r[0]) || fp.name, arr ? r[1] : r, arr && r[2] ? { ...fp.o, ...r[2] } : fp.o);
+    } else if (t < guardUntil && !act) {
+      const left = guardUntil - t, moving = walking > 0.3;                    // fists stay up for a moment after a move, then drop out of view
+      frame('guard', moving ? Math.floor(t * 9) % 8 : 0, { dy: (left < 0.3 ? (1 - left / 0.3) * 0.55 : 0) + (moving ? 0 : Math.sin(t * 2.4) * 0.008) });
+    }
+    if (painted && act && act.m === 'special') {
+      const k = Math.min(1, (t - act.t0) / act.dur), key = act.k, col = COLORS[key] || '#fff';
+      if (key === 'move-uppercut') lines(W * 0.5, H * 0.45, 10, col);
+      if (key === 'move-tornado') lines(W * 0.5, H * 0.5, 16, col);
+      if (key === 'move-dash') dashLines(col);
+      if (key === 'move-wave' && k > 0.33) lines(W * 0.5, H * 0.5, 12, col);
+    }
+    if (!painted && act && act.m !== 'hit') {
       const k = Math.min(1, (t - act.t0) / act.dur), out = Math.sin(k * Math.PI), m = act.m, key = act.k;
       if (m === 'punch') fist(W * (0.86 - 0.24 * out), H * (1.02 - 0.42 * out));
       if (m === 'kick') boot(W * (0.2 + 0.2 * out), H * (1.05 - 0.36 * out));
@@ -254,7 +347,7 @@ export function createMoves(ctx) {
         const col = COLORS[key] || '#fff';
         if (key === 'move-uppercut') { fist(W * 0.5, H * (1.05 - 0.6 * out), 1.3); lines(W * 0.5, H * 0.45, 10, col); }
         if (key === 'move-tornado') lines(W * 0.5, H * 0.5, 16, col);
-        if (key === 'move-dash') { g.strokeStyle = col; g.lineWidth = 5; for (let i = 0; i < 14; i++) { const y = (i * 97 % H), x = (i * 211 % W); g.beginPath(); g.moveTo(x, y); g.lineTo(x + (x < W / 2 ? -1 : 1) * W * 0.12, y); g.stroke(); } }
+        if (key === 'move-dash') dashLines(col);
         if (key === 'move-slam') { fist(W * 0.38, H * (0.5 + 0.5 * k), 1.1); fist(W * 0.62, H * (0.5 + 0.5 * k), 1.1); }
         if (key === 'move-wave') { if (k > 0.33) beam(W * 0.5, H * 0.72, col, 1 + Math.sin(t * 40) * 0.15); arm(W * 0.36, H * 0.82, 1.05, true); arm(W * 0.64, H * 0.82, 1.05, true); glow(W * 0.5, H * 0.72, u * (k < 0.33 ? 2 + k * 14 : 7), col); if (k > 0.33) lines(W * 0.5, H * 0.72, 12, col); }
         if (key === 'move-meteor') { arm(W * 0.62, H * (0.9 - 0.3 * out), 1, true); glow(W * 0.5, H * (0.5 - 0.3 * k), u * (6 - 4 * k), col); }
@@ -266,7 +359,7 @@ export function createMoves(ctx) {
   const preview = (c, W, H, pose, key) => drawPose(c, W, H, ctx.drawMine, pose, COLORS[key]);
 
   return {
-    doMove, doEmote, onAct, update, peerSprite, freePeer, preview, level, owned,
+    doMove, doEmote, onAct, update, peerSprite, freePeer, preview, level, owned, toss,
     get special() { return special; }, setSpecial(id) { special = id; try { localStorage.setItem('bba-move', id || ''); } catch {} },
     cooldown: name => Math.max(0, (ready[name] || 0) - now()), myPose: () => (act ? act.m : emote), bot,
     specials: () => MOVES.filter(m => owned(m.id)), SPECIAL, UPGRADES,

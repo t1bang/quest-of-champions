@@ -112,7 +112,7 @@ const actions = {
       // Daily streak: 10 x the streak day, capped at day 7.
       const t = today(), y = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
       if (p.lastDaily !== t) { p.streak = p.lastDaily === y ? (p.streak || 0) + 1 : 1; p.lastDaily = t; gained = REWARDS.daily * Math.min(p.streak, REWARDS.streakMax); }
-    } else if (why !== 'social' && REWARDS[why] && !p.did[tag]) {
+    } else if (why !== 'social' && why !== 'account' && REWARDS[why] && !p.did[tag]) {
       gained = REWARDS[why];
       p.did[tag] = 1;
     }

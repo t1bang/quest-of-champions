@@ -39,11 +39,13 @@ async function api(a, body, q = '') {
 }
 // One arcade-wide level from every token ever earned, in any game (the database uses the same formula).
 const levelOf = earned => 1 + Math.floor(Math.sqrt(Math.max(0, earned || 0) / 20));
+let tokSeen = null;
 function setMe(p) {
   if (p && me && !(p.claims || []).length && (me.claims || []).length && p.name === me.name) p.claims = me.claims; // some replies leave claims out
   if (p && me && !p.outfit && me.outfit && p.name === me.name) p.outfit = me.outfit;
   if (p && p.outfit && Object.keys(p.outfit).length && !store.get('bba-fit')) myFit = cleanFit(p.outfit, p.closet);
   me = p; activity.enabled(!!p?.linked && !!p?.analytics); siteActivity.enabled(!!p?.linked && !!p?.analytics); if (p && p.avatar && !store.get('bba-av')) myAv = cleanAv(p.avatar);
+  if (p && tokSeen != null && p.tokens > tokSeen) { try { window.__bbaMoves && window.__bbaMoves.toss(); } catch {} } tokSeen = p ? p.tokens : null;
   $('#tok b').textContent = p ? p.tokens : 0;
   const icon = p && (PRIZES.find(x => x.id === p.badge) || {}).icon;
   $('#who').textContent = p ? (icon ? icon + ' ' : '') + p.name + (p.local ? '' : ' · LV ' + levelOf(p.earned)) : 'SIGN IN';
@@ -297,30 +299,55 @@ const MOVE_KEYS = { j: 'punch', k: 'kick', ' ': 'jump', l: 'combo', f: 'blast', 
 addEventListener('keydown', e => { if (e.target.tagName === 'INPUT' || !$('#gf').hidden) return; keys[e.key.toLowerCase()] = 1;
   if (moves && !e.repeat && panel.hidden && $('#gate').hidden) { const m = MOVE_KEYS[e.key.toLowerCase()]; if (m) { e.preventDefault(); moves.doMove(m); } else if (e.key === '1') moves.doEmote('wave'); else if (e.key === '2') moves.doEmote('dance'); } if ((e.key === 'Enter' || e.key.toLowerCase() === 'e') && near && panel.hidden && $('#gate').hidden) near.open(); if (e.key === 'Escape') closePanel(); });
 addEventListener('keyup', e => { keys[e.key.toLowerCase()] = 0; });
-let drag = null;
-view.addEventListener('pointerdown', e => { drag = { id: e.pointerId, x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, moved: false }; view.setPointerCapture(e.pointerId); });
-view.addEventListener('pointermove', e => {
-  if (!drag || e.pointerId !== drag.id) return;
-  const k = 2.4 / Math.max(innerWidth, 500);
-  P.yaw -= (e.clientX - drag.x) * k; P.pitch = Math.max(-0.45, Math.min(0.45, P.pitch + (e.clientY - drag.y) * k)); drag.x = e.clientX; drag.y = e.clientY;
-  if (Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) > 8) { drag.moved = true; goal = null; $('#hint').style.opacity = 0; }
-});
-view.addEventListener('pointerup', e => {
-  if (!drag || e.pointerId !== drag.id) return;
-  if (room && !drag.moved && Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) < 9) { const s = room.pick(e.clientX, e.clientY, P); if (s) goTo(s.id); }
-  drag = null;
-});
-view.addEventListener('pointercancel', () => { drag = null; });
+// ---- looking and walking with a mouse or fingers ----
+// Phones and tablets work the way Roblox does: the left thumb gets a walk stick that appears wherever it lands,
+// any other finger looks around, and both work at the same time. A quick tap still walks you to what you tapped.
 const stick = $('#stick'), knob = stick.firstElementChild;
-const stickMove = e => {
-  const r = stick.getBoundingClientRect(); let x = (e.clientX - r.left - r.width / 2) / (r.width / 2), y = (e.clientY - r.top - r.height / 2) / (r.height / 2);
-  const m = Math.hypot(x, y); if (m > 1) { x /= m; y /= m; }
-  joy.x = x * 0.8; joy.y = y; knob.style.transform = `translate(${x * 33}px,${y * 33}px)`; $('#hint').style.opacity = 0;
+let lookPt = null, movePt = null;
+const hintOff = () => { $('#hint').style.opacity = 0; };
+const stickHome = () => { stick.style.left = stick.style.top = stick.style.bottom = ''; stick.classList.remove('on'); knob.style.transform = ''; joy.x = joy.y = 0; };
+const stickAt = (cx, cy) => { const R = stick.offsetWidth / 2; cx = Math.max(R + 6, Math.min(innerWidth - R - 6, cx)); cy = Math.max(R + 6, Math.min(innerHeight - R - 6, cy)); stick.style.left = (cx - R) + 'px'; stick.style.top = (cy - R) + 'px'; stick.style.bottom = 'auto'; stick.classList.add('on'); return [cx, cy]; };
+function stickPush(m, x, y) {
+  const R = stick.offsetWidth / 2; let dx = x - m.cx, dy = y - m.cy, d = Math.hypot(dx, dy);
+  if (m.float && d > R * 1.2) { const over = d - R * 1.2; [m.cx, m.cy] = stickAt(m.cx + dx / d * over, m.cy + dy / d * over); dx = x - m.cx; dy = y - m.cy; d = Math.hypot(dx, dy); }   // the stick follows a thumb that slides past its edge
+  const lim = Math.min(1, d / R), dead = 0.16, v = lim <= dead ? 0 : (lim - dead) / (1 - dead), ux = d ? dx / d : 0, uy = d ? dy / d : 0;
+  joy.x = ux * v * 0.85; joy.y = uy * v; knob.style.transform = `translate(${ux * lim * R * 0.58}px,${uy * lim * R * 0.58}px)`;
+  if (v) { goal = null; hintOff(); }
+}
+const tapAt = e => { if (room) { const s = room.pick(e.clientX, e.clientY, P); if (s) goTo(s.id); } };
+view.addEventListener('pointerdown', e => {
+  const touch = e.pointerType !== 'mouse';
+  try { view.setPointerCapture(e.pointerId); } catch {}
+  if (touch && !movePt && e.clientX < innerWidth * 0.42 && e.clientY > innerHeight * 0.3) { movePt = { id: e.pointerId, sx: e.clientX, sy: e.clientY, cx: e.clientX, cy: e.clientY, on: false, float: true }; return; }
+  if (!lookPt) lookPt = { id: e.pointerId, x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, moved: false, touch };
+});
+view.addEventListener('pointermove', e => {
+  if (movePt && e.pointerId === movePt.id) {
+    if (!movePt.on && Math.hypot(e.clientX - movePt.sx, e.clientY - movePt.sy) > 10) { movePt.on = true; [movePt.cx, movePt.cy] = stickAt(movePt.sx, movePt.sy); }
+    if (movePt.on) stickPush(movePt, e.clientX, e.clientY);
+    return;
+  }
+  if (!lookPt || e.pointerId !== lookPt.id) return;
+  const k = (lookPt.touch ? 3.1 : 2.4) / Math.max(innerWidth, 500);
+  P.yaw -= (e.clientX - lookPt.x) * k; P.pitch = Math.max(-0.45, Math.min(0.45, P.pitch + (e.clientY - lookPt.y) * k)); lookPt.x = e.clientX; lookPt.y = e.clientY;
+  if (Math.hypot(e.clientX - lookPt.sx, e.clientY - lookPt.sy) > 8) { lookPt.moved = true; goal = null; hintOff(); }
+});
+const viewEnd = (e, cancelled) => {
+  if (movePt && e.pointerId === movePt.id) { const tap = !movePt.on && !cancelled; movePt = null; stickHome(); if (tap) tapAt(e); return; }
+  if (!lookPt || e.pointerId !== lookPt.id) return;
+  const tap = !cancelled && !lookPt.moved && Math.hypot(e.clientX - lookPt.sx, e.clientY - lookPt.sy) < 9; lookPt = null; if (tap) tapAt(e);
 };
-stick.addEventListener('pointerdown', e => { stick.setPointerCapture(e.pointerId); stickMove(e); });
-stick.addEventListener('pointermove', e => { if (stick.hasPointerCapture(e.pointerId)) stickMove(e); });
-const stickEnd = () => { joy.x = joy.y = 0; knob.style.transform = ''; };
+view.addEventListener('pointerup', e => viewEnd(e, false)); view.addEventListener('pointercancel', e => viewEnd(e, true));
+// the stick itself can also be grabbed where it rests (a mouse on a computer, or a thumb that lands right on it)
+stick.addEventListener('pointerdown', e => { if (movePt) return; e.preventDefault(); const r = stick.getBoundingClientRect(); movePt = { id: e.pointerId, cx: r.left + r.width / 2, cy: r.top + r.height / 2, on: true, float: false, own: true }; try { stick.setPointerCapture(e.pointerId); } catch {} stick.classList.add('on'); stickPush(movePt, e.clientX, e.clientY); });
+stick.addEventListener('pointermove', e => { if (movePt && movePt.own && e.pointerId === movePt.id) stickPush(movePt, e.clientX, e.clientY); });
+const stickEnd = e => { if (movePt && movePt.own && e.pointerId === movePt.id) { movePt = null; stickHome(); } };
 stick.addEventListener('pointerup', stickEnd); stick.addEventListener('pointercancel', stickEnd);
+addEventListener('blur', () => { lookPt = movePt = null; stickHome(); });
+// stop the browser's own gestures from fighting the game: long-press menus, pinch and double-tap zoom, rubber-band scrolling
+for (const el of [view, stick, $('#moves')]) el.addEventListener('contextmenu', e => e.preventDefault());
+for (const type of ['gesturestart', 'gesturechange']) document.addEventListener(type, e => e.preventDefault());
+document.addEventListener('touchmove', e => { if (e.cancelable && e.touches.length > 1 && !e.target.closest('.box,#gf')) e.preventDefault(); }, { passive: false });
 $('#act').onclick = () => near && near.open();
 
 // ---------------- panels ----------------
@@ -677,7 +704,12 @@ window.__bbaVoice = voice; window.__bbaVersus = versus;
 if (moves) {
   $('#mv').onclick = openMoves;
   const pad = $('#moves');
-  pad.addEventListener('pointerdown', e => { const b = e.target.closest('[data-move]'); if (!b) return; e.preventDefault(); e.stopPropagation(); moves.doMove(b.dataset.move); });
+  // Each button is its own touch, so you can walk, look and fight together. Holding punch, kick or blast keeps it going.
+  const held = new Map(), buzz = () => { try { navigator.vibrate && navigator.vibrate(8); } catch {} };
+  pad.addEventListener('pointerdown', e => { const b = e.target.closest('[data-move]'); if (!b) return; e.preventDefault(); e.stopPropagation(); try { b.setPointerCapture(e.pointerId); } catch {} if (moves.doMove(b.dataset.move)) buzz(); b.classList.add('down'); held.set(e.pointerId, b); });
+  const letGo = e => { const b = held.get(e.pointerId); if (b) { b.classList.remove('down'); held.delete(e.pointerId); } };
+  pad.addEventListener('pointerup', letGo); pad.addEventListener('pointercancel', letGo); pad.addEventListener('lostpointercapture', letGo);
+  setInterval(() => { for (const b of held.values()) if (/^(punch|kick|blast)$/.test(b.dataset.move) && moves.doMove(b.dataset.move)) buzz(); }, 60);
   setInterval(() => { const off = !$('#gf').hidden || !panel.hidden || !$('#gate').hidden || !!xr; if (pad.hidden !== off) pad.hidden = off; if (!off) pad.querySelectorAll('[data-move]').forEach(b => b.classList.toggle('cd', moves.cooldown(b.dataset.move) > 0.05)); }, 120);
 } else if ($('#mv')) $('#mv').hidden = true;
 
@@ -785,12 +817,42 @@ async function restoreAccount() {
         const r = await playerCall('account', { ...auth, ...setup });
         if (auth.key && r.pid !== auth.pid) store.set('bba-previous-guest', auth);
         auth = { pid:r.pid }; store.set('bba-auth', auth); accountOwner = !!r.owner; setMe(r.player);
-        sessionStorage.removeItem('bba-account-setup'); gname.hidden = true; earn('daily');
+        sessionStorage.removeItem('bba-account-setup'); gname.hidden = true; earn('daily'); accountBonus();
         if (new URLSearchParams(location.search).has('account')) { history.replaceState(null,'',location.pathname); toast('PLAYER PASSPORT CONNECTED'); }
       } catch (err) { accountNote = err.message; if (!me) await restoreGuest(); }
     } else await restoreGuest();
   } finally { restoring = false; }
 }
+// One-time free tokens for having an account. The database decides; this only asks once per player on this device.
+async function accountBonus() {
+  if (!me?.linked || !auth.pid || store.get('bba-acct-bonus') === auth.pid) return;
+  try {
+    const { data, error } = await supabase.rpc('bba_account_bonus'); if (error) return;
+    store.set('bba-acct-bonus', auth.pid); if (data?.player) setMe(data.player);
+    if (data?.gained) setTimeout(() => toast(`FREE ACCOUNT BONUS: +${data.gained} TOKENS`), 1800);
+  } catch {}
+}
+// Guests get a pop-up about making a free account: once they have had a moment to look around, and again a few days later.
+function accountNudge(force) {
+  if (me?.linked || accountSession) return true;
+  if (!force && Date.now() - (+store.get('bba-acct-nudge') || 0) < 3 * 864e5) return true;
+  const boss = $('#bossbar');
+  if (!panel.hidden || !$('#gf').hidden || !$('#gate').hidden || xr || goal || movePt || lookPt || (boss && !boss.hidden) || (moves && moves.myPose())) return false;      // busy (walking, fighting, in a game): try again shortly
+  store.set('bba-acct-nudge', Date.now()); hub('account_nudge');
+  show(`<span class="tag">FREE · TAKES ABOUT A MINUTE</span><h2>KEEP WHAT YOU WIN</h2>
+    <p>You are playing as a guest${me ? ', <b>' + escapeHtml(me.name) + '</b>' : ''}. Guest progress lives only in this browser. A free Big Bang Arcade account keeps it for good.</p>
+    <ul class="perks">
+      <li><i>🪙</i><span><b>+${REWARDS.account} FREE TOKENS</b>the first time you sign in</span></li>
+      <li><i>💾</i><span><b>SAVES THAT FOLLOW YOU</b>tokens, prizes, avatar and game saves on any phone, tablet or computer</span></li>
+      <li><i>🏆</i><span><b>YOUR NAME STAYS YOURS</b>levels, streaks, boss loot and leaderboard spots are never lost</span></li>
+    </ul>
+    <p><button class="btn go" id="nudge-yes">CREATE MY FREE ACCOUNT</button><button class="btn" id="nudge-no">KEEP PLAYING AS A GUEST</button></p>
+    <p class="dim">Accounts are for players 18 and older right now. Everyone can keep playing as a guest.${auth.key ? ' To bring your guest tokens with you, tick “Connect this browser’s existing tokens” on the next screen.' : ''}</p>`, '#ffc93a');
+  $('#nudge-yes').onclick = () => { hub('account_nudge_yes'); openProfile(); }; $('#nudge-no').onclick = closePanel;
+  return true;
+}
+window.__bbaNudge = accountNudge;
+function nudgeSoon(ms = 20000) { setTimeout(function tick() { if (!accountNudge()) setTimeout(tick, 4000); }, ms); }
 async function restoreGuest() {
   accountOwner = false;
   if (auth.pid && auth.key) {
@@ -837,7 +899,7 @@ function openProfile() {
       <p class="dim">Activity is kept for up to 90 days. Turning this off also deletes your activity history. Cloud saves and scores stay separate.</p>
       <button class="btn" id="save-preferences">SAVE PRIVACY CHOICE</button><button class="btn" id="export-player">DOWNLOAD MY ARCADE DATA</button>
       ${accountOwner ? '<button class="btn go" id="owner-stats">OWNER DASHBOARD</button>' : ''}<button class="btn" id="signout-player">SIGN OUT</button>` : `
-      <h3>SAVE YOUR PLAYER ACROSS DEVICES</h3><p>Account features are launching for adults first. Players of every age can keep playing as guests.</p>
+      <h3>SAVE YOUR PLAYER ACROSS DEVICES</h3><p>A free account keeps your tokens, prizes, avatar and saves on every device, and gives you <b>+${REWARDS.account} tokens</b> the first time you sign in.</p><p>Account features are launching for adults first. Players of every age can keep playing as guests.</p>
       <label class="passport-check"><input type="checkbox" id="account-adult"> I am 18 or older.</label>
       ${auth.key ? '<label class="passport-check"><input type="checkbox" id="claim-guest"> Connect this browser’s existing tokens and scores to my account.</label>' : ''}
       ${availableProviders.length ? availableProviders.map(([id,label]) => `<button class="btn go" data-social="${id}">CONTINUE WITH ${label.toUpperCase()}</button>`).join('') : '<p class="dim">Social sign-in is being connected. Guest play is ready now.</p>'}
@@ -1058,7 +1120,7 @@ const enter = async () => {
   const name = gname.value.trim();
   gate.hidden = true;
   if (!auth.pid && name) { try { await join(name); toast('WELCOME, ' + me.name.toUpperCase()); if (!store.get('bba-av')) openAvatar(); } catch (err) { toast(err.message.toUpperCase()); } }
-  startPresence();
+  startPresence(); nudgeSoon();
 };
 $('#genter').onclick = enter; gname.addEventListener('keydown', e => { if (e.key === 'Enter') enter(); });
 setMe(null);

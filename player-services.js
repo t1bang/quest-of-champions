@@ -18,6 +18,7 @@ export async function playerCall(action, body = {}) {
 }
 export const providers = [
   ['google','Google'], ['facebook','Facebook'], ['apple','Apple'], ['discord','Discord'],
+  ['spotify','Spotify'], ['x','X'], ['twitter','X'], ['twitch','Twitch'],
   ['azure','Microsoft'], ['linkedin_oidc','LinkedIn'],
 ];
 export async function enabledProviders() {
@@ -25,7 +26,9 @@ export async function enabledProviders() {
     const r = await fetch(`${SOCIAL_AUTH.url}/auth/v1/settings`, { headers: { apikey: SOCIAL_AUTH.key } });
     if (!r.ok) return [];
     const settings = await r.json();
-    return providers.filter(([id]) => settings.external?.[id] === true);
+    // A button shows up by itself once its sign-in is switched on in Supabase. X has an old and a new connection: show one.
+    const on = providers.filter(([id]) => settings.external?.[id] === true);
+    return on.filter(([id]) => !(id === 'twitter' && on.some(([other]) => other === 'x')));
   } catch { return []; }
 }
 export const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));

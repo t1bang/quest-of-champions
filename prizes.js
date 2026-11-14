@@ -86,8 +86,8 @@ export const PRIZES = [
 // Token rewards (the server enforces these).
 // minute = each minute a game window is open; fatality = T1 Versus; level = beating a Quest of Champions level;
 // social = one-time bonus for signing in with Google or Facebook.
-// signup = one-time bonus when a player signs in (links an account); daily = 10 x the streak day, up to streakMax days (70 a day).
-export const REWARDS = { signup: 25, daily: 10, streakMax: 7, play: 0, trailer: 3, song: 1, scorePer100: 1, scoreMax: 50, minute: 1, fatality: 3, level: 5, social: 5 };
+// account = one-time bonus for making a free account (the database gives it: bba_account_bonus); signup = welcome tokens for a new nickname; daily = 10 x the streak day, up to streakMax days (70 a day).
+export const REWARDS = { account: 50, signup: 25, daily: 10, streakMax: 7, play: 0, trailer: 3, song: 1, scorePer100: 1, scoreMax: 50, minute: 1, fatality: 3, level: 5, social: 5 };
 
 // The bar in the lounge.
 export const BAR = { beer: 5, tips: [1, 2, 5], play: 1 }; // play = tokens to start a game
