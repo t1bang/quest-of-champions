@@ -274,7 +274,7 @@ export function createLive(ctx) {
   }
   setInterval(paintRadar, 160);
   function peopleHtml() {
-    const rows = [...peers.entries()].map(([id, p]) => `<li><span>${esc(p.name || 'Player')}<small style="display:block;color:var(--dim);font-size:8px">${area(p)}</small></span><button class="btn go" data-peer="${esc(id)}">GO TO</button></li>`).join('');
+    const rows = [...peers.entries()].map(([id, p]) => `<li><span>${esc(p.name || 'Player')}${p.v ? ' 🎙' : ''}<small style="display:block;color:var(--dim);font-size:8px">${area(p)}${p.v ? ' · IN VOICE CHAT' : ''}</small></span><button class="btn go" data-peer="${esc(id)}">GO TO</button></li>`).join('');
     return `<p><b style="color:var(--gold)">${peers.size + 1}</b> in the arcade right now, counting you. The dots on the radar are other players (white), bosses (colour) and OPP-BOT (blue).</p>
       <ul class="list"><li><span>${esc(ctx.myName())}<small style="display:block;color:var(--dim);font-size:8px">YOU · ${area(P)}</small></span></li>${rows}</ul>${peers.size ? '' : '<p class="dim">Nobody else is in right now. Share the link and they will show up here the moment they walk in.</p>'}`;
   }

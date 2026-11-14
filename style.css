@@ -146,3 +146,6 @@ ul.quests li b{font-size:9px;color:var(--gold);white-space:nowrap}ul.quests li b
 .lootcard h3{font:13px var(--pix);color:#fff;margin:6px 0}.lootcard p{font:9px var(--pix);color:var(--dim);margin:6px 0;line-height:1.6}.lootcard p.tot{color:var(--gold);font-size:12px}.lootcard .btn{margin:8px 4px 0}
 /* bartender feedback form */
 .fbin{width:100%;background:#0b0612;color:#fff;border:2px solid #3a2a55;border-radius:6px;padding:10px;font:11px/1.6 ui-monospace,Menlo,monospace;-webkit-user-select:text;user-select:text}textarea.fbin{resize:vertical;min-height:90px}.fbin:focus{outline:none;border-color:var(--gold)}
+/* voice chat button + a challenge from another player */
+#hud #vc.live{border-color:#3dff9a;color:#3dff9a;box-shadow:0 0 12px #3dff9a}
+#vsask{position:fixed;left:50%;top:calc(120px + env(safe-area-inset-top));transform:translateX(-50%);z-index:44;background:#0b0612;border:3px solid var(--gold);border-radius:8px;padding:12px 14px;text-align:center;font:10px/1.9 var(--pix);color:#fff;box-shadow:0 0 30px var(--gold);max-width:92vw}#vsask b{color:var(--gold)}#vsask .btn{margin-top:8px}

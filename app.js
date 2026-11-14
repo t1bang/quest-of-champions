@@ -4,6 +4,8 @@ import { createMoves, SPRITE } from './moves.js';
 import { createLive } from './live.js';
 import { createAlerts } from './alerts.js';
 import { openBartender, BARTENDER } from './bartender.js';
+import { createVoice } from './voice.js';
+import { createVersus } from './versus.js';
 import { COVERS, playTrailer } from './art.js';
 import { buildRoom, DIMS } from './room.js';
 import { supabase, authHeaders, playerCall, enabledProviders, escapeHtml, createActivityTracker } from './player-services.js';
@@ -584,7 +586,7 @@ const MINI = {
 function openMini(kind) {
   const g = MINI[kind]; hub('mini:' + kind);
   show(`<h2>${g.icon} ${g.title}</h2><p>Stop the marker in the gold zone. ${g.rounds} tries.</p><div class="stage" style="--c:#ffc93a;aspect-ratio:16/6"><canvas width="640" height="240" id="mcv"></canvas></div>
-    <p id="mtxt" style="color:var(--gold)">&nbsp;</p><button class="btn go" id="mgo">${g.verb}</button><button class="btn" id="magain" hidden>PLAY AGAIN</button>`, '#ffc93a');
+    <p id="mtxt" style="color:var(--gold)">&nbsp;</p><button class="btn go" id="mgo">${g.verb}</button><button class="btn" id="magain" hidden>PLAY AGAIN</button> <button class="btn" id="mvs">⚔ CHALLENGE A PLAYER</button>`, '#ffc93a');
   const cv = $('#mcv'), c = cv.getContext('2d'); let round = 0, total = 0, left = g.pool || 0, t0 = performance.now(), frozen = null, raf, done = false;
   const pos = now => { const sp = 0.9 + round * 0.35, u = ((now - t0) / 1000 * sp) % 2; return u < 1 ? u : 2 - u; };
   const draw = now => {
@@ -601,7 +603,7 @@ function openMini(kind) {
     $('#mtxt').textContent = pts ? `+${pts} ${g.unit}!` : 'MISSED!';
     setTimeout(() => { if (!$('#mcv')) return; if (round >= g.rounds || (g.pool && left <= 0)) { done = true; $('#mgo').hidden = true; $('#magain').hidden = false; $('#mtxt').textContent = `FINAL: ${total} ${g.unit}` + (g.pool && total >= 10 ? ' — STRIKE OUT!' : ''); } else { frozen = null; t0 = performance.now(); } }, 800);
   };
-  $('#mgo').onclick = act; cv.onpointerdown = act; $('#magain').onclick = () => openMini(kind);
+  $('#mgo').onclick = act; cv.onpointerdown = act; $('#magain').onclick = () => openMini(kind); $('#mvs').onclick = () => { if (needMe()) versus.pick(kind); };
   cleanup = () => cancelAnimationFrame(raf);
 }
 
@@ -711,6 +713,11 @@ live = createLive({ room, P, peers, moves, toast, hub, collide, show, closePanel
   blocked: () => !$('#gf').hidden || !panel.hidden || !$('#gate').hidden || !!xr, inGame: () => !$('#gf').hidden,
   gameTitle: id => (GAMES.find(g => g.id === id) || {}).title, myName: () => (me ? me.name : 'You'), sendBoss: payload => { try { window.__bbaBoss && window.__bbaBoss(payload); } catch {} } });
 window.__bbaLive = live;
+// Voice chat (opt-in) and bar games against another player; both ride the same live channel as positions.
+const voice = createVoice({ sid, peers, P, toast, hub, show, pbody, closePanel, onClose: fn => { cleanup = fn; }, send: payload => { try { window.__bbaRtc && window.__bbaRtc(payload); } catch {} } });
+const versus = createVersus({ sid, peers, MINI, toast, hub, show, pbody, closePanel, voice, onClose: fn => { cleanup = fn; }, myName: () => (me ? me.name : 'Player'), solo: kind => openMini(kind), event: t => live && live.event(t, 1),
+  send: payload => { try { window.__bbaMini && window.__bbaMini(payload); } catch {} } });
+window.__bbaVoice = voice; window.__bbaVersus = versus;
 if (moves) {
   $('#mv').onclick = openMoves;
   const pad = $('#moves');
@@ -724,7 +731,7 @@ function peerSeen(d) {
   const g = typeof d.g === 'string' && /^[a-z0-9-]{2,24}$/.test(d.g) ? d.g : '', away = !!d.h && !g, tag = name + (g ? ' ▶' : away ? ' …' : ''), key = tag + JSON.stringify(av) + JSON.stringify(fit) + JSON.stringify(look);
   const x = Math.max(AXA, Math.min(WXB, +d.x || 0)), z = Math.max(HEND, Math.min(LZ1, +d.z || 0)); // anywhere you can walk: main floor, hallway, lounge, East Wing
   let p = peers.get(d.id); if (!p) { p = { x, z }; peers.set(d.id, p); if (live) live.joined(name); }
-  p.name = name; p.g = g; p.away = away;
+  p.name = name; p.g = g; p.away = away; p.v = !!d.v;
   if (p.key !== key && room) { if (moves) moves.freePeer(p); p.draw = (c, W, H) => drawAvatar(c, W, H, av, tag, fit, look); p.key = key; }
   p.tx = x; p.tz = z; p.sit = !!d.s; p.drunk = !!d.d; p.last = d; p.seen = performance.now();
 }
@@ -737,6 +744,7 @@ function peerSprites(dt) {
     p.x += (p.tx - p.x) * Math.min(1, dt * 5); p.z += (p.tz - p.z) * Math.min(1, dt * 5);
     const wob = p.drunk && !p.sit ? now / 260 + id.charCodeAt(0) : 0; // a stumble: sway side to side and dip
     const pose = moves && p.draw ? moves.peerSprite(p, id, dt) : null;      // which picture: standing, walking, a move, an emote
+    if (voice.talking(id) && room) { talkTex = talkTex || room.tex(64, 64, (c, W) => { c.clearRect(0, 0, W, W); c.fillStyle = '#000'; c.beginPath(); c.arc(32, 32, 30, 0, 7); c.fill(); c.fillStyle = '#3dff9a'; c.beginPath(); c.arc(32, 32, 25, 0, 7); c.fill(); c.fillStyle = '#05020a'; c.fillRect(14, 25, 9, 14); c.beginPath(); c.moveTo(23, 25); c.lineTo(34, 15); c.lineTo(34, 49); c.lineTo(23, 39); c.fill(); c.strokeStyle = '#05020a'; c.lineWidth = 4; for (const r of [9, 16]) { c.beginPath(); c.arc(36, 32, r, -0.9, 0.9); c.stroke(); } }); out.push({ tex: talkTex, x: p.x, z: p.z, y: SPRITE.h + 6 + Math.sin(now / 90) * 4, w: 64, h: 64 }); }
     if (pose && pose.tex) out.push({ tex: pose.tex, x: p.x + (wob ? Math.sin(wob) * 22 : 0), z: p.z + (wob ? Math.cos(wob * 0.7) * 14 : 0), y: (p.sit ? -70 : pose.lift) - (wob ? Math.abs(Math.sin(wob)) * 10 : 0), w: SPRITE.w, h: SPRITE.h });
   }
   if (room) { // Dee, behind the bar
@@ -745,7 +753,7 @@ function peerSprites(dt) {
   }
   return out;
 }
-let deeTex = null, deeDrunk = -1;
+let deeTex = null, deeDrunk = -1, talkTex = null;
 let presenceStarted=false;
 async function startPresence() {
   if(presenceStarted)return;presenceStarted=true;
@@ -755,13 +763,17 @@ async function startPresence() {
     ch.on('broadcast', { event: 'act' }, m => moves && moves.onAct(m.payload));
     ch.on('broadcast', { event: 'boss' }, m => live && live.onBoss(m.payload));
     window.__bbaBoss = payload => { if (auth.pid && me) ch.send({ type: 'broadcast', event: 'boss', payload }); };
+    ch.on('broadcast', { event: 'rtc' }, m => voice.onSignal(m.payload));
+    ch.on('broadcast', { event: 'mini' }, m => versus.onMsg(m.payload));
+    window.__bbaRtc = payload => { if (auth.pid && me) ch.send({ type: 'broadcast', event: 'rtc', payload }); };
+    window.__bbaMini = payload => { if (auth.pid && me) ch.send({ type: 'broadcast', event: 'mini', payload }); };
     window.__bbaAct = payload => { if (auth.pid && me) ch.send({ type: 'broadcast', event: 'act', payload }); };
     let timer, previous = '', sentAt = 0;
     ch.subscribe(st => { clearInterval(timer); if (st === 'SUBSCRIBED') timer = setInterval(() => {
       if (!auth.pid || !me) return;
       // Players stay visible while they are inside a game or on another tab: a slow heartbeat says where they are standing and what they are doing.
       const inGame = !$('#gf').hidden, idle = document.hidden || inGame;
-      const payload = { id:sid, n:me.name, av:myAv, fit:myFit, d:drunk ? 1 : 0, x:Math.round(P.x), z:Math.round(P.z), s:sitting ? 1 : 0, ...(inGame ? { g: $('#gf').dataset.game || 'game' } : document.hidden ? { h: 1 } : {}) }, next = JSON.stringify(payload);
+      const payload = { id:sid, n:me.name, av:myAv, fit:myFit, d:drunk ? 1 : 0, x:Math.round(P.x), z:Math.round(P.z), s:sitting ? 1 : 0, ...(inGame ? { g: $('#gf').dataset.game || 'game' } : document.hidden ? { h: 1 } : {}), ...(voice.on ? { v: 1 } : {}) }, next = JSON.stringify(payload);
       const gap = idle ? 4000 : peers.size > 24 ? 1400 : peers.size > 12 ? 1000 : 0;   // a busy room sends positions a little less often
       if (Date.now()-sentAt < gap || (next === previous && Date.now()-sentAt < 4000)) return;
       previous = next; sentAt = Date.now(); ch.send({ type:'broadcast', event:'pos', payload });
