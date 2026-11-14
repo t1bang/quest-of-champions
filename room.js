@@ -21,7 +21,8 @@ const persp = (fov, asp, n, f) => { const t = 1 / Math.tan(fov / 2); return new 
 
 // Floor plan, shared with app.js (movement and routes): main room half-width, back wall, front wall, Big Box,
 // then the East Wing doorway half-width + centre, far wall, back wall and front wall.
-export const DIMS = { HW: 1200, HD: 1100, ZF: 900, BZ: -100, WD: 200, WZ: -100, WX: 2800, WZ0: -900, WZ1: 700 };
+// The Arena sits west of the lounge: AX = its far (west) wall, AZ0/AZ1 = north and south walls, ADZ/ADW = doorway centre and half-width in the lounge's west wall.
+export const DIMS = { HW: 1200, HD: 1100, ZF: 900, BZ: -100, WD: 200, WZ: -100, WX: 2800, WZ0: -900, WZ1: 700, AX: -2100, AZ0: 920, AZ1: 1880, ADZ: 1100, ADW: 150 };
 
 export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = [], opts = {}) {
   const gl = canvas.getContext('webgl', { antialias: true, alpha: !!opts.wallVideo, powerPreference: 'high-performance' });
@@ -271,7 +272,7 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = [], opts = {})
     const woodF = mat(woodT, { floor: true, spec: 0.35 }), wood = mat(woodT, { spec: 0.4 });
     quad(woodF, O, [-LW, 0, ZF], [LW, 0, ZF], [LW, 0, LE], [-LW, 0, LE], [0, 0, 8, 5]);
     quad(ceilM, O, [-LW, CH, LE], [LW, CH, LE], [LW, CH, ZF], [-LW, CH, ZF], [0, 0, 4, 2.5]);
-    quad(wallM, O, [-LW, CH, LE], [-LW, CH, ZF], [-LW, 0, ZF], [-LW, 0, LE], [0, 0, 2.5, 1]);
+    wall(-LW, LE, -LW, DIMS.ADZ + DIMS.ADW); wall(-LW, DIMS.ADZ - DIMS.ADW, -LW, ZF);       // west wall, with the Arena doorway
     quad(wallM, O, [LW, CH, ZF], [LW, CH, LE], [LW, 0, LE], [LW, 0, ZF], [0, 0, 2.5, 1]);
     quad(wallM, O, [LW, CH, LE], [-LW, CH, LE], [-LW, 0, LE], [LW, 0, LE], [0, 0, 4, 1]);
     const D2 = { x: 0, z: ZF, th: Math.PI }; quad(neon('LOUNGE + BAR', '#ffb400', 1024, 128), D2, [-DW, 430, 3], [DW, 430, 3], [DW, 372, 3], [-DW, 372, 3]);
@@ -314,6 +315,29 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = [], opts = {})
     quad(neon('BOWLING', '#3ea8ff'), { x: 798, z: 1560, th: -Math.PI / 2 }, [-150, 470, 4], [150, 470, 4], [150, 400, 4], [-150, 400, 4]);
     reg('bowling', 'GO BOWLING', 690, 1250, Math.PI, 150, [606, 0, 1250], [774, 150, 1896], () => handlers.mini('bowling'), -0.2);
     light(O, [690, 260, 1650], '#3ea8ff', 0.7);
+  }
+
+  // ---------- the Arena (through the doorway in the lounge's west wall): where the big bosses fight ----------
+  {
+    const { AX, AZ0, AZ1, ADZ, ADW } = DIMS, AX0 = -LW, RED = '#ff2a3c', GOLD = '#ffc93a', cx = (AX + AX0) / 2, cz = (AZ0 + AZ1) / 2;
+    const arenaT = tex(512, 512, (x, w) => { x.fillStyle = '#140a1c'; x.fillRect(0, 0, w, w); x.strokeStyle = '#2a1238'; x.lineWidth = 4; for (let k = 0; k <= 8; k++) { x.beginPath(); x.moveTo(k * 64, 0); x.lineTo(k * 64, w); x.moveTo(0, k * 64); x.lineTo(w, k * 64); x.stroke(); } }, true);
+    quad(mat(arenaT, { floor: true, spec: 0.6 }), O, [AX, 0, AZ0], [AX0, 0, AZ0], [AX0, 0, AZ1], [AX, 0, AZ1], [0, 0, (AX0 - AX) / 260, (AZ1 - AZ0) / 260]);
+    quad(ceilM, O, [AX, CH, AZ1], [AX0, CH, AZ1], [AX0, CH, AZ0], [AX, CH, AZ0], [0, 0, (AX0 - AX) / 400, (AZ1 - AZ0) / 400]);
+    wall(AX, AZ0, AX0, AZ0); wall(AX0, AZ1, AX, AZ1); wall(AX, AZ1, AX, AZ0);
+    // the fight ring painted on the floor
+    const ringT = mat(tex(512, 512, (x, w) => { x.clearRect(0, 0, w, w); x.strokeStyle = RED; x.lineWidth = 18; x.beginPath(); x.arc(256, 256, 236, 0, 7); x.stroke(); x.strokeStyle = GOLD; x.lineWidth = 6; x.beginPath(); x.arc(256, 256, 200, 0, 7); x.stroke();
+      x.fillStyle = 'rgba(255,42,60,.16)'; x.beginPath(); x.arc(256, 256, 196, 0, 7); x.fill(); x.fillStyle = GOLD; for (let k = 0; k < 5; k++) { const a = -Math.PI / 2 + k * 2.5133, b = a + 1.2566; x.beginPath(); x.moveTo(256, 256); x.lineTo(256 + Math.cos(a) * 120, 256 + Math.sin(a) * 120); x.lineTo(256 + Math.cos(b) * 48, 256 + Math.sin(b) * 48); x.fill(); } }), { emis: 0.9, spec: 0, blend: true });
+    quad(ringT, O, [cx - 400, 1.5, cz - 400], [cx + 400, 1.5, cz - 400], [cx + 400, 1.5, cz + 400], [cx - 400, 1.5, cz + 400]);
+    // signs: over the doorway on the lounge side, and across the far wall
+    const D4 = { x: 2 - LW, z: ADZ, th: Math.PI / 2 }; quad(neon('←  THE ARENA', RED, 1024, 128), D4, [-ADW, 520, 3], [ADW, 520, 3], [ADW, 442, 3], [-ADW, 442, 3]); glow(RED, D4, 0, 480, 10, 460, 190);
+    const W4 = { x: AX + 2, z: cz, th: Math.PI / 2 };
+    quad(neon('THE ARENA', RED, 1024, 128), W4, [-360, 530, 4], [360, 530, 4], [360, 430, 4], [-360, 430, 4]); glow(RED, W4, 0, 480, 10, 900, 240);
+    box(solid('#140c22', 0, 0.5), W4, -250, 250, 90, 400, 0, 16, { front: panel(500, 310, RED, (x, W) => { emoji(x, '👾', W / 2, 110, 120); text(x, 'BOSS FIGHTS', W / 2, 250, `66px ${BIG}`, RED); text(x, 'LOOT DROPS', W / 2, 326, `66px ${BIG}`, GOLD); text(x, 'COMMON · UNCOMMON · RARE · LEGENDARY · EXOTIC', W / 2, 420, `11px ${PIX}`, '#fff'); }) });
+    // glowing corner pylons and a loot chest on a plinth
+    for (const [px, pz, c] of [[AX + 90, AZ0 + 90, RED], [AX0 - 90, AZ1 - 90, RED], [AX + 90, AZ1 - 90, GOLD], [AX0 - 240, AZ0 + 90, GOLD]]) { box(dark, O, px - 26, px + 26, 0, 30, pz - 26, pz + 26); box(solid(c, 1, 0), O, px - 12, px + 12, 30, 430, pz - 12, pz + 12); }
+    box(dark, O, cx - 60, cx + 60, 0, 40, AZ1 - 150, AZ1 - 60); box(solid(GOLD, 0.7, 1), O, cx - 46, cx + 46, 40, 96, AZ1 - 138, AZ1 - 72); box(solid('#8a5a1e', 0.2, 0.6), O, cx - 50, cx + 50, 96, 106, AZ1 - 142, AZ1 - 68); box(solid(RED, 1, 0), O, cx - 8, cx + 8, 60, 82, AZ1 - 142, AZ1 - 136);
+    light(O, [cx, 480, cz], '#ffffff', 0.7); light(O, [AX + 260, 380, cz], RED, 1); light(O, [AX0 - 260, 380, ADZ], RED, 0.7); light(O, [cx, 300, AZ1 - 200], GOLD, 0.7);
+    add('arena', 'ENTER THE ARENA', D4, 300, 10, 530, handlers.arena);
   }
 
   // ---------- the East Wing (through the doorway in the right wall) ----------

@@ -21,10 +21,10 @@ export const QUESTS = {
 const BOSS_NAMES = ['OVERHEAT', 'GLITCH', 'STATIC', 'TILT', 'LAG SPIKE', 'BUG', 'CRASH', 'BLUE SCREEN', 'FIRMWARE', 'TURBO'];
 const BOSS_TINTS = ['#ff7a1a', '#ff2a3c', '#31d7ff', '#ffc93a', '#3dff9a', '#b06cff', '#ff4fd8', '#3ea8ff', '#9aff3d', '#ff5a5a'];
 // Where a boss can appear. The database picks the spot number for each spawn.
-export const SPOTS = [{ x: 560, z: 200, label: 'MAIN FLOOR' }, { x: -560, z: -320, label: 'MAIN FLOOR' }, { x: 1900, z: -100, label: 'EAST WING' }, { x: 0, z: 330, label: 'MAIN FLOOR' }];
+export const SPOTS = [{ x: 560, z: 200, label: 'MAIN FLOOR' }, { x: 0, z: 330, label: 'MAIN FLOOR' }, { x: 1900, z: -100, label: 'EAST WING' }, { x: -1250, z: 1640, label: 'THE ARENA' }];
 export const BOSSES = {
   spawn: { x: 560, z: 200, r: 90, w: 400, h: 400, y: 260, cycle: 6.5, range: 430, ring: 'move-uppercut', label: 'BOSS', art: 'daily', place: 'MAIN FLOOR' },
-  weekly: { x: 2300, z: -100, r: 140, w: 600, h: 600, y: 360, cycle: 5, range: 560, ring: 'move-slam', label: 'WEEKLY BOSS', name: 'THE BIG CRUNCH', tint: '#b06cff', art: 'weekly', place: 'EAST WING' },
+  weekly: { x: -1560, z: 1330, r: 140, w: 600, h: 600, y: 360, cycle: 5, range: 560, ring: 'move-slam', label: 'WEEKLY BOSS', name: 'THE BIG CRUNCH', tint: '#b06cff', art: 'weekly', place: 'THE ARENA' },
 };
 export const RARITY = { common: ['COMMON', '#c8c8d0'], uncommon: ['UNCOMMON', '#3dff9a'], rare: ['RARE', '#3ea8ff'], legendary: ['LEGENDARY', '#b06cff'], exotic: ['EXOTIC', '#ffc93a'] };
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -257,7 +257,7 @@ export function createLive(ctx) {
 
 
   // ---------- who is here: radar + list ----------
-  const area = p => p.g ? 'PLAYING ' + String(ctx.gameTitle(p.g) || 'A GAME').toUpperCase() : p.away ? 'AWAY' : p.x > 1090 ? 'EAST WING' : p.z > 790 ? 'THE LOUNGE' : p.z < -780 ? 'BACK HALLWAY' : 'MAIN FLOOR';
+  const area = p => p.g ? 'PLAYING ' + String(ctx.gameTitle(p.g) || 'A GAME').toUpperCase() : p.away ? 'AWAY' : p.x < -770 && p.z > 900 ? 'THE ARENA' : p.x > 1090 ? 'EAST WING' : p.z > 790 ? 'THE LOUNGE' : p.z < -780 ? 'BACK HALLWAY' : 'MAIN FLOOR';
   const radar = document.createElement('canvas'); radar.id = 'radar'; radar.width = radar.height = 192; radar.title = 'Who is here'; document.body.appendChild(radar);
   const rc = radar.getContext('2d');
   function paintRadar() {
