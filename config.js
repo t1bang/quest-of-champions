@@ -66,6 +66,9 @@ export const SOCIAL_AUTH = { url: 'https://tdjvnhuygpobdcmhlcms.supabase.co', ke
 // Video wall: this YouTube video plays on the big screen in the main room, and its sound is the
 // room's sound. Leave it '' to go back to the room music below.
 export const WALL_VIDEO = 'https://www.youtube.com/watch?v=3GKCej6kxc4';
+// The same song as an MP3. On phones that will not start the video with sound, this plays instead
+// (the video still shows, silent). Leave '' to use the lobby music below until the MP3 is added.
+export const WALL_SONG = '';
 
 // Original ElevenLabs 8-bit lobby theme, take 1.
 export const BGM = 'assets/audio/big-bang-elevenlabs-take-1.mp3';

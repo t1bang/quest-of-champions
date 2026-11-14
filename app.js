@@ -1,4 +1,4 @@
-import { GAMES, SONGS, MUSIC_PAGES, DONATE, SOCIALS, CLAIM_HELP, BGM, SOON, VAULT, SOCIAL_AUTH, JUKEBOX_PLAYLIST, WALL_VIDEO } from './config.js';
+import { GAMES, SONGS, MUSIC_PAGES, DONATE, SOCIALS, CLAIM_HELP, BGM, SOON, VAULT, SOCIAL_AUTH, JUKEBOX_PLAYLIST, WALL_VIDEO, WALL_SONG } from './config.js';
 import { PRIZES, REWARDS, REAL_PRIZES_LIVE, BAR, TOKEN_PACK, WEAR, SLOTS, JEWELRY, DEFAULT_FIT } from './prizes.js';
 import { COVERS, playTrailer } from './art.js';
 import { buildRoom, DIMS } from './room.js';
@@ -906,14 +906,26 @@ const bgm = new Audio(BGM); bgm.loop = true; bgm.volume = 0.45;
 let muted = !!store.get('bba-mute'), held = false, started = false;
 // The video wall: a YouTube player that sits behind the 3D canvas and shows through the screen on the wall.
 // It starts (with sound) on the ENTER click, because browsers only allow sound after a tap or click.
-let wall = null;
+// Phones often refuse to start a YouTube video with sound. So the song itself is also started (silently) on
+// that same tap; if the video has not begun playing a few seconds later, the song is turned up and the
+// video carries on as a silent picture.
+let wall = null, wallMode = 'pending', wallPlaying = false;
+const wsong = new Audio(); wsong.loop = true; wsong.preload = 'none';
+const wallSrc = mute => `https://www.youtube.com/embed/${wallId}?autoplay=1&loop=1&playlist=${wallId}&controls=0&disablekb=1&playsinline=1&rel=0&enablejsapi=1${mute ? '&mute=1' : ''}&origin=${encodeURIComponent(location.origin)}`;
 const wallCmd = (func, args = []) => { try { wall?.contentWindow?.postMessage(JSON.stringify({ event: 'command', func, args }), '*'); } catch {} };
+addEventListener('message', e => { // the YouTube player reports whether it is really playing
+  if (!wall || e.source !== wall.contentWindow || typeof e.data !== 'string') return;
+  try { const st = JSON.parse(e.data)?.info?.playerState; if (typeof st === 'number' && wallMode !== 'song') { wallPlaying = st === 1; if (wallPlaying && wallMode === 'pending') { wallMode = 'video'; wsong.pause(); applyVol(); } } } catch {}
+});
 function startWall() {
   if (!wallId || wall || !room) return;
   wall = document.createElement('iframe'); wall.id = 'wallvid'; wall.allow = 'autoplay; encrypted-media'; wall.tabIndex = -1; wall.setAttribute('aria-hidden', 'true');
-  wall.src = `https://www.youtube.com/embed/${wallId}?autoplay=1&loop=1&playlist=${wallId}&controls=0&disablekb=1&playsinline=1&rel=0&enablejsapi=1&origin=${encodeURIComponent(location.origin)}`;
-  wall.addEventListener('load', () => { for (const t of [300, 1500, 4000]) setTimeout(applyVol, t); });
+  wall.src = wallSrc(false);
+  wall.addEventListener('load', () => { for (const t of [0, 800, 2000]) setTimeout(() => { try { wall.contentWindow.postMessage(JSON.stringify({ event: 'listening', id: 1, channel: 'widget' }), '*'); } catch {} applyVol(); }, t); });
   document.body.insertBefore(wall, view);
+  wsong.src = WALL_SONG || BGM; wsong.muted = true; wsong.play().catch(() => {});        // unlocked by this tap, silent for now
+  setTimeout(() => { if (wallMode !== 'pending') return;                                 // the video never started: play the song
+    wallMode = 'song'; try { wsong.currentTime = 0; } catch {} wall.src = wallSrc(true); applyVol(); }, 6000);
 }
 function placeWall() { // stretch the player onto the wall screen's four corners
   if (!wall) return;
@@ -927,7 +939,13 @@ function placeWall() { // stretch the player onto the wall screen's four corners
 }
 const applyVol = () => {
   $('#snd').classList.toggle('off', muted); if (!started) return;
-  if (wall) { bgm.pause(); wallCmd(muted ? 'mute' : 'unMute'); wallCmd(held || document.hidden ? 'pauseVideo' : 'playVideo'); return; }
+  if (wall) {
+    const quiet = muted || held || document.hidden; bgm.pause();
+    wallCmd(held || document.hidden ? 'pauseVideo' : 'playVideo');
+    if (wallMode === 'song') { wallCmd('mute'); wsong.muted = false; if (quiet) wsong.pause(); else wsong.play().catch(() => {}); }
+    else wallCmd(muted ? 'mute' : 'unMute');
+    return;
+  }
   if (muted || held || document.hidden) bgm.pause(); else bgm.play().catch(() => {});
 };
 function startBgm() { started = true; startWall(); applyVol(); }
