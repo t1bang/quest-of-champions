@@ -47,9 +47,12 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = [], opts = {})
   const white = tex(4, 4, x => { x.fillStyle = '#fff'; x.fillRect(0, 0, 4, 4); });
   const glowT = tex(128, 128, (x, w) => { const g = x.createRadialGradient(w / 2, w / 2, 0, w / 2, w / 2, w / 2); g.addColorStop(0, 'rgba(255,255,255,.55)'); g.addColorStop(.5, 'rgba(255,255,255,.14)'); g.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = g; x.fillRect(0, 0, w, w); });
   const rgb = h => [parseInt(h.slice(1, 3), 16) / 255, parseInt(h.slice(3, 5), 16) / 255, parseInt(h.slice(5, 7), 16) / 255];
-  const mats = [];
+  const mats = [], MODELS = [];
   const mat = (t, o = {}) => { const m = { t, blend: !!o.blend, v: [], tint: o.tint ? rgb(o.tint) : [1, 1, 1], emis: o.emis || 0, spec: o.spec == null ? 0.25 : o.spec, glow: !!o.glow, floor: !!o.floor, dyn: o.dyn || null }; mats.push(m); return m; };
   const solids = {}; const solid = (c, emis = 0, spec) => solids[c + emis] || (solids[c + emis] = mat(white, { tint: c, emis, spec }));
+  // Stand-in furniture: boxes in materials tagged with a name (.fb). When the finished model of that name arrives (see
+  // "finished 3D models" below) these are hidden; if it never arrives they simply stay.
+  const fbs = {}; const fb = (name, c, emis = 0, spec) => fbs[name + c + emis] || (fbs[name + c + emis] = Object.assign(mat(white, { tint: c, emis, spec }), { fb: name }));
   const glows = {}; const glowM = c => glows[c] || (glows[c] = mat(glowT, { tint: c, emis: 1, glow: true }));
   const text = (x, s, cx, y, font, fill, stroke) => { x.font = font; x.textAlign = 'center'; x.textBaseline = 'middle'; if (stroke) { x.lineWidth = 8; x.strokeStyle = stroke; x.lineJoin = 'round'; x.strokeText(s, cx, y); } x.fillStyle = fill; x.fillText(s, cx, y); };
   const fitText = (x, s, cx, y, size, maxW, fill, stroke, fam = BIG) => { let f = size; do { x.font = `${f}px ${fam}`; f -= 2; } while (x.measureText(s).width > maxW && f > 8); text(x, s, cx, y, x.font, fill, stroke); };
@@ -283,25 +286,26 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = [], opts = {})
     const B = { x: 0, z: LE - 2, th: Math.PI };
     const shelf = mat(tex(1024, 512, (x, w, h) => { x.fillStyle = '#1a0f0a'; x.fillRect(0, 0, w, h); for (let row = 0; row < 3; row++) { x.fillStyle = '#5a3a20'; x.fillRect(20, 150 + row * 150, w - 40, 14); for (let k = 0; k < 13; k++) emoji2(x, ['🍾', '🍺', '🥃', '🍷', '🍸'][(k + row * 2) % 5], 70 + k * 74, 100 + row * 150, 84); } }), { emis: 0.9, spec: 0.3 });
     function emoji2(x, s, cx, cy, size) { text(x, s, cx, cy, `${size}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`, '#fff'); }
-    box(solid('#1a0f0a', 0, 0.3), B, -330, 330, 0, 400, 0, 26, { front: shelf });
-    box(wood, B, -340, 340, 0, 125, 150, 205); box(solid('#0c0c14', 0, 1), B, -346, 346, 125, 134, 144, 211);
-    for (const sx of [-240, -80, 80, 240]) { box(metal, B, sx - 5, sx + 5, 0, 80, 262, 272); box(solid('#b0202c', 0.2, 0.6), B, sx - 24, sx + 24, 80, 92, 243, 291); }
+    shelf.fb = 'backbar'; wood.fb = 'counter';
+    box(solid('#1a0f0a', 0, 0.3), B, -330, 330, 0, 400, 0, 14); quad(shelf, B, [-330, 400, 15], [330, 400, 15], [330, 0, 15], [-330, 0, 15]);
+    box(wood, B, -340, 340, 0, 125, 150, 205); box(fb('counter', '#0c0c14', 0, 1), B, -346, 346, 125, 134, 144, 211);
+    for (const sx of [-240, -80, 80, 240]) { box(fb('stool', '#2a2a38', 0, 0.8), B, sx - 5, sx + 5, 0, 80, 262, 272); box(fb('stool', '#b0202c', 0.2, 0.6), B, sx - 24, sx + 24, 80, 92, 243, 291); }
     quad(neon('BAR', '#ffb400'), B, [-120, 520, 30], [120, 520, 30], [120, 420, 30], [-120, 420, 30]); glow('#ffb400', B, 0, 470, 40, 420, 240);
     light(B, [0, 300, 320], '#ffb400', 1.1); add('bar', 'VISIT THE BAR', B, 700, 210, 400, handlers.bar);
     // couches
-    const couch = (id, T) => { const c1 = solid('#7a1f2b', 0.12, 0.3), c2 = solid('#5a141e', 0.12, 0.3);
+    const couch = (id, T) => { const c1 = fb('couch', '#7a1f2b', 0.12, 0.3), c2 = fb('couch', '#5a141e', 0.12, 0.3);
       box(c1, T, -140, 140, 0, 62, 0, 95); box(c2, T, -140, 140, 62, 140, 0, 28); box(c2, T, -160, -140, 0, 100, 0, 95); box(c2, T, 140, 160, 0, 100, 0, 95);
       add(id, 'SIT ON THE COUCH', T, 330, 95, 140, () => handlers.sit(id)); stations[id].seat = tf(T, [0, 0, 70]); };
     couch('couch', { x: -798, z: 1740, th: Math.PI / 2 }); couch('couch2', { x: -570, z: LE - 2, th: Math.PI });
     // darts
     const DT = { x: -798, z: 1480, th: Math.PI / 2 };
     const board = mat(tex(256, 256, (x, w) => drawBoard(x, w)), { emis: 0.8, blend: true, spec: 0 });   // the same board face the darts game scores on
-    box(solid('#2a1a10', 0, 0.3), DT, -90, 90, 200, 400, 0, 8); quad(board, DT, [-75, 375, 10], [75, 375, 10], [75, 225, 10], [-75, 225, 10]);
-    quad(neon('DARTS', '#35e06f'), DT, [-90, 470, 4], [90, 470, 4], [90, 415, 4], [-90, 415, 4]); add('darts', 'PLAY DARTS', DT, 220, 10, 420, () => handlers.mini('darts'));
+    board.fb = 'cabinet'; box(fb('cabinet', '#2a1a10', 0, 0.3), DT, -90, 90, 200, 400, 0, 8); quad(board, DT, [-75, 375, 10], [75, 375, 10], [75, 225, 10], [-75, 225, 10]);
+    quad(neon('DARTS', '#35e06f'), DT, [-90, 505, 4], [90, 505, 4], [90, 450, 4], [-90, 450, 4]); add('darts', 'PLAY DARTS', DT, 220, 10, 420, () => handlers.mini('darts'));
     // pool table + air hockey
     const table = (id, label, cx, cz, top, rail, side, kind) => { const T0 = { x: cx, z: cz, th: 0 };
-      for (const [lx, lz] of [[-78, -128], [78, -128], [-78, 128], [78, 128]]) box(dark, T0, lx - 8, lx + 8, 0, 78, lz - 8, lz + 8);
-      box(solid(rail, 0.1, 0.6), T0, -95, 95, 78, 104, -145, 145); box(top, T0, -84, 84, 100, 106, -134, 134);
+      top.fb = id; for (const [lx, lz] of [[-78, -128], [78, -128], [-78, 128], [78, 128]]) box(fb(id, '#12121c', 0, 0.5), T0, lx - 8, lx + 8, 0, 78, lz - 8, lz + 8);
+      box(fb(id, rail, 0.1, 0.6), T0, -95, 95, 78, 104, -145, 145); box(top, T0, -84, 84, 100, 106, -134, 134);
       reg(id, label, cx + side * 95, cz, side * Math.PI / 2, 300, [cx - 100, 0, cz - 150], [cx + 100, 115, cz + 150], () => handlers.mini(kind), -0.42); };
     const felt = mat(tex(128, 256, (x, w, h) => { x.fillStyle = '#12703a'; x.fillRect(0, 0, w, h); const bc = ['#ffd23e', '#d2142a', '#3ea8ff', '#111', '#ff7a1a', '#b06cff']; bc.forEach((c, k) => { x.fillStyle = c; x.beginPath(); x.arc(40 + (k % 3) * 24, 60 + (k / 3 | 0) * 24, 9, 0, 7); x.fill(); }); x.fillStyle = '#fff'; x.beginPath(); x.arc(64, 200, 9, 0, 7); x.fill(); }), { emis: 0.45, spec: 0.1 });
     const ice = mat(tex(128, 256, (x, w, h) => { x.fillStyle = '#eaf6ff'; x.fillRect(0, 0, w, h); x.strokeStyle = '#d2142a'; x.lineWidth = 4; x.beginPath(); x.moveTo(0, h / 2); x.lineTo(w, h / 2); x.stroke(); x.beginPath(); x.arc(w / 2, h / 2, 26, 0, 7); x.stroke(); x.strokeStyle = '#3ea8ff'; x.strokeRect(34, 0, 60, 24); x.strokeRect(34, h - 24, 60, 24); x.fillStyle = '#111'; x.beginPath(); x.arc(64, 96, 8, 0, 7); x.fill(); x.fillStyle = '#d2142a'; x.beginPath(); x.arc(64, 226, 13, 0, 7); x.fill(); x.fillStyle = '#3ea8ff'; x.beginPath(); x.arc(64, 34, 13, 0, 7); x.fill(); }), { emis: 0.7, spec: 0.9 });
@@ -311,11 +315,25 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = [], opts = {})
     const laneT = mat(tex(128, 512, (x, w, h) => { x.fillStyle = '#c99755'; x.fillRect(0, 0, w, h); for (let k = 0; k < 8; k++) { x.fillStyle = 'rgba(90,50,20,.35)'; x.fillRect(k * 16, 0, 2, h); } x.fillStyle = '#7a3d14'; for (let k = 0; k < 7; k++) { x.beginPath(); x.moveTo(20 + k * 14.6, 380 - Math.abs(3 - k) * -10); x.lineTo(26 + k * 14.6, 396 - Math.abs(3 - k) * -10); x.lineTo(14 + k * 14.6, 396 - Math.abs(3 - k) * -10); x.fill(); } x.fillStyle = '#111'; x.fillRect(0, h - 8, w, 8); }), { emis: 0.35, spec: 0.9 });
     box(solid('#16161c', 0, 0.6), O, 606, 774, 0, 10, 1250, 1870); quad(laneT, O, [622, 11, 1860], [758, 11, 1860], [758, 11, 1250], [622, 11, 1250]);
     box(solid('#0c0c14', 0, 0.5), O, 606, 774, 0, 150, 1870, 1896);
-    [[0, 0], [-14, 22], [14, 22], [-28, 44], [0, 44], [28, 44], [-42, 66], [-14, 66], [14, 66], [42, 66]].forEach(([px, pz]) => { box(solid('#ffffff', 0.5, 0.8), O, 690 + px - 5, 690 + px + 5, 11, 46, 1770 + pz - 5, 1770 + pz + 5); box(solid('#d2142a', 0.5, 0.5), O, 690 + px - 5.5, 690 + px + 5.5, 34, 39, 1770 + pz - 5.5, 1770 + pz + 5.5); });
+    [[0, 0], [-14, 22], [14, 22], [-28, 44], [0, 44], [28, 44], [-42, 66], [-14, 66], [14, 66], [42, 66]].forEach(([px, pz]) => { box(fb('pin', '#ffffff', 0.5, 0.8), O, 690 + px - 5, 690 + px + 5, 11, 46, 1770 + pz - 5, 1770 + pz + 5); box(fb('pin', '#d2142a', 0.5, 0.5), O, 690 + px - 5.5, 690 + px + 5.5, 34, 39, 1770 + pz - 5.5, 1770 + pz + 5.5); });
     sphere(solid('#3b2a6b', 0.25, 1), O, 690, 27, 1300, 16);
     quad(neon('BOWLING', '#3ea8ff'), { x: 798, z: 1560, th: -Math.PI / 2 }, [-150, 470, 4], [150, 470, 4], [150, 400, 4], [-150, 400, 4]);
     reg('bowling', 'GO BOWLING', 690, 1250, Math.PI, 150, [606, 0, 1250], [774, 150, 1896], () => handlers.mini('bowling'), -0.2);
     light(O, [690, 260, 1650], '#3ea8ff', 0.7);
+    // finished models for this room (each replaces the boxes of the same name once it has loaded)
+    const CT1 = { x: -798, z: 1740, th: Math.PI / 2 }, CT2 = { x: -570, z: LE - 2, th: Math.PI };
+    MODELS.push(
+      ['couch', [[CT1, { at: [0, 0, 50], size: [330, null, null] }], [CT2, { at: [0, 0, 50], size: [330, null, null] }]]],
+      ['pool', [[{ x: -390, z: 1240, th: 0 }, { size: [null, 108, 296], long: 'z' }]]],
+      ['hockey', [[{ x: 390, z: 1240, th: 0 }, { size: [null, 108, 296], long: 'z' }]]],
+      ['counter', [[B, { at: [0, 0, 178], size: [696, 136, 70], long: 'x' }]]],
+      ['backbar', [[B, { at: [0, 132, 36], size: [650, 268, 44], long: 'x' }]]],
+      ['stool', [-240, -80, 80, 240].map((sx, i) => [B, { at: [sx, 0, 268], size: [null, 94, null], ry: i * 0.9 }])],
+      ['pin', [[0, 0], [-14, 22], [14, 22], [-28, 44], [0, 44], [28, 44], [-42, 66], [-14, 66], [14, 66], [42, 66]].map(([px, pz]) => [O, { at: [690 + px, 11, 1770 + pz], size: [null, 40, null] }])],
+      ['cabinet', [[DT, { at: [0, 186, 42], size: [336, null, null], long: 'x' }]]],
+      ['lamp', [[DT, { at: [-250, 330, 30], size: [null, 70, null], ry: -Math.PI / 2 }], [DT, { at: [250, 330, 30], size: [null, 70, null], ry: -Math.PI / 2 }]]],
+      ['trophy', [[B, { at: [296, 134, 178], size: [null, 62, null] }]]],
+    );
   }
 
   // ---------- the Arena (through the doorway in the lounge's west wall): where the big bosses fight ----------
@@ -367,7 +385,68 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = [], opts = {})
   const buf = gl.createBuffer(); let total = 0; for (const m of mats) { m.start = total; m.n = m.v.length / 8; total += m.n; }
   const data = new Float32Array(total * 8); for (const m of mats) { data.set(m.v, m.start * 8); m.v = null; }
   gl.bindBuffer(gl.ARRAY_BUFFER, buf); gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
-  [[0, 3, 0], [1, 3, 12], [2, 2, 24]].forEach(([i, n, o]) => { gl.enableVertexAttribArray(A[i]); gl.vertexAttribPointer(A[i], n, gl.FLOAT, false, 32, o); });
+  const useBuf = b => { gl.bindBuffer(gl.ARRAY_BUFFER, b); [[0, 3, 0], [1, 3, 12], [2, 2, 24]].forEach(([i, n, o]) => { gl.enableVertexAttribArray(A[i]); gl.vertexAttribPointer(A[i], n, gl.FLOAT, false, 32, o); }); };
+  useBuf(buf);
+
+  // ---------- finished 3D models (assets/models/<name>.glb) ----------
+  // Small binary glTF files: plain float positions, normals and texture coordinates, one colour picture inside.
+  // A model is read once, then baked into the room at each of its places and drawn like any other material.
+  async function readGlb(url) {
+    const r = await fetch(url); if (!r.ok) throw new Error('no model'); const ab = await r.arrayBuffer(), dv = new DataView(ab);
+    if (dv.getUint32(0, true) !== 0x46546c67) throw new Error('not a model');
+    let o = 12, J = null, bin = 0;
+    while (o < ab.byteLength) { const len = dv.getUint32(o, true), type = dv.getUint32(o + 4, true); if (type === 0x4e4f534a) J = JSON.parse(new TextDecoder().decode(new Uint8Array(ab, o + 8, len))); else if (type === 0x004e4942) bin = o + 8; o += 8 + len; }
+    const READ = { 5120: ['getInt8', 1, 127], 5121: ['getUint8', 1, 255], 5122: ['getInt16', 2, 32767], 5123: ['getUint16', 2, 65535], 5125: ['getUint32', 4, 1], 5126: ['getFloat32', 4, 1] }, WIDTH = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4 };
+    const acc = i => { const a = J.accessors[i], bv = J.bufferViews[a.bufferView], [fn, size, max] = READ[a.componentType], n = WIDTH[a.type], stride = bv.byteStride || n * size, base = bin + (bv.byteOffset || 0) + (a.byteOffset || 0), out = new Float32Array(a.count * n), k = a.normalized ? 1 / max : 1;
+      for (let e = 0; e < a.count; e++) for (let c = 0; c < n; c++) out[e * n + c] = dv[fn](base + e * stride + c * size, true) * k; return out; };
+    const local = J.nodes.map(nd => { if (nd.matrix) return nd.matrix; const [x, y, z, w] = nd.rotation || [0, 0, 0, 1], [sx, sy, sz] = nd.scale || [1, 1, 1], [tx, ty, tz] = nd.translation || [0, 0, 0];
+      return [(1 - 2 * (y * y + z * z)) * sx, 2 * (x * y + z * w) * sx, 2 * (x * z - y * w) * sx, 0, 2 * (x * y - z * w) * sy, (1 - 2 * (x * x + z * z)) * sy, 2 * (y * z + x * w) * sy, 0, 2 * (x * z + y * w) * sz, 2 * (y * z - x * w) * sz, (1 - 2 * (x * x + y * y)) * sz, 0, tx, ty, tz, 1]; });
+    const v = [];                                                                                  // x y z  nx ny nz  u v, three per triangle
+    const walk = (ni, M) => {
+      const nd = J.nodes[ni], W = mul(M, local[ni]);
+      if (nd.mesh != null) for (const p of J.meshes[nd.mesh].primitives) {
+        if (p.mode != null && p.mode !== 4) continue;
+        const P_ = acc(p.attributes.POSITION), N_ = p.attributes.NORMAL != null ? acc(p.attributes.NORMAL) : null, T_ = p.attributes.TEXCOORD_0 != null ? acc(p.attributes.TEXCOORD_0) : null, I_ = p.indices != null ? acc(p.indices) : null, count = I_ ? I_.length : P_.length / 3;
+        for (let e = 0; e < count; e++) {
+          const i = I_ ? I_[e] : e, x = P_[i * 3], y = P_[i * 3 + 1], z = P_[i * 3 + 2], a = N_ ? N_[i * 3] : 0, b = N_ ? N_[i * 3 + 1] : 1, c = N_ ? N_[i * 3 + 2] : 0;
+          v.push(W[0] * x + W[4] * y + W[8] * z + W[12], W[1] * x + W[5] * y + W[9] * z + W[13], W[2] * x + W[6] * y + W[10] * z + W[14], W[0] * a + W[4] * b + W[8] * c, W[1] * a + W[5] * b + W[9] * c, W[2] * a + W[6] * b + W[10] * c, T_ ? T_[i * 2] : 0, T_ ? T_[i * 2 + 1] : 0);
+        }
+      }
+      for (const c of nd.children || []) walk(c, W);
+    };
+    for (const root of J.scenes[J.scene || 0].nodes) walk(root, ident());
+    const m0 = (J.materials || [])[0] || {}, pbr = m0.pbrMetallicRoughness || {}, tx = pbr.baseColorTexture ? J.textures[pbr.baseColorTexture.index] : null, src = tx ? (tx.extensions && tx.extensions.EXT_texture_webp ? tx.extensions.EXT_texture_webp.source : tx.source) : null, im = src != null ? J.images[src] : null;
+    let t = white;
+    if (im && im.bufferView != null) {
+      const bv = J.bufferViews[im.bufferView], url2 = URL.createObjectURL(new Blob([new Uint8Array(ab, bin + (bv.byteOffset || 0), bv.byteLength)], { type: im.mimeType || 'image/webp' })), pic = new Image();
+      await new Promise((ok, no) => { pic.onload = ok; pic.onerror = no; pic.src = url2; }); URL.revokeObjectURL(url2);
+      const pot = n => (n & (n - 1)) === 0; t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, pic);
+      if (pot(pic.naturalWidth) && pot(pic.naturalHeight)) { gl.generateMipmap(gl.TEXTURE_2D); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR); } else gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    }
+    const lo = [1e9, 1e9, 1e9], hi = [-1e9, -1e9, -1e9]; for (let i = 0; i < v.length; i += 8) for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], v[i + k]); hi[k] = Math.max(hi[k], v[i + k]); }
+    return { v, t, lo, hi, tint: pbr.baseColorFactor ? pbr.baseColorFactor.slice(0, 3) : [1, 1, 1] };
+  }
+  // places: [[T, { at:[x,y,z] where the middle of its base goes (in T's frame), size:[w,h,d] (leave out the ones that should
+  // keep the model's proportions), ry: a turn about its own upright axis first, long:'x'|'z' which way its long side should run }]]
+  async function putModel(name, places) {
+    const g = await readGlb(`assets/models/${name}.glb`), out = new Float32Array(g.v.length * places.length), cx = (g.lo[0] + g.hi[0]) / 2, cz = (g.lo[2] + g.hi[2]) / 2; let w = 0, sumX = 0, sumZ = 0;
+    for (const [T, o] of places) {
+      let ry = o.ry || 0, dx = g.hi[0] - g.lo[0], dy = g.hi[1] - g.lo[1], dz = g.hi[2] - g.lo[2];
+      if (o.long && (o.long === 'z') !== (dz > dx)) ry += Math.PI / 2;
+      const c = Math.cos(ry), s = Math.sin(ry), ex = Math.abs(c) * dx + Math.abs(s) * dz, ez = Math.abs(s) * dx + Math.abs(c) * dz, sz_ = o.size || [], want = [sz_[0] ? sz_[0] / ex : 0, sz_[1] ? sz_[1] / dy : 0, sz_[2] ? sz_[2] / ez : 0], first = want.find(k => k) || 1, S = want.map(k => k || first), at = o.at || [0, 0, 0];
+      const T0 = { x: 0, z: 0, th: T.th || 0 }, base = tf(T, at); sumX += base[0]; sumZ += base[2];
+      for (let i = 0; i < g.v.length; i += 8) {
+        const x = g.v[i] - cx, y = g.v[i + 1] - g.lo[1], z = g.v[i + 2] - cz, p = tf(T, [at[0] + (x * c + z * s) * S[0], at[1] + y * S[1], at[2] + (-x * s + z * c) * S[2]]);
+        const a = g.v[i + 3], b = g.v[i + 4], d = g.v[i + 5], n = tf(T0, [(a * c + d * s) / S[0], b / S[1], (-a * s + d * c) / S[2]]), l = Math.hypot(n[0], n[1], n[2]) || 1;
+        out[w++] = p[0]; out[w++] = p[1]; out[w++] = p[2]; out[w++] = n[0] / l; out[w++] = n[1] / l; out[w++] = n[2] / l; out[w++] = g.v[i + 6]; out[w++] = g.v[i + 7];
+      }
+    }
+    const ext = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, ext); gl.bufferData(gl.ARRAY_BUFFER, out, gl.STATIC_DRAW); useBuf(buf);
+    for (const m of mats) if (m.fb === name) m.hide = true;                                         // the boxes it replaces
+    mats.push({ t: g.t, blend: false, v: null, tint: g.tint, emis: 0.3, spec: 0.22, glow: false, floor: false, dyn: null, ext, start: 0, n: out.length / 8, at: [sumX / places.length, sumZ / places.length], model: name });
+  }
+  const modelsReady = Promise.all(MODELS.map(([name, places]) => putModel(name, places).then(() => name, () => null))).then(list => list.filter(Boolean));
   // the shader takes 18 lights; each frame it gets the 18 nearest the player
   const LP = new Float32Array(54), LC = new Float32Array(54);
   function setLights(P) {
@@ -386,18 +465,19 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = [], opts = {})
   }
   const drawSet = (pred, time, mirror) => {
     for (const m of mats) {
-      if (!m.n || m.sprite || !pred(m)) continue;
+      if (!m.n || m.sprite || m.hide || !pred(m)) continue;
+      if (m.ext) { if ((m.at[0] - eyeXZ[0]) ** 2 + (m.at[1] - eyeXZ[1]) ** 2 > 2900 * 2900) continue; useBuf(m.ext); }   // a finished model: its own vertices; skipped when far away
       gl.uniformMatrix4fv(U.uM, false, m.dyn ? mul(trans(0, 400 + Math.sin(time * 1.6) * 8, BZ), rotY(time * 0.7)) : I);
       gl.bindTexture(gl.TEXTURE_2D, m.t); gl.uniform3fv(U.uTint, m.tint);
       gl.uniform1f(U.uEmis, m.emis * (m.emis === 1 && !m.glow ? 0.94 + 0.06 * Math.sin(time * 9 + m.start) : 1)); gl.uniform1f(U.uSpec, m.spec);
-      gl.drawArrays(gl.TRIANGLES, m.start, m.n);
+      gl.drawArrays(gl.TRIANGLES, m.start, m.n); if (m.ext) useBuf(buf);
     }
   };
-  let sprites = [], beams = [];
+  let sprites = [], beams = [], eyeXZ = [0, 0];
   // One eye: `view`/`proj` are column-major matrices, `eye` the world-space eye, `byaw` the yaw sprites turn to face.
   function drawScene(view, proj, eye, byaw, time, mirrorFloor) {
     const flip = ident(); flip[5] = -1;
-    gl.uniform3f(U.uEye, eye[0], eye[1], eye[2]);
+    gl.uniform3f(U.uEye, eye[0], eye[1], eye[2]); eyeXZ = [eye[0], eye[2]];
     const pass = (vp, mirror) => {
       gl.uniformMatrix4fv(U.uVP, false, vp); gl.uniform1f(U.uMirror, mirror ? 1 : 0); gl.uniform1f(U.uAlpha, 1);
       gl.disable(gl.BLEND); gl.depthMask(true); drawSet(m => !m.glow && !m.floor && !m.blend, time);
@@ -496,5 +576,5 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = [], opts = {})
   }
   const hfov = () => 2 * Math.atan(Math.tan(fov / 2) * asp);
   resize();
-  return { videoQuad, stations, render, pick, pickRay, xrBegin, xrRay, renderXR, hfov, vfov: () => fov, tex, freeTex: t => gl.deleteTexture(t), setScores: rows => { scoreRows = Array.isArray(rows) ? rows.slice(0, 4) : []; if (scoreWall && scoreWall.t && scoreWall.t.redraw) scoreWall.t.redraw(); } };
+  return { modelsReady, videoQuad, stations, render, pick, pickRay, xrBegin, xrRay, renderXR, hfov, vfov: () => fov, tex, freeTex: t => gl.deleteTexture(t), setScores: rows => { scoreRows = Array.isArray(rows) ? rows.slice(0, 4) : []; if (scoreWall && scoreWall.t && scoreWall.t.redraw) scoreWall.t.redraw(); } };
 }
