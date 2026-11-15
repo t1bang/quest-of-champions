@@ -40,19 +40,19 @@ function drawBoss(x, W, H, kind, state, name, level, tint) {
   if (ko) { x.translate(W / 2, H); x.rotate(-0.45); x.translate(-W / 2, -H + 3 * u); }
   if (kind === 'daily') {              // a runaway arcade cabinet
     const armY = wind ? -1 : 9;
-    R('#000', 0.5, armY - 0.5, 5, 11); R('#000', 26.5, armY - 0.5, 5, 11); R('#2a1a40', 1, armY, 4, 10); R('#2a1a40', 27, armY, 4, 10);
+    R('#000', 0.5, armY - 0.5, 5, 11); R('#000', 26.5, armY - 0.5, 5, 11); R('#401013', 1, armY, 4, 10); R('#401013', 27, armY, 4, 10);
     R('#000', -0.2, wind ? -3.5 : 18.5, 6.4, 5.6); R('#000', 25.8, wind ? -3.5 : 18.5, 6.4, 5.6); R(tint, 0.3, wind ? -3 : 19, 5.4, 4.6); R(tint, 26.3, wind ? -3 : 19, 5.4, 4.6);
-    R('#000', 6, 0, 20, 25.5); R('#1a1026', 7, 1, 18, 23.5); R(tint, 7, 1, 18, 4); R('#000', 9, 2.2, 14, 1.6);
+    R('#000', 6, 0, 20, 25.5); R('#260a0c', 7, 1, 18, 23.5); R(tint, 7, 1, 18, 4); R('#000', 9, 2.2, 14, 1.6);
     R('#05020a', 9, 6, 14, 9); R(eye, 11, 8.4, 3, 3); R(eye, 18, 8.4, 3, 3); R('#05020a', 12, 9.4, 1.4, 1.4); R('#05020a', 19, 9.4, 1.4, 1.4);
     R(tint, 10, 7.2, 5, 1.1); R(tint, 17, 7.2, 5, 1.1);
     if (wind) { R('#ff2a3c', 12, 11.6, 8, 2.8); for (let i = 0; i < 4; i++) R('#fff', 12.4 + i * 2, 11.6, 1, 1); }
     else { R('#fff', 12, 12.2, 8, 1.6); for (let i = 0; i < 4; i++) R('#05020a', 13.2 + i * 2, 12.2, 0.7, 1.6); }
-    R('#3a2a55', 6, 16, 20, 3); R('#ff2a3c', 10.5, 14.6, 2, 2.4); R('#ffc93a', 16.5, 16.7, 2, 1.5); R('#31d7ff', 19.5, 16.7, 2, 1.5); R('#3dff9a', 22.5, 16.7, 2, 1.5);
+    R('#55191a', 6, 16, 20, 3); R('#ff2a3c', 10.5, 14.6, 2, 2.4); R('#ffc93a', 16.5, 16.7, 2, 1.5); R('#31d7ff', 19.5, 16.7, 2, 1.5); R('#3dff9a', 22.5, 16.7, 2, 1.5);
     R('#ffc93a', 15, 20.5, 2, 3); R('#000', 15.7, 21, 0.6, 2);
-    R('#000', 7, 24.5, 7.5, 3.4); R('#000', 17.5, 24.5, 7.5, 3.4); R('#2a1a40', 7.5, 25, 6.5, 2.4); R('#2a1a40', 18, 25, 6.5, 2.4);
+    R('#000', 7, 24.5, 7.5, 3.4); R('#000', 17.5, 24.5, 7.5, 3.4); R('#401013', 7.5, 25, 6.5, 2.4); R('#401013', 18, 25, 6.5, 2.4);
   } else {                             // a collapsing star with a crown, one eye and two floating fists
     const fy = wind ? 3 : 17;
-    C('#000', 16, 13.5, 11.6); C('#1b0b33', 16, 13.5, 11); C('#2e1458', 13, 10.5, 6.5);
+    C('#000', 16, 13.5, 11.6); C('#33070c', 16, 13.5, 11); C('#580c15', 13, 10.5, 6.5);
     x.strokeStyle = tint; x.lineWidth = u * 1.3; x.beginPath(); x.ellipse(16 * u, top + 14.5 * u, 15 * u, 3.6 * u, -0.18, 0, 7); x.stroke();
     for (let i = 0; i < 5; i++) { R('#000', 8.6 + i * 3.2, 0.2 - (i % 2 ? 0 : 1.6), 2.4, 4.4); R('#ffc93a', 9 + i * 3.2, 0.7 - (i % 2 ? 0 : 1.6), 1.6, 3.6); }
     C('#000', 16, 11, 5.2); C(eye, 16, 11, 4.6); C(ko ? '#222' : '#ff2a3c', 16, 11.4, wind ? 3 : 2.2); C('#05020a', 16, 11.6, 1);
@@ -65,7 +65,7 @@ function drawBoss(x, W, H, kind, state, name, level, tint) {
   const label = ko ? 'K.O.' : `${name}  LV ${level}`; x.strokeText(label, W / 2, 3, W - 8); x.fillStyle = ko ? '#fff' : tint; x.fillText(label, W / 2, 3, W - 8);
 }
 function drawBar(x, W, H, pct, tint) {
-  x.clearRect(0, 0, W, H); x.fillStyle = '#000'; x.fillRect(0, 4, W, H - 8); x.fillStyle = '#2a1a40'; x.fillRect(4, 8, W - 8, H - 16);
+  x.clearRect(0, 0, W, H); x.fillStyle = '#000'; x.fillRect(0, 4, W, H - 8); x.fillStyle = '#401013'; x.fillRect(4, 8, W - 8, H - 16);
   x.fillStyle = pct > 0.5 ? '#3dff9a' : pct > 0.2 ? '#ffc93a' : '#ff2a3c'; x.fillRect(4, 8, Math.round((W - 8) * Math.max(0, Math.min(1, pct))), H - 16);
   x.fillStyle = 'rgba(255,255,255,.35)'; x.fillRect(4, 8, W - 8, 4); x.fillStyle = tint; x.fillRect(0, 4, 4, H - 8); x.fillRect(W - 4, 4, 4, H - 8);
 }
@@ -263,7 +263,7 @@ export function createLive(ctx) {
   function paintRadar() {
     const off = ctx.blocked(); if (radar.hidden !== off) radar.hidden = off; if (off) return;
     const W = 192, c = W / 2, R = 1500, s = Math.sin(P.yaw), co = Math.cos(P.yaw);
-    rc.clearRect(0, 0, W, W); rc.fillStyle = 'rgba(11,6,18,.8)'; rc.beginPath(); rc.arc(c, c, c - 4, 0, 7); rc.fill(); rc.lineWidth = 4; rc.strokeStyle = '#ffc93a'; rc.stroke();
+    rc.clearRect(0, 0, W, W); rc.fillStyle = 'rgba(18,4,5,.8)'; rc.beginPath(); rc.arc(c, c, c - 4, 0, 7); rc.fill(); rc.lineWidth = 4; rc.strokeStyle = '#ffc93a'; rc.stroke();
     rc.strokeStyle = 'rgba(255,255,255,.14)'; rc.lineWidth = 2; rc.beginPath(); rc.arc(c, c, (c - 4) / 2, 0, 7); rc.stroke();
     const dot = (wx, wz, col, r) => { const dx = wx - P.x, dz = wz - P.z; let sx = dx * co + dz * s, sy = -(dx * s - dz * co), d = Math.hypot(sx, sy), k = (c - 14) / R; if (d * k > c - 14) { sx *= (c - 14) / (d * k); sy *= (c - 14) / (d * k); } rc.fillStyle = '#000'; rc.beginPath(); rc.arc(c + sx * k, c + sy * k, r + 3, 0, 7); rc.fill(); rc.fillStyle = col; rc.beginPath(); rc.arc(c + sx * k, c + sy * k, r, 0, 7); rc.fill(); };
     if (moves) dot(moves.bot.x, moves.bot.z, '#31d7ff', 5);

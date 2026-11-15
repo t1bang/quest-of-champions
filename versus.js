@@ -51,8 +51,8 @@ export function createVersus(ctx) {
     const pos = now => { const who = mine() ? match.me : match.them, sp = 0.9 + who.shots * 0.35, u = ((now - match.t0) / 1000 * sp) % 2; return u < 1 ? u : 2 - u; };
     const draw = now => {
       if (!match || match.mid !== mid) return;
-      const p = match.frozen == null ? pos(now) : match.frozen, my = mine(); c.fillStyle = '#0b0612'; c.fillRect(0, 0, 640, 280);
-      c.fillStyle = '#2a1a40'; c.fillRect(40, 110, 560, 40); c.fillStyle = '#35e06f'; c.fillRect(40 + 560 * 0.36, 110, 560 * 0.28, 40); c.fillStyle = '#ffc93a'; c.fillRect(40 + 560 * 0.465, 110, 560 * 0.07, 40);
+      const p = match.frozen == null ? pos(now) : match.frozen, my = mine(); c.fillStyle = '#120405'; c.fillRect(0, 0, 640, 280);
+      c.fillStyle = '#401013'; c.fillRect(40, 110, 560, 40); c.fillStyle = '#35e06f'; c.fillRect(40 + 560 * 0.36, 110, 560 * 0.28, 40); c.fillStyle = '#ffc93a'; c.fillRect(40 + 560 * 0.465, 110, 560 * 0.07, 40);
       c.globalAlpha = my || match.frozen != null ? 1 : 0.45; c.fillStyle = my ? '#fff' : '#31d7ff'; c.fillRect(40 + 560 * p - 4, 94, 8, 72); c.font = '44px sans-serif'; c.textAlign = 'center'; c.fillText(g.icon, 40 + 560 * p, 82); c.globalAlpha = 1;
       c.font = '13px "Press Start 2P",monospace'; c.textAlign = 'left'; c.fillStyle = my ? '#ffc93a' : '#fff'; c.fillText(`YOU  ${match.me.total}`, 40, 30); c.textAlign = 'right'; c.fillStyle = my ? '#fff' : '#31d7ff'; c.fillText(`${match.them.total}  ${oppName.toUpperCase()}`, 600, 30);
       c.font = '9px "Press Start 2P",monospace'; c.fillStyle = '#9c8fb5'; c.textAlign = 'left'; c.fillText(`TRY ${Math.min(match.me.shots + 1, g.rounds)}/${g.rounds}`, 40, 48); c.textAlign = 'right'; c.fillText(`TRY ${Math.min(match.them.shots + 1, g.rounds)}/${g.rounds}`, 600, 48);

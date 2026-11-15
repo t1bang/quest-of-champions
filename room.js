@@ -8,9 +8,9 @@ void main(){vec4 w=uM*vec4(aP,1.);vP=w.xyz;vN=mat3(uM)*aN;vU=aU;gl_Position=uVP*
 const FS = `precision highp float;varying vec3 vP;varying vec3 vN;varying vec2 vU;uniform sampler2D uT;uniform vec3 uEye;uniform vec3 uLP[18];uniform vec3 uLC[18];
 uniform vec3 uTint;uniform float uEmis;uniform float uSpec;uniform float uAlpha;uniform float uMirror;
 void main(){if(uMirror>0.5&&vP.y<0.)discard;vec4 t=texture2D(uT,vU);if(t.a<0.04)discard;vec3 n=normalize(vN);vec3 v=normalize(uEye-vP);if(dot(n,v)<0.)n=-n;
-vec3 lit=vec3(.2,.17,.27);vec3 sp=vec3(0.);
+vec3 lit=vec3(.27,.18,.18);vec3 sp=vec3(0.);
 for(int i=0;i<18;i++){vec3 d=uLP[i]-vP;float r2=dot(d,d);vec3 l=d*inversesqrt(r2);float a=1./(1.+r2/160000.);lit+=uLC[i]*max(dot(n,l),0.)*a;sp+=uLC[i]*pow(max(dot(n,normalize(l+v)),0.),48.)*a;}
-vec3 c=t.rgb*uTint*mix(lit,vec3(1.),uEmis)+sp*uSpec;float f=smoothstep(1000.,3400.,length(uEye-vP))*.55;c=mix(c,vec3(.05,.02,.09),f*(1.-uEmis*.7));
+vec3 c=t.rgb*uTint*mix(lit,vec3(1.),uEmis)+sp*uSpec;float f=smoothstep(1000.,3400.,length(uEye-vP))*.55;c=mix(c,vec3(.09,.025,.03),f*(1.-uEmis*.7));
 gl_FragColor=vec4(c,t.a*uAlpha);}`;
 
 const mul = (a, b) => { const o = new Float32Array(16); for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) o[c * 4 + r] = a[r] * b[c * 4] + a[4 + r] * b[c * 4 + 1] + a[8 + r] * b[c * 4 + 2] + a[12 + r] * b[c * 4 + 3]; return o; };
@@ -85,23 +85,23 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = [], opts = {})
   // ---------- room shell ----------
   const O = { x: 0, z: 0 }, { HW, HD, ZF, BZ, WD, WZ, WX, WZ0, WZ1 } = DIMS, CH = 560, LW = 800; // LW = lounge half-width
   const floorT = tex(512, 512, (x, w) => {
-    x.fillStyle = '#0d0716'; x.fillRect(0, 0, w, w);
-    for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) { x.fillStyle = (i + j) % 2 ? '#1b1030' : '#120a22'; x.fillRect(i * 128 + 3, j * 128 + 3, 122, 122); }
+    x.fillStyle = '#160406'; x.fillRect(0, 0, w, w);
+    for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) { x.fillStyle = (i + j) % 2 ? '#300a0c' : '#220608'; x.fillRect(i * 128 + 3, j * 128 + 3, 122, 122); }
     x.strokeStyle = 'rgba(255,42,60,.55)'; x.lineWidth = 3; for (let i = 0; i <= 4; i++) { x.beginPath(); x.moveTo(i * 128, 0); x.lineTo(i * 128, w); x.moveTo(0, i * 128); x.lineTo(w, i * 128); x.stroke(); }
     [['#ffc93a', 64, 64], ['#3ea8ff', 320, 192], ['#35e06f', 192, 448], ['#ff4fd8', 448, 320]].forEach(([c, a, b]) => { x.fillStyle = c; x.beginPath(); x.moveTo(a, b - 16); x.lineTo(a + 16, b); x.lineTo(a, b + 16); x.lineTo(a - 16, b); x.fill(); });
   }, true);
   const wallT = tex(512, 512, (x, w) => {
-    const g = x.createLinearGradient(0, 0, 0, w); g.addColorStop(0, '#241038'); g.addColorStop(.6, '#3a1a5a'); g.addColorStop(1, '#150a24'); x.fillStyle = g; x.fillRect(0, 0, w, w);
+    const g = x.createLinearGradient(0, 0, 0, w); g.addColorStop(0, '#380a10'); g.addColorStop(.6, '#5a101a'); g.addColorStop(1, '#240609'); x.fillStyle = g; x.fillRect(0, 0, w, w);
     x.fillStyle = 'rgba(0,0,0,.35)'; for (let i = 0; i < 4; i++) x.fillRect(i * 128, 0, 6, w);
     x.fillStyle = 'rgba(255,255,255,.05)'; for (let i = 0; i < 4; i++) x.fillRect(i * 128 + 6, 0, 3, w);
-    x.fillStyle = '#ff2a3c'; x.fillRect(0, 26, w, 10); x.fillStyle = '#ffc93a'; x.fillRect(0, 44, w, 4); x.fillStyle = '#07040c'; x.fillRect(0, w - 40, w, 40); x.fillStyle = '#ff2a3c'; x.fillRect(0, w - 44, w, 4);
+    x.fillStyle = '#ffc93a'; x.fillRect(0, 26, w, 10); x.fillStyle = '#ff7a4a'; x.fillRect(0, 44, w, 4); x.fillStyle = '#0c0405'; x.fillRect(0, w - 40, w, 40); x.fillStyle = '#ffc93a'; x.fillRect(0, w - 44, w, 4);
   }, true);
-  const ceilT = tex(256, 256, (x, w) => { x.fillStyle = '#0a0612'; x.fillRect(0, 0, w, w); x.strokeStyle = '#1d1230'; x.lineWidth = 4; x.strokeRect(2, 2, w - 4, w - 4); x.fillStyle = '#fff3d6'; x.fillRect(48, 104, 160, 48); }, true);
+  const ceilT = tex(256, 256, (x, w) => { x.fillStyle = '#120404'; x.fillRect(0, 0, w, w); x.strokeStyle = '#300b0d'; x.lineWidth = 4; x.strokeRect(2, 2, w - 4, w - 4); x.fillStyle = '#fff3d6'; x.fillRect(48, 104, 160, 48); }, true);
   const floorM = mat(floorT, { floor: true, spec: 0.5 }), wallM = mat(wallT, { spec: 0.1 }), ceilM = mat(ceilT, { emis: 0.55, spec: 0 });
   quad(floorM, O, [-HW, 0, -HD], [HW, 0, -HD], [HW, 0, ZF], [-HW, 0, ZF], [0, 0, HW / 100, (ZF + HD) / 200]);
   quad(ceilM, O, [-HW, CH, ZF], [HW, CH, ZF], [HW, CH, -HD], [-HW, CH, -HD], [0, 0, HW / 200, (ZF + HD) / 400]);
   const DW = 150, CW = DIMS.BW, CZ = -HD - DIMS.BD; // doorway half-width, back room half-width, back room end
-  const arenaFloor = () => tex(512, 512, (x, w) => { x.fillStyle = '#100818'; x.fillRect(0, 0, w, w); x.strokeStyle = '#241033'; x.lineWidth = 4; for (let k = 0; k <= 8; k++) { x.beginPath(); x.moveTo(k * 64, 0); x.lineTo(k * 64, w); x.moveTo(0, k * 64); x.lineTo(w, k * 64); x.stroke(); } }, true);
+  const arenaFloor = () => tex(512, 512, (x, w) => { x.fillStyle = '#180507'; x.fillRect(0, 0, w, w); x.strokeStyle = '#330a10'; x.lineWidth = 4; for (let k = 0; k <= 8; k++) { x.beginPath(); x.moveTo(k * 64, 0); x.lineTo(k * 64, w); x.moveTo(0, k * 64); x.lineTo(w, k * 64); x.stroke(); } }, true);
   const wall = (x0, z0, x1, z1) => quad(wallM, O, [x0, CH, z0], [x1, CH, z1], [x1, 0, z1], [x0, 0, z0], [0, 0, Math.hypot(x1 - x0, z1 - z0) / 400, 1]);
   wall(-HW, -HD, -DW, -HD); wall(DW, -HD, HW, -HD);                 // back wall, with the hallway doorway
   wall(-CW, -HD, -CW, CZ); wall(CW, CZ, CW, -HD); wall(-CW, CZ, CW, CZ); // the back room
@@ -149,9 +149,9 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = [], opts = {})
     const c = g.cab, trimC = g.trim || g.color;
     const scr = imgTex(c ? c + '-screen.jpg' : g.art, 512, 512);
     const screen = mat(c ? scr : withImg(g.art, 512, 512, (x, w, h, e) => { x.fillStyle = '#000'; x.fillRect(0, 0, w, h); if (e.ok) { x.save(); x.scale(1, h / (w * 0.75)); x.globalAlpha = .35; drawFit(x, e, 0, 0, w, w * .75, true); x.globalAlpha = 1; x.fillStyle = 'rgba(0,0,0,.45)'; x.fillRect(0, 0, w, w * .75); drawFit(x, e, 0, 0, w, w * .75, false); x.restore(); } }), { emis: 1, spec: 0.7 });
-    const marq = mat(c ? imgTex(c + '-marquee.jpg', 512, 128) : tex(512, 128, (x, w, h) => { const gr = x.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#1a0b2b'); gr.addColorStop(1, g.color); x.fillStyle = gr; x.fillRect(0, 0, w, h); fitText(x, g.title.toUpperCase(), w / 2, h / 2 + 4, 66, w - 36, '#ffc93a', '#000'); }), { emis: 1, spec: 0 });
-    const side = mat(c ? imgTex(c + '-side.jpg', 256, 512) : withImg(g.art, 256, 512, (x, w, h, e) => { const gr = x.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#1a0b2b'); gr.addColorStop(1, g.color); x.fillStyle = gr; x.fillRect(0, 0, w, h); x.globalAlpha = .9; drawFit(x, e, 14, 150, w - 28, 230, true); x.globalAlpha = 1; x.strokeStyle = '#000'; x.lineWidth = 6; x.strokeRect(14, 150, w - 28, 230); x.save(); x.translate(w / 2, 86); x.rotate(-0.12); fitText(x, g.title.toUpperCase(), 0, 0, 44, w - 30, '#ffc93a', '#000'); x.restore(); text(x, 'T1', w / 2, 448, `80px ${BIG}`, '#fff', '#000'); }), { emis: 0.55, spec: 0.4 });
-    const panel = mat(c ? imgTex(c + '-panel.jpg', 512, 128) : tex(512, 128, (x, w, h) => { const gr = x.createLinearGradient(0, 0, w, 0); gr.addColorStop(0, '#1a0b2b'); gr.addColorStop(.5, g.color); gr.addColorStop(1, '#1a0b2b'); x.fillStyle = gr; x.fillRect(0, 0, w, h); x.fillStyle = 'rgba(0,0,0,.45)'; x.fillRect(0, 0, w, h); for (const ox of [150, 390]) for (let k = 0; k < 6; k++) { x.fillStyle = '#000'; x.beginPath(); x.arc(ox + (k % 3) * 34, 44 + (k / 3 | 0) * 34, 15, 0, 7); x.fill(); x.fillStyle = k < 3 ? '#ffc93a' : g.color; x.beginPath(); x.arc(ox + (k % 3) * 34, 42 + (k / 3 | 0) * 34, 12, 0, 7); x.fill(); } text(x, 'P1 START      P2 START', w / 2, 112, `10px ${PIX}`, '#fff'); }), { emis: 0.6, spec: 0.5 });
+    const marq = mat(c ? imgTex(c + '-marquee.jpg', 512, 128) : tex(512, 128, (x, w, h) => { const gr = x.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#2b070c'); gr.addColorStop(1, g.color); x.fillStyle = gr; x.fillRect(0, 0, w, h); fitText(x, g.title.toUpperCase(), w / 2, h / 2 + 4, 66, w - 36, '#ffc93a', '#000'); }), { emis: 1, spec: 0 });
+    const side = mat(c ? imgTex(c + '-side.jpg', 256, 512) : withImg(g.art, 256, 512, (x, w, h, e) => { const gr = x.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#2b070c'); gr.addColorStop(1, g.color); x.fillStyle = gr; x.fillRect(0, 0, w, h); x.globalAlpha = .9; drawFit(x, e, 14, 150, w - 28, 230, true); x.globalAlpha = 1; x.strokeStyle = '#000'; x.lineWidth = 6; x.strokeRect(14, 150, w - 28, 230); x.save(); x.translate(w / 2, 86); x.rotate(-0.12); fitText(x, g.title.toUpperCase(), 0, 0, 44, w - 30, '#ffc93a', '#000'); x.restore(); text(x, 'T1', w / 2, 448, `80px ${BIG}`, '#fff', '#000'); }), { emis: 0.55, spec: 0.4 });
+    const panel = mat(c ? imgTex(c + '-panel.jpg', 512, 128) : tex(512, 128, (x, w, h) => { const gr = x.createLinearGradient(0, 0, w, 0); gr.addColorStop(0, '#2b070c'); gr.addColorStop(.5, g.color); gr.addColorStop(1, '#2b070c'); x.fillStyle = gr; x.fillRect(0, 0, w, h); x.fillStyle = 'rgba(0,0,0,.45)'; x.fillRect(0, 0, w, h); for (const ox of [150, 390]) for (let k = 0; k < 6; k++) { x.fillStyle = '#000'; x.beginPath(); x.arc(ox + (k % 3) * 34, 44 + (k / 3 | 0) * 34, 15, 0, 7); x.fill(); x.fillStyle = k < 3 ? '#ffc93a' : g.color; x.beginPath(); x.arc(ox + (k % 3) * 34, 42 + (k / 3 | 0) * 34, 12, 0, 7); x.fill(); } text(x, 'P1 START      P2 START', w / 2, 112, `10px ${PIX}`, '#fff'); }), { emis: 0.6, spec: 0.5 });
     const base = mat(c ? imgTex(c + '-base.jpg', 512, 128) : tex(512, 128, (x, w, h) => { x.fillStyle = '#0c0c14'; x.fillRect(0, 0, w, h); x.fillStyle = g.color; x.fillRect(0, 0, w, 6); for (let k = 0; k < 16; k++) { const bh = 20 + (k * 37 % 5) * 9; x.globalAlpha = .55; x.fillRect(k * 32 + 2, 62 - bh, 28, bh); } x.globalAlpha = 1; x.fillStyle = '#000'; x.fillRect(0, 62, w, 66); text(x, '——  BIG BANG ARCADE  ——', w / 2, 96, `17px ${PIX}`, '#ffc93a'); }), { emis: 0.6, spec: 0.3 });
     const coin = mat(c ? imgTex(c + '-coin.jpg', 256, 256) : coinT, { emis: 0.45, spec: 0.6 }), trim = solid(trimC, 0.5, 0.9);
     const P3 = (x, p) => [x, p[1], p[0]], uvS = (p, flip) => [flip ? 1 - p[0] / 205 : p[0] / 205, 1 - p[1] / 470];
@@ -221,7 +221,7 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = [], opts = {})
   box(solid('#1a1a24', 0, 0.8), BB, -130, 130, 0, 290, -130, 130, { front: bbM, back: bbM, left: bbM, right: bbM });
   for (const [ex, ez] of [[-130, -130], [130, -130], [-130, 130], [130, 130]]) box(solid('#ffc93a', 1, 0), BB, ex - 6, ex + 6, 0, 296, ez - 6, ez + 6);
   light(BB, [0, 330, 260], '#ffc93a', 0.9);
-  const spinM = mat(tex(512, 128, (x, w, h) => { x.fillStyle = '#ffc93a'; x.fillRect(0, 0, w, h); fitText(x, '★ BIG BANG BOX ★', w / 2, h / 2 + 4, 58, w - 24, '#0b0612'); }), { emis: 1, spec: 0, dyn: 'spin' });
+  const spinM = mat(tex(512, 128, (x, w, h) => { x.fillStyle = '#ffc93a'; x.fillRect(0, 0, w, h); fitText(x, '★ BIG BANG BOX ★', w / 2, h / 2 + 4, 58, w - 24, '#120405'); }), { emis: 1, spec: 0, dyn: 'spin' });
   { const S = { x: 0, z: 0 }; box(spinM, S, -80, 80, -24, 24, -80, 80); }
   stations.bigbox = { id: 'bigbox', label: 'OPEN THE BIG BANG BOX', x: 0, z: BZ + 130, w: 260, depth: 0, T: { x: 0, z: BZ + 130, th: 0 }, open: handlers.bigbox, min: [-140, 0, BZ - 140], max: [140, 300, BZ + 140] };
 
@@ -332,7 +332,7 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = [], opts = {})
     box(solid('#16161c', 0, 0.6), O, 606, 774, 0, 10, 1250, 1870); quad(laneT, O, [622, 11, 1860], [758, 11, 1860], [758, 11, 1250], [622, 11, 1250]);
     box(solid('#0c0c14', 0, 0.5), O, 606, 774, 0, 150, 1870, 1896);
     [[0, 0], [-14, 22], [14, 22], [-28, 44], [0, 44], [28, 44], [-42, 66], [-14, 66], [14, 66], [42, 66]].forEach(([px, pz]) => { box(fb('pin', '#ffffff', 0.5, 0.8), O, 690 + px - 5, 690 + px + 5, 11, 46, 1770 + pz - 5, 1770 + pz + 5); box(fb('pin', '#d2142a', 0.5, 0.5), O, 690 + px - 5.5, 690 + px + 5.5, 34, 39, 1770 + pz - 5.5, 1770 + pz + 5.5); });
-    sphere(solid('#3b2a6b', 0.25, 1), O, 690, 27, 1300, 16);
+    sphere(solid('#6b191b', 0.25, 1), O, 690, 27, 1300, 16);
     quad(neon('BOWLING', '#3ea8ff'), { x: 798, z: 1560, th: -Math.PI / 2 }, [-150, 470, 4], [150, 470, 4], [150, 400, 4], [-150, 400, 4]);
     reg('bowling', 'GO BOWLING', 690, 1250, Math.PI, 150, [606, 0, 1250], [774, 150, 1896], () => handlers.mini('bowling'), -0.2);
     light(O, [690, 260, 1650], '#3ea8ff', 0.7);
@@ -355,7 +355,7 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = [], opts = {})
   // ---------- the Arena (through the doorway in the lounge's west wall): where the big bosses fight ----------
   {
     const { AX, AZ0, AZ1, ADZ, ADW } = DIMS, AX0 = -LW, RED = '#ff2a3c', GOLD = '#ffc93a', cx = (AX + AX0) / 2, cz = (AZ0 + AZ1) / 2;
-    const arenaT = tex(512, 512, (x, w) => { x.fillStyle = '#140a1c'; x.fillRect(0, 0, w, w); x.strokeStyle = '#2a1238'; x.lineWidth = 4; for (let k = 0; k <= 8; k++) { x.beginPath(); x.moveTo(k * 64, 0); x.lineTo(k * 64, w); x.moveTo(0, k * 64); x.lineTo(w, k * 64); x.stroke(); } }, true);
+    const arenaT = tex(512, 512, (x, w) => { x.fillStyle = '#1c0609'; x.fillRect(0, 0, w, w); x.strokeStyle = '#380b13'; x.lineWidth = 4; for (let k = 0; k <= 8; k++) { x.beginPath(); x.moveTo(k * 64, 0); x.lineTo(k * 64, w); x.moveTo(0, k * 64); x.lineTo(w, k * 64); x.stroke(); } }, true);
     quad(mat(arenaT, { floor: true, spec: 0.6 }), O, [AX, 0, AZ0], [AX0, 0, AZ0], [AX0, 0, AZ1], [AX, 0, AZ1], [0, 0, (AX0 - AX) / 260, (AZ1 - AZ0) / 260]);
     quad(ceilM, O, [AX, CH, AZ1], [AX0, CH, AZ1], [AX0, CH, AZ0], [AX, CH, AZ0], [0, 0, (AX0 - AX) / 400, (AZ1 - AZ0) / 400]);
     wall(AX, AZ0, AX0, AZ0); wall(AX0, AZ1, AX, AZ1); wall(AX, AZ1, AX, AZ0);
@@ -378,7 +378,7 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = [], opts = {})
   // ---------- the Club (through the doorway in the lounge's east wall, across from the Arena): dance floor and DJ booth ----------
   {
     const { CX, CZ0, CZ1, CDZ, CDW } = DIMS, PINK = '#ff4fd8', CYAN = '#31d7ff', cx = (LW + CX) / 2, cz = (CZ0 + CZ1) / 2;
-    const tileT = tex(512, 512, (x, w) => { const cols = ['#ff2a7a', '#31d7ff', '#ffc93a', '#b06cff', '#35e06f', '#ff7a1a']; x.fillStyle = '#0a0612'; x.fillRect(0, 0, w, w); for (let r = 0; r < 8; r++) for (let k = 0; k < 8; k++) { x.fillStyle = cols[(r * 5 + k * 3 + ((r * k) % 3)) % cols.length]; x.globalAlpha = 0.5 + ((r * 7 + k * 11) % 5) / 10; x.fillRect(k * 64 + 4, r * 64 + 4, 56, 56); } x.globalAlpha = 1; }, true);
+    const tileT = tex(512, 512, (x, w) => { const cols = ['#ff2a7a', '#31d7ff', '#ffc93a', '#b06cff', '#35e06f', '#ff7a1a']; x.fillStyle = '#120404'; x.fillRect(0, 0, w, w); for (let r = 0; r < 8; r++) for (let k = 0; k < 8; k++) { x.fillStyle = cols[(r * 5 + k * 3 + ((r * k) % 3)) % cols.length]; x.globalAlpha = 0.5 + ((r * 7 + k * 11) % 5) / 10; x.fillRect(k * 64 + 4, r * 64 + 4, 56, 56); } x.globalAlpha = 1; }, true);
     quad(mat(arenaFloor(), { floor: true, spec: 0.6 }), O, [LW, 0, CZ0], [CX, 0, CZ0], [CX, 0, CZ1], [LW, 0, CZ1], [0, 0, (CX - LW) / 260, (CZ1 - CZ0) / 260]);
     quad(mat(tileT, { emis: 0.85, spec: 0.6, blend: true }), O, [cx - 330, 1.5, cz - 330], [cx + 330, 1.5, cz - 330], [cx + 330, 1.5, cz + 330], [cx - 330, 1.5, cz + 330]);   // the lit dance floor
     quad(ceilM, O, [LW, CH, CZ1], [CX, CH, CZ1], [CX, CH, CZ0], [LW, CH, CZ0], [0, 0, (CX - LW) / 400, (CZ1 - CZ0) / 400]);
@@ -417,11 +417,11 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = [], opts = {})
     const D3 = { x: HW, z: WZ, th: -Math.PI / 2 }; quad(neon('EAST WING  →', VI, 1024, 128), D3, [-WD, 520, 3], [WD, 520, 3], [WD, 442, 3], [-WD, 442, 3]); glow(VI, D3, 0, 480, 10, 560, 190);
     const E = { x: WX - 2, z: WZ, th: -Math.PI / 2 };
     quad(neon('EAST WING', VI, 1024, 128), E, [-330, 530, 4], [330, 530, 4], [330, 440, 4], [-330, 440, 4]); glow(VI, E, 0, 484, 10, 860, 230);
-    box(solid('#140c22', 0, 0.5), E, -230, 230, 90, 410, 0, 16, { front: panel(460, 320, VI, (x, W) => { emoji(x, '🕹️', W / 2, 120, 120); text(x, 'NEW GAMES', W / 2, 262, `66px ${BIG}`, VI); text(x, 'LAND HERE', W / 2, 336, `66px ${BIG}`, '#ffc93a'); text(x, 'MORE CABINETS ON THE WAY', W / 2, 430, `14px ${PIX}`, '#fff'); }) });
+    box(solid('#220709', 0, 0.5), E, -230, 230, 90, 410, 0, 16, { front: panel(460, 320, VI, (x, W) => { emoji(x, '🕹️', W / 2, 120, 120); text(x, 'NEW GAMES', W / 2, 262, `66px ${BIG}`, VI); text(x, 'LAND HERE', W / 2, 336, `66px ${BIG}`, '#ffc93a'); text(x, 'MORE CABINETS ON THE WAY', W / 2, 430, `14px ${PIX}`, '#fff'); }) });
     light(E, [0, 300, 300], VI, 1); light(O, [(HW + WX) / 2, 500, WZ], '#ffffff', 0.6); light(O, [HW + 250, 420, WZ], VI, 0.5);
     add('eastwing', 'EAST WING: NEW GAMES SOON', E, 660, 16, 530, handlers.eastwing);
     // a marked floor pad wherever a wing slot is still free
-    const padE = solid(VI, 1, 0), padF = solid('#161022', 0, 0.6), openM = neon('OPEN SLOT', VI);
+    const padE = solid(VI, 1, 0), padF = solid('#220a0a', 0, 0.6), openM = neon('OPEN SLOT', VI);
     for (const T of WING) {
       box(padF, T, -125, 125, 0, 8, 0, 205);
       for (const [a, b, c, d] of [[-125, -119, 0, 205], [119, 125, 0, 205], [-125, 125, 199, 205]]) box(padE, T, a, b, 0, 10, c, d);
@@ -504,7 +504,7 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = [], opts = {})
     for (let i = 0; i < 18 && i < lights.length; i++) { LP.set(lights[i].p, i * 3); LC.set(lights[i].c, i * 3); }
     gl.uniform3fv(U.uLP, LP); gl.uniform3fv(U.uLC, LC);
   }
-  gl.uniform1i(U.uT, 0); gl.enable(gl.DEPTH_TEST); gl.clearColor(0.03, 0.015, 0.06, 1);
+  gl.uniform1i(U.uT, 0); gl.enable(gl.DEPTH_TEST); gl.clearColor(0.06, 0.015, 0.02, 1);
   const I = ident();
   let fov = 1, asp = 1;
   function resize() {

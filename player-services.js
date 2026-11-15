@@ -19,7 +19,8 @@ export async function playerCall(action, body = {}) {
 export const providers = [
   ['google','Google'], ['facebook','Facebook'], ['apple','Apple'], ['discord','Discord'],
   ['spotify','Spotify'], ['x','X'], ['twitter','X'], ['twitch','Twitch'],
-  ['azure','Microsoft'], ['linkedin_oidc','LinkedIn'],
+  ['azure','Microsoft'], ['linkedin_oidc','LinkedIn'], ['github','GitHub'], ['slack_oidc','Slack'],
+  ['snapchat','Snapchat'], ['notion','Notion'], ['zoom','Zoom'], ['kakao','Kakao'], ['gitlab','GitLab'], ['figma','Figma'],
 ];
 export async function enabledProviders() {
   try {

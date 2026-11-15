@@ -32,9 +32,9 @@ export function customCabinets(kit) {
   function racer(g, T) {
     const dark = solid('#101018', 0, 0.7), body = solid('#14141c', 0, 0.9), red = solid('#e0162b', 0.35, 0.6), tire = solid('#0a0a0e', 0, 0.9), blue = solid('#2a4bff', 1, 0);
     const road = (x, w, h, player) => {
-      const sky = x.createLinearGradient(0, 0, 0, h * 0.55); sky.addColorStop(0, '#1b0b3a'); sky.addColorStop(0.6, '#b0246a'); sky.addColorStop(1, '#ff9a3c'); x.fillStyle = sky; x.fillRect(0, 0, w, h);
+      const sky = x.createLinearGradient(0, 0, 0, h * 0.55); sky.addColorStop(0, '#3a070c'); sky.addColorStop(0.6, '#b0246a'); sky.addColorStop(1, '#ff9a3c'); x.fillStyle = sky; x.fillRect(0, 0, w, h);
       x.fillStyle = '#ffd23e'; x.beginPath(); x.arc(w / 2, h * 0.55, 90, Math.PI, 0); x.fill();
-      x.fillStyle = '#12081d'; for (let k = 0; k < 14; k++) { const bw = 30 + (k * 53 % 40), bh = 40 + (k * 71 % 90); x.fillRect(k * 40 - 10, h * 0.55 - bh, bw, bh); }
+      x.fillStyle = '#1d0508'; for (let k = 0; k < 14; k++) { const bw = 30 + (k * 53 % 40), bh = 40 + (k * 71 % 90); x.fillRect(k * 40 - 10, h * 0.55 - bh, bw, bh); }
       x.fillStyle = '#0e1a12'; x.fillRect(0, h * 0.55, w, h);
       x.fillStyle = '#23232e'; x.beginPath(); x.moveTo(w / 2 - 18, h * 0.55); x.lineTo(w / 2 + 18, h * 0.55); x.lineTo(w + 60, h); x.lineTo(-60, h); x.fill();
       x.fillStyle = '#ffd23e'; for (let k = 0; k < 7; k++) { const t = k / 7, y = h * 0.55 + t * t * h * 0.45, s = 4 + t * 26; x.fillRect(w / 2 - s / 4, y, s / 2, s * 1.4); }
@@ -46,7 +46,7 @@ export function customCabinets(kit) {
     };
     const lower = k => mat(tex(512, 512, (x, w, h) => { road(x, w, h, k); text(x, `P${k + 1}`, 52, 44, `30px ${PIX}`, '#fff', '#000'); }), { emis: 1, spec: 0.7 });
     const upper = k => mat(tex(512, 512, (x, w, h) => {
-      const gr = x.createLinearGradient(0, 0, w, h); gr.addColorStop(0, '#12081d'); gr.addColorStop(1, k ? '#10306a' : '#6a1020'); x.fillStyle = gr; x.fillRect(0, 0, w, h);
+      const gr = x.createLinearGradient(0, 0, w, h); gr.addColorStop(0, '#1d0508'); gr.addColorStop(1, k ? '#10306a' : '#6a1020'); x.fillStyle = gr; x.fillRect(0, 0, w, h);
       for (let i = 0; i < 16; i++) for (let j = 0; j < 2; j++) { x.fillStyle = (i + j) % 2 ? '#fff' : '#111'; x.fillRect(i * 32, j * 32, 32, 32); x.fillRect(i * 32, h - 64 + j * 32, 32, 32); }
       x.save(); x.translate(w / 2, h / 2 - 70); x.rotate(-0.07); fitText(x, g.title.toUpperCase(), 0, 0, 120, w - 50, '#ffd23e', '#000'); x.restore();
       text(x, 'T1 RACING', w / 2, h / 2 + 24, `26px ${PIX}`, '#fff', '#000'); fitText(x, g.play ? 'INSERT COIN' : 'COMING SOON', w / 2, h / 2 + 104, 44, w - 70, '#fff', '#000', PIX);
@@ -134,7 +134,7 @@ export function customCabinets(kit) {
     const dark = solid('#12101c', 0, 0.6), metal = solid('#8d97ab', 0.1, 1), pink = '#ff4fd8', cyan = '#3ee6ff';
     const arrow = (x, cx, cy, s, dir, c) => { x.save(); x.translate(cx, cy); x.rotate(dir * Math.PI / 2); x.fillStyle = c; x.beginPath(); x.moveTo(0, -s); x.lineTo(s, 0); x.lineTo(s * 0.45, 0); x.lineTo(s * 0.45, s); x.lineTo(-s * 0.45, s); x.lineTo(-s * 0.45, 0); x.lineTo(-s, 0); x.fill(); x.restore(); };
     const screen = mat(tex(512, 512, (x, w, h) => {
-      const gr = x.createLinearGradient(0, 0, w, h); gr.addColorStop(0, '#2a0a4a'); gr.addColorStop(1, '#0a2a4a'); x.fillStyle = gr; x.fillRect(0, 0, w, h);
+      const gr = x.createLinearGradient(0, 0, w, h); gr.addColorStop(0, '#4a0613'); gr.addColorStop(1, '#0a2a4a'); x.fillStyle = gr; x.fillRect(0, 0, w, h);
       for (let lane = 0; lane < 4; lane++) for (let k = 0; k < 4; k++) arrow(x, 96 + lane * 106, 150 + k * 78 + (lane % 2) * 36, 30, lane, [pink, cyan, '#ffd23e', '#35e06f'][lane]);
       x.fillStyle = 'rgba(0,0,0,.6)'; x.fillRect(0, 0, w, 100); fitText(x, g.title.toUpperCase(), w / 2, 52, 66, w - 40, '#ffd23e', '#000');
       banner(x, w, h, 'COMING SOON', pink);
@@ -142,7 +142,7 @@ export function customCabinets(kit) {
     const pads = mat(tex(512, 512, (x, w, h) => {
       x.fillStyle = '#15121f'; x.fillRect(0, 0, w, h);
       for (let p = 0; p < 2; p++) for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) {
-        const X = 10 + p * 256 + i * 80, Y = 130 + j * 84, edge = (i + j) % 2 === 1; x.fillStyle = edge ? (j === 1 ? cyan : pink) : '#262238'; x.fillRect(X, Y, 74, 78);
+        const X = 10 + p * 256 + i * 80, Y = 130 + j * 84, edge = (i + j) % 2 === 1; x.fillStyle = edge ? (j === 1 ? cyan : pink) : '#381411'; x.fillRect(X, Y, 74, 78);
         if (edge) arrow(x, X + 37, Y + 39, 24, j === 0 ? 0 : j === 2 ? 2 : i === 0 ? 3 : 1, '#12101c');
       }
       text(x, 'P1', 128, 70, `40px ${BIG}`, pink); text(x, 'P2', 384, 70, `40px ${BIG}`, cyan);
@@ -159,16 +159,16 @@ export function customCabinets(kit) {
 
   // ---------- pinball table ----------
   function pinball(g, T) {
-    const wood = solid('#1a1030', 0.1, 0.6), metal = solid('#c8ccd6', 0.15, 1), gold = '#ffc93a';
+    const wood = solid('#300a0c', 0.1, 0.6), metal = solid('#c8ccd6', 0.15, 1), gold = '#ffc93a';
     const field = mat(tex(256, 512, (x, w, h) => {
-      const gr = x.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#2a0a4a'); gr.addColorStop(1, '#0a1a4a'); x.fillStyle = gr; x.fillRect(0, 0, w, h);
+      const gr = x.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#4a0613'); gr.addColorStop(1, '#0a1a4a'); x.fillStyle = gr; x.fillRect(0, 0, w, h);
       [[80, 120, '#ff2a3c'], [176, 120, '#3ea8ff'], [128, 190, gold], [70, 260, '#35e06f'], [186, 260, '#ff4fd8']].forEach(([cx, cy, c]) => { x.fillStyle = '#fff'; x.beginPath(); x.arc(cx, cy, 28, 0, TAU); x.fill(); x.fillStyle = c; x.beginPath(); x.arc(cx, cy, 21, 0, TAU); x.fill(); });
       x.strokeStyle = gold; x.lineWidth = 6; for (let k = 0; k < 4; k++) { x.beginPath(); x.moveTo(40 + k * 58, 30); x.lineTo(40 + k * 58, 70); x.stroke(); }
       x.strokeStyle = '#fff'; x.lineWidth = 12; x.lineCap = 'round'; x.beginPath(); x.moveTo(56, 420); x.lineTo(108, 452); x.moveTo(200, 420); x.lineTo(148, 452); x.stroke();
       x.fillStyle = '#c8ccd6'; x.beginPath(); x.arc(150, 340, 9, 0, TAU); x.fill(); fitText(x, 'BIG BANG', w / 2, 372, 30, w - 40, gold, '#000');
     }), { emis: 0.9, spec: 0.9 });
     const glassT = mat(tex(256, 512, (x, w, h) => {
-      const gr = x.createRadialGradient(w / 2, h * 0.4, 20, w / 2, h * 0.4, 300); gr.addColorStop(0, '#ff9a3c'); gr.addColorStop(0.5, '#b0246a'); gr.addColorStop(1, '#12081d'); x.fillStyle = gr; x.fillRect(0, 0, w, h);
+      const gr = x.createRadialGradient(w / 2, h * 0.4, 20, w / 2, h * 0.4, 300); gr.addColorStop(0, '#ff9a3c'); gr.addColorStop(0.5, '#b0246a'); gr.addColorStop(1, '#1d0508'); x.fillStyle = gr; x.fillRect(0, 0, w, h);
       for (let k = 0; k < 14; k++) { const a = k / 14 * TAU; x.strokeStyle = 'rgba(255,255,255,.35)'; x.lineWidth = 5; x.beginPath(); x.moveTo(w / 2, h * 0.4); x.lineTo(w / 2 + Math.cos(a) * 320, h * 0.4 + Math.sin(a) * 320); x.stroke(); }
       x.fillStyle = '#c8ccd6'; x.beginPath(); x.arc(w / 2, h * 0.4, 46, 0, TAU); x.fill(); x.fillStyle = '#fff'; x.beginPath(); x.arc(w / 2 - 14, h * 0.4 - 14, 12, 0, TAU); x.fill();
       fitText(x, g.title.toUpperCase(), w / 2, 76, 40, w - 24, gold, '#000'); text(x, 'COMING SOON', w / 2, h - 60, `15px ${PIX}`, '#fff', '#000');

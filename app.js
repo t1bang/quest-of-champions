@@ -28,8 +28,20 @@ const siteActivity = createSiteTracker(playerCall);
 setInterval(()=>siteActivity.flush(),10000);
 setInterval(() => activity.flush(), 30000);
 addEventListener('pagehide',()=>{activity.stop();siteActivity.flush();});
-addEventListener('pointerdown', () => activity.input());
-addEventListener('keydown', () => activity.input());
+addEventListener('pointerdown', () => { activity.input(); playUsed = Date.now(); });
+addEventListener('keydown', () => { activity.input(); playUsed = Date.now(); });
+// Time played, kept in this browser only (nothing is sent): a running total, today's total and a split by game.
+// It counts while the page is in front and in use: a game on screen, or the lobby touched in the last two minutes.
+const playLog = Object.assign({ total: 0, today: 0, day: '', games: {} }, store.get('bba-playtime') || {});
+let playTick = Date.now(), playUsed = Date.now();
+const hm = secs => { const s = Math.round(secs), h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60); return h ? `${h}h ${String(m).padStart(2, '0')}m` : m ? `${m}m` : `${s}s`; };
+setInterval(() => {
+  const now = Date.now(), dt = (now - playTick) / 1000, gf = document.querySelector('#gf'), inGame = !!gf && !gf.hidden; playTick = now;
+  if (dt > 40 || document.hidden || !document.hasFocus() || (!inGame && now - playUsed > 120000)) return;
+  const day = new Date().toDateString(), g = inGame && /^[a-z0-9_-]{2,24}$/.test(gf.dataset.game || '') ? gf.dataset.game : 'arcade';
+  if (playLog.day !== day) { playLog.day = day; playLog.today = 0; }
+  playLog.total += dt; playLog.today += dt; playLog.games[g] = (playLog.games[g] || 0) + dt; store.set('bba-playtime', playLog);
+}, 15000);
 async function api(a, body, q = '') {
   const r = await fetch(`/api/arcade?a=${a}${q}`, body ? { method: 'POST', headers: { 'Content-Type': 'application/json', ...await authHeaders() }, body: JSON.stringify({ ...auth, ...body }) } : undefined);
   const j = await r.json().catch(() => ({ error: 'The arcade database is not reachable right now' }));
@@ -71,7 +83,7 @@ async function join(name) {
 // ---------------- the 3D room ----------------
 const svgUrl = svg => 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
 GAMES.forEach(g => { g.art = g.art || svgUrl(COVERS[g.id]); });
-const soonCard = g => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400"><defs><linearGradient id="s" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#12081d"/><stop offset="1" stop-color="${g.color}"/></linearGradient></defs><rect width="400" height="400" fill="url(#s)"/><rect x="14" y="14" width="372" height="372" fill="none" stroke="#fff" stroke-width="6"/><text x="200" y="170" text-anchor="middle" font-family="Impact,'Arial Black',sans-serif" font-size="${g.title.length > 14 ? 40 : 54}" fill="#fff" stroke="#000" stroke-width="2">${g.title.toUpperCase()}</text><text x="200" y="250" text-anchor="middle" font-family="Impact,'Arial Black',sans-serif" font-size="34" fill="#ffc93a">COMING SOON</text><text x="200" y="330" text-anchor="middle" font-family="monospace" font-size="16" fill="#fff">BIG BANG ARCADE</text></svg>`;
+const soonCard = g => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400"><defs><linearGradient id="s" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1d0508"/><stop offset="1" stop-color="${g.color}"/></linearGradient></defs><rect width="400" height="400" fill="url(#s)"/><rect x="14" y="14" width="372" height="372" fill="none" stroke="#fff" stroke-width="6"/><text x="200" y="170" text-anchor="middle" font-family="Impact,'Arial Black',sans-serif" font-size="${g.title.length > 14 ? 40 : 54}" fill="#fff" stroke="#000" stroke-width="2">${g.title.toUpperCase()}</text><text x="200" y="250" text-anchor="middle" font-family="Impact,'Arial Black',sans-serif" font-size="34" fill="#ffc93a">COMING SOON</text><text x="200" y="330" text-anchor="middle" font-family="monospace" font-size="16" fill="#fff">BIG BANG ARCADE</text></svg>`;
 SOON.forEach(g => { g.art = g.art || svgUrl(soonCard(g)); });
 const cover = g => `<img src="${g.art}" alt="${g.title} cover art">`;
 await Promise.race([Promise.all([document.fonts.load('40px Bungee'), document.fonts.load('16px "Press Start 2P"')]).catch(() => {}), new Promise(r => setTimeout(r, 1800))]);
@@ -235,7 +247,7 @@ const vrBtn = $('#vr');
 if (room && navigator.xr && navigator.xr.isSessionSupported) navigator.xr.isSessionSupported('immersive-vr').then(ok => { if (ok && vrBtn) vrBtn.hidden = false; }).catch(() => {});
 function xrSign(lines, color) {
   return room.tex(1024, 256, (x, W, H) => {
-    x.clearRect(0, 0, W, H); x.fillStyle = 'rgba(12,6,22,.92)'; x.beginPath(); x.roundRect(6, 6, W - 12, H - 12, 36); x.fill(); x.lineWidth = 8; x.strokeStyle = color; x.stroke();
+    x.clearRect(0, 0, W, H); x.fillStyle = 'rgba(22,4,6,.92)'; x.beginPath(); x.roundRect(6, 6, W - 12, H - 12, 36); x.fill(); x.lineWidth = 8; x.strokeStyle = color; x.stroke();
     x.textAlign = 'center'; x.textBaseline = 'middle';
     lines.forEach((t, i) => { let f = i ? 44 : 70; do { x.font = `${f}px Bungee,Impact,'Arial Black',sans-serif`; f -= 2; } while (x.measureText(t).width > W - 70 && f > 16); x.fillStyle = i ? '#fff' : color; x.fillText(t, W / 2, lines.length === 1 ? H / 2 : i ? 88 + i * 64 : 72); });
   });
@@ -666,8 +678,8 @@ function openMini(kind, classic) {
   const cv = $('#mcv'), c = cv.getContext('2d'); let round = 0, total = 0, left = g.pool || 0, t0 = performance.now(), frozen = null, raf, done = false;
   const pos = now => { const sp = 0.9 + round * 0.35, u = ((now - t0) / 1000 * sp) % 2; return u < 1 ? u : 2 - u; };
   const draw = now => {
-    const p = frozen == null ? pos(now) : frozen; c.fillStyle = '#0b0612'; c.fillRect(0, 0, 640, 240);
-    c.fillStyle = '#2a1a40'; c.fillRect(40, 100, 560, 40); c.fillStyle = '#35e06f'; c.fillRect(40 + 560 * 0.36, 100, 560 * 0.28, 40); c.fillStyle = '#ffc93a'; c.fillRect(40 + 560 * 0.465, 100, 560 * 0.07, 40);
+    const p = frozen == null ? pos(now) : frozen; c.fillStyle = '#120405'; c.fillRect(0, 0, 640, 240);
+    c.fillStyle = '#401013'; c.fillRect(40, 100, 560, 40); c.fillStyle = '#35e06f'; c.fillRect(40 + 560 * 0.36, 100, 560 * 0.28, 40); c.fillStyle = '#ffc93a'; c.fillRect(40 + 560 * 0.465, 100, 560 * 0.07, 40);
     c.fillStyle = '#fff'; c.fillRect(40 + 560 * p - 4, 84, 8, 72); c.font = '48px sans-serif'; c.textAlign = 'center'; c.fillText(g.icon, 40 + 560 * p, 70);
     c.font = '14px "Press Start 2P",monospace'; c.fillStyle = '#fff'; c.fillText(done ? 'FINAL' : `TRY ${Math.min(round + 1, g.rounds)} OF ${g.rounds}`, 320, 200); c.fillStyle = '#ffc93a'; c.fillText(`${total} ${g.unit}`, 320, 226);
     raf = requestAnimationFrame(draw);
@@ -939,6 +951,7 @@ function openProfile() {
   const linked = !!me?.linked;
   show(`<span class="tag">BIG BANG ARCADE ACCOUNT</span><h2>${escapeHtml(me?.name || 'WELCOME, PLAYER')}</h2>
     <p>${linked ? 'One player across the arcade.' : auth.key ? 'Your player, tokens and scores are saved on this browser. Sign in to keep them on every device.' : 'Enter a nickname to start earning tokens and ranking on the boards.'}</p>
+    ${playLog.total >= 60 ? `<p>⏱ ${hm(playLog.total)} played on this device · ${hm(playLog.day === new Date().toDateString() ? playLog.today : 0)} today${(t => t ? ` · most in ${escapeHtml(t[0] === 'arcade' ? 'the lobby' : (GAMES.find(g => g.id === t[0]) || {}).title || t[0])}` : '')(Object.entries(playLog.games).sort((a, b) => b[1] - a[1])[0])}</p>` : ''}
     ${me ? `<p>🪙 ${me.tokens} tokens · ${me.earned} earned · ${me.closet.length} prizes</p><button class="btn" id="pav">EDIT AVATAR</button><button class="btn" data-go="closet">MY CLOSET</button>` : '<form class="cf" id="pform"><input maxlength="16" placeholder="YOUR NICKNAME" aria-label="Your nickname"><button class="btn go">PLAY AS GUEST</button></form>'}
     <button class="btn go" id="my-arcade">MY GAMES + SAVES</button><button class="btn" id="my-boards">ALL LEADERBOARDS</button>
     ${linked ? `<button class="btn" id="lobby-panel">INVITE LOBBIES</button>
