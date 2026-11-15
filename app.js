@@ -30,8 +30,10 @@ setInterval(() => activity.flush(), 30000);
 addEventListener('pagehide',()=>{activity.stop();siteActivity.flush();});
 addEventListener('pointerdown', () => { activity.input(); playUsed = Date.now(); });
 addEventListener('keydown', () => { activity.input(); playUsed = Date.now(); });
-// Time played, kept in this browser only (nothing is sent): a running total, today's total and a split by game.
-// It counts while the page is in front and in use: a game on screen, or the lobby touched in the last two minutes.
+// Time played: a running total, today's total and a split by game, kept in this browser. It counts while the page
+// is in front and in use: a game on screen, or the lobby touched in the last two minutes. Once there is a player
+// profile (a nickname or an account) the same seconds are added to that profile every two minutes, per game and
+// day and nothing else, so the owners' hub can show time played. Off with ?hub=off or Global Privacy Control.
 const playLog = Object.assign({ total: 0, today: 0, day: '', games: {} }, store.get('bba-playtime') || {});
 let playTick = Date.now(), playUsed = Date.now();
 const hm = secs => { const s = Math.round(secs), h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60); return h ? `${h}h ${String(m).padStart(2, '0')}m` : m ? `${m}m` : `${s}s`; };
@@ -41,7 +43,22 @@ setInterval(() => {
   const day = new Date().toDateString(), g = inGame && /^[a-z0-9_-]{2,24}$/.test(gf.dataset.game || '') ? gf.dataset.game : 'arcade';
   if (playLog.day !== day) { playLog.day = day; playLog.today = 0; }
   playLog.total += dt; playLog.today += dt; playLog.games[g] = (playLog.games[g] || 0) + dt; store.set('bba-playtime', playLog);
+  playWait[g] = (playWait[g] || 0) + dt; if (now - playSent > 120000) sendPlay();
 }, 15000);
+const playWait = {}; let playSent = Date.now(), playBusy = false;
+const playOff = () => { try { return localStorage.getItem('bbh.off') === '1' || !!navigator.globalPrivacyControl || /[?&](solo|nohub)=/.test(location.search); } catch { return true; } };
+async function sendPlay(leaving) {
+  const games = {}; let sum = 0; for (const k in playWait) { const v = Math.floor(playWait[k]); if (v > 0) { games[k] = v; sum += v; } }
+  if (!auth.pid || playBusy || sum < 5 || playOff()) return;
+  playBusy = true; playSent = Date.now(); for (const k in games) playWait[k] -= games[k];
+  try {
+    const r = await fetch(`${SOCIAL_AUTH.url}/rest/v1/rpc/bba_playtime`, { method: 'POST', keepalive: !!leaving,
+      headers: { apikey: SOCIAL_AUTH.key, 'Content-Type': 'application/json', ...await authHeaders() }, body: JSON.stringify({ p_action: 'add', p_body: { ...auth, games } }) });
+    if (!r.ok && r.status >= 500) throw new Error('later');
+  } catch { for (const k in games) playWait[k] = (playWait[k] || 0) + games[k]; }   // keep it for the next try
+  playBusy = false;
+}
+addEventListener('pagehide', () => sendPlay(true));
 async function api(a, body, q = '') {
   const r = await fetch(`/api/arcade?a=${a}${q}`, body ? { method: 'POST', headers: { 'Content-Type': 'application/json', ...await authHeaders() }, body: JSON.stringify({ ...auth, ...body }) } : undefined);
   const j = await r.json().catch(() => ({ error: 'The arcade database is not reachable right now' }));
@@ -985,7 +1002,7 @@ function openProfile() {
   if ($('#lobby-panel')) $('#lobby-panel').onclick = () => openLobby();
   if ($('#owner-stats')) $('#owner-stats').onclick = openDashboard;
   if ($('#export-player')) $('#export-player').onclick = async () => {
-    try { const data=await playerCall('export'); const url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));
+    try { const data=await playerCall('export'); try { const t=await supabase.rpc('bba_playtime',{p_action:'get',p_body:{}}); if(t.data) data.play_time=t.data; } catch {} const url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));
       const a=document.createElement('a'); a.href=url; a.download='big-bang-arcade-my-data.json'; a.click(); setTimeout(()=>URL.revokeObjectURL(url),1000);
     } catch(err) { toast(err.message); }
   };
