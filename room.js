@@ -371,6 +371,7 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = [], opts = {})
     wall(LW, CZ0, CX, CZ0); wall(CX, CZ1, LW, CZ1); wall(CX, CZ0, CX, CZ1);
     // signs: over the doorway on the lounge side, and across the far wall behind the booth
     const D5 = { x: LW - 2, z: CDZ, th: -Math.PI / 2 }; quad(neon('THE CLUB  →', PINK, 1024, 128), D5, [-CDW, 520, 3], [CDW, 520, 3], [CDW, 442, 3], [-CDW, 442, 3]); glow(PINK, D5, 0, 480, 10, 460, 190);
+    box(dark, D5, -CDW, CDW, 436, 526, -6, 1); { const D6 = { x: LW + 2, z: CDZ, th: Math.PI / 2 }; quad(neon('←  LOUNGE + BAR', '#ffc93a', 1024, 128), D6, [-CDW, 520, 5], [CDW, 520, 5], [CDW, 442, 5], [-CDW, 442, 5]); }   // a header over the door, so the sign isn't seen mirrored from inside
     const W5 = { x: CX - 2, z: cz, th: -Math.PI / 2 };
     quad(neon('THE CLUB', PINK, 1024, 128), W5, [-360, 530, 4], [360, 530, 4], [360, 430, 4], [-360, 430, 4]); glow(PINK, W5, 0, 480, 10, 900, 240);
     quad(neon('DJ BOOTH', CYAN), W5, [-150, 410, 4], [150, 410, 4], [150, 345, 4], [-150, 345, 4]);
@@ -388,7 +389,7 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = [], opts = {})
       ['speaker', [[W5, { at: [-255, 22, 85], size: [null, 240, null] }], [W5, { at: [255, 22, 85], size: [null, 240, null] }], [O, { at: [LW + 110, 0, CZ1 - 110], size: [null, 240, null], ry: Math.PI * 0.75 }], [O, { at: [LW + 110, 0, CZ0 + 600], size: [null, 240, null], ry: Math.PI * 0.5 }]]],
       ['disco', [[O, { at: [cx, 372, cz], size: [null, 186, null] }]]],
       ['hightop', [[LW + 190, CZ1 - 190], [LW + 430, CZ1 - 150], [LW + 190, CZ0 + 560]].map(([tx, tz]) => [O, { at: [tx, 0, tz], size: [null, 114, null] }])],
-      ['palm', [[O, { at: [LW - 60, 0, CDZ - CDW - 60], size: [null, 220, null] }], [O, { at: [LW + 70, 0, CDZ + CDW + 70], size: [null, 220, null] }], [O, { at: [-230, 0, ZF - 55], size: [null, 220, null] }], [O, { at: [230, 0, ZF - 55], size: [null, 220, null] }], [O, { at: [CX - 90, 0, CZ0 + 90], size: [null, 220, null] }]]],
+      ['palm', [[O, { at: [LW - 110, 0, CDZ - CDW - 2], size: [null, 220, null] }], [O, { at: [LW + 62, 0, CDZ + CDW + 110], size: [null, 220, null], ry: Math.PI / 2 }], [O, { at: [-230, 0, ZF - 55], size: [null, 220, null] }], [O, { at: [230, 0, ZF - 55], size: [null, 220, null] }], [O, { at: [CX - 104, 0, CZ0 + 78], size: [null, 220, null] }]]],
       ['rack', [[O, { at: [556, 0, 1330], size: [null, null, 150], long: 'z' }]]],
     );
   }
