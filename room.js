@@ -133,7 +133,7 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = [], opts = {})
   const PARTS = [[[0, 0], [150, 0], [150, 205], [0, 205]], [[0, 205], [150, 205], [205, 225], [205, 238], [125, 262], [0, 262]], [[0, 262], [125, 262], [95, 400], [0, 400]], [[0, 400], [95, 400], [150, 405], [150, 470], [20, 470], [0, 445]]];
   const coinT = imgTex('assets/cabs/versus-coin.jpg', 256, 256);
   // A machine that is a 3D model (config.js `model`): a plain stand-in box until assets/models/<model>.glb loads. [width, height, depth]
-  const MCAB = { hoops: [190, 420, 300], punch: [147, 400, 235], whack: [240, 307, 239], cockpit: [290, 290, 275], moto: [170, 326, 333], roller: [150, 240, 334] };
+  const MCAB = { hoops: [201, 420, 350], punch: [147, 400, 235], whack: [240, 307, 239], cockpit: [290, 290, 275], moto: [170, 326, 333], roller: [150, 240, 334] };
   function modelCab(g, T, soon) {
     const [w, h, d] = MCAB[g.model] || [220, 380, 220];
     box(fb(g.model, '#16161c', 0, 0.5), T, -w / 2, w / 2, 0, h, 0, d); box(fb(g.model, g.color, 1, 0), T, -w / 2 + 12, w / 2 - 12, h * 0.55, h * 0.9, d, d + 3);
