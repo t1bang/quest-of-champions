@@ -91,10 +91,10 @@ if (!room) { $('#hint').textContent = 'YOUR BROWSER CANNOT SHOW THE 3D ROOM. USE
 // ---------------- movement + controls ----------------
 const P = { x: 0, z: 780, yaw: 0, pitch: 0, eye: 300 }, keys = {}, joy = { x: 0, y: 0 };
 let goal = null, near = null, walkT = 0;
-const { HW, HD, ZF, BZ, WD, WZ, WX, WZ0, WZ1, AX, AZ0, AZ1, ADZ, ADW, CX, CZ0, CZ1, CDZ, CDW } = DIMS; // floor plan from room.js
+const { HW, HD, ZF, BZ, WD, WZ, WX, WZ0, WZ1, AX, AZ0, AZ1, ADZ, ADW, BW, BD, CX, CZ0, CZ1, CDZ, CDW } = DIMS; // floor plan from room.js
 const BR = 215, ZMIN = 320 - HD, ZMAX = ZF - 110, XMAX = HW - 110; // Big Box half-size + walkable main floor
 const angDiff = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b));
-const LANE = 120, HEND = -HD - 700, inHall = p => p.z < ZMIN; // the coming-soon hallway behind the cabinets
+const LANE = 120, HEND = -HD - BD + 400, HZA = -HD - 110, HXB = BW - 270, inHall = p => p.z < ZMIN; // the back room behind the cabinets: a doorway lane, then a room (HZA = just inside it)
 const LZ0 = 960, LZ1 = 1850, inLounge = p => p.z > ZMAX;      // the lounge past the front doorway
 const SOLID = [[-490, 1090, -290, 1390], [290, 1090, 490, 1390], [-350, 1680, 350, 1900], [600, 1240, 780, 1900], [-800, 1590, -695, 1890], [-740, 1795, -400, 1900]]; // lounge furniture
 const WLANE = WD - 50, WXA = HW + 110, WXB = WX - 110, WZA = WZ0 + 320, WZB = WZ1 - 320, inWing = p => p.x > XMAX && p.z <= ZMAX; // the East Wing past the right-wall doorway
@@ -110,8 +110,9 @@ function collide() {
     if (inWing(P)) return;
   }
   if (inHall(P)) {
-    if (Math.abs(P.x) > LANE) { if (P.z > ZMIN - 40) P.z = ZMIN; else P.x = Math.sign(P.x) * LANE; }
-    P.z = Math.max(HEND, P.z); if (inHall(P)) return;
+    if (P.z > HZA) { if (Math.abs(P.x) > LANE) { if (P.z > ZMIN - 40) P.z = ZMIN; else if (P.z < HZA + 60) P.z = HZA; else P.x = Math.sign(P.x) * LANE; } }   // in the doorway
+    else { P.x = Math.max(-HXB, Math.min(HXB, P.x)); P.z = Math.max(HEND, P.z); }
+    if (inHall(P)) return;
   }
   if (inArena(P)) {
     if (P.x > AXB) { if (Math.abs(P.z - ADZ) > ADLANE) { if (P.x > -790) P.x = -730; else if (P.x < AXB + 60) P.x = AXB; else P.z = ADZ + Math.sign(P.z - ADZ) * ADLANE; } }   // in the doorway
@@ -166,20 +167,20 @@ function goTo(id) {
   const inside = s.zone === 'club' ? { x: Math.max(CXA + 20, Math.min(CXB, to.x)), z: Math.max(CZA, Math.min(CZB, to.z)) } : null;       // a spot inside the Club (the DJ booth)
   if (here && here === dest) { goal = { path: [inside || SIDE[here].in], yaw: -s.T.th, pitch: s.pitch || 0, id, t: 0 }; return; }
   const zone = p => p.zone === 'club' ? 'lounge' : p.x > HW ? 'wing' : p.z < -HD ? 'hall' : p.z > ZF ? 'lounge' : 'main', tz = zone(s), S = here ? { x: 0, z: 1020 } : P, pz = here ? 'lounge' : inWing(P) ? 'wing' : inHall(P) ? 'hall' : inLounge(P) ? 'lounge' : 'main';   // S = where the walk really starts once out of a side room
-  to = tz === 'hall' ? { x: Math.max(-LANE + 10, Math.min(LANE - 10, to.x)), z: Math.max(HEND, Math.min(ZMIN - 60, to.z)) }
+  to = tz === 'hall' ? { x: Math.max(-HXB, Math.min(HXB, to.x)), z: Math.max(HEND, Math.min(HZA - 20, to.z)) }
     : tz === 'lounge' ? { x: Math.max(-730, Math.min(730, to.x)), z: Math.max(LZ0 + 20, Math.min(LZ1, to.z)) }
     : tz === 'wing' ? { x: Math.max(WXA + 20, Math.min(WXB, to.x)), z: Math.max(WZA, Math.min(WZB, to.z)) }
     : { x: Math.max(-XMAX, Math.min(XMAX, to.x)), z: Math.max(ZMIN, Math.min(ZMAX, to.z)) };
   collide();
-  const doorH = { x: 0, z: ZMIN + 10 }, doorL = { x: 0, z: ZMAX - 10 }, doorW = { x: XMAX - 10, z: WZ }, inW = { x: WXA + 10, z: WZ }, path = here ? [SIDE[here].in, SIDE[here].out, { x: SIDE[here].out.x, z: 1020 }, S] : []; let cur = S;
+  const doorH = { x: 0, z: ZMIN + 10 }, inH = { x: 0, z: HZA - 20 }, doorL = { x: 0, z: ZMAX - 10 }, doorW = { x: XMAX - 10, z: WZ }, inW = { x: WXA + 10, z: WZ }, path = here ? [SIDE[here].in, SIDE[here].out, { x: SIDE[here].out.x, z: 1020 }, S] : []; let cur = S;
   if (dest) to = SIDE[dest].out;
   if (pz !== tz || pz === 'lounge') {
-    if (pz === 'hall') { path.push(doorH); cur = doorH; }
+    if (pz === 'hall') { path.push(inH, doorH); cur = doorH; }
     if (pz === 'lounge') { if (!here) path.push({ x: 0, z: P.z }); cur = { x: 0, z: S.z }; if (tz !== 'lounge') { path.push(doorL); cur = doorL; } }
     if (pz === 'wing') { path.push(inW, doorW); cur = doorW; }
   }
   if (tz === 'main') path.push(...(pz === 'main' || cur !== S ? route(cur, to) : [to]));
-  else if (tz === 'hall') { if (pz !== 'hall') path.push(...route(cur, doorH)); path.push(to); }
+  else if (tz === 'hall') { if (pz !== 'hall') path.push(...route(cur, doorH), inH); else if (P.z > HZA) path.push(inH); path.push(to); }
   else if (tz === 'wing') { if (pz !== 'wing') path.push(...route(cur, doorW), inW); path.push(to); }
   else { if (pz !== 'lounge') path.push(...route(cur, doorL)); if (dest) path.push({ x: 0, z: 1020 }, { x: to.x, z: 1020 }, to, ...(inside ? [SIDE[dest].in, inside] : [])); else path.push({ x: 0, z: to.z }, to); }
   goal = { path, yaw: -s.T.th, pitch: s.pitch || 0, id, t: 0 };

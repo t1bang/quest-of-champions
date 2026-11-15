@@ -23,7 +23,7 @@ const persp = (fov, asp, n, f) => { const t = 1 / Math.tan(fov / 2); return new 
 // Floor plan, shared with app.js (movement and routes): main room half-width, back wall, front wall, Big Box,
 // then the East Wing doorway half-width + centre, far wall, back wall and front wall.
 // The Arena sits west of the lounge: AX = its far (west) wall, AZ0/AZ1 = north and south walls, ADZ/ADW = doorway centre and half-width in the lounge's west wall.
-export const DIMS = { HW: 1200, HD: 1100, ZF: 900, BZ: -100, WD: 200, WZ: -100, WX: 2800, WZ0: -900, WZ1: 700, AX: -2100, AZ0: 920, AZ1: 1880, ADZ: 1100, ADW: 150, CX: 2000, CZ0: 920, CZ1: 1880, CDZ: 1100, CDW: 150 };   // C* = the Club, east of the lounge (mirror of the Arena)
+export const DIMS = { HW: 1200, HD: 1100, ZF: 900, BZ: -100, WD: 200, WZ: -100, WX: 2800, WZ0: -900, WZ1: 700, AX: -2100, AZ0: 920, AZ1: 1880, ADZ: 1100, ADW: 150, BW: 800, BD: 1250, CX: 2000, CZ0: 920, CZ1: 1880, CDZ: 1100, CDW: 150 };   // C* = the Club, east of the lounge (mirror of the Arena)
 
 export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = [], opts = {}) {
   const gl = canvas.getContext('webgl', { antialias: true, alpha: !!opts.wallVideo, powerPreference: 'high-performance' });
@@ -100,14 +100,14 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = [], opts = {})
   const floorM = mat(floorT, { floor: true, spec: 0.5 }), wallM = mat(wallT, { spec: 0.1 }), ceilM = mat(ceilT, { emis: 0.55, spec: 0 });
   quad(floorM, O, [-HW, 0, -HD], [HW, 0, -HD], [HW, 0, ZF], [-HW, 0, ZF], [0, 0, HW / 100, (ZF + HD) / 200]);
   quad(ceilM, O, [-HW, CH, ZF], [HW, CH, ZF], [HW, CH, -HD], [-HW, CH, -HD], [0, 0, HW / 200, (ZF + HD) / 400]);
-  const DW = 150, CW = 350, CZ = -HD - 800; // doorway half-width, hallway half-width, hallway end
+  const DW = 150, CW = DIMS.BW, CZ = -HD - DIMS.BD; // doorway half-width, back room half-width, back room end
   const arenaFloor = () => tex(512, 512, (x, w) => { x.fillStyle = '#100818'; x.fillRect(0, 0, w, w); x.strokeStyle = '#241033'; x.lineWidth = 4; for (let k = 0; k <= 8; k++) { x.beginPath(); x.moveTo(k * 64, 0); x.lineTo(k * 64, w); x.moveTo(0, k * 64); x.lineTo(w, k * 64); x.stroke(); } }, true);
   const wall = (x0, z0, x1, z1) => quad(wallM, O, [x0, CH, z0], [x1, CH, z1], [x1, 0, z1], [x0, 0, z0], [0, 0, Math.hypot(x1 - x0, z1 - z0) / 400, 1]);
   wall(-HW, -HD, -DW, -HD); wall(DW, -HD, HW, -HD);                 // back wall, with the hallway doorway
-  wall(-CW, -HD, -CW, CZ); wall(CW, CZ, CW, -HD); wall(-CW, CZ, CW, CZ); // hallway
-  quad(floorM, O, [-CW, 0, CZ], [CW, 0, CZ], [CW, 0, -HD], [-CW, 0, -HD], [0, 0, 3.5, 4]);
-  quad(ceilM, O, [-CW, CH, -HD], [CW, CH, -HD], [CW, CH, CZ], [-CW, CH, CZ], [0, 0, 1.75, 2]);
-  light(O, [0, 430, -HD - 350], '#ffffff', 0.5);
+  wall(-CW, -HD, -CW, CZ); wall(CW, CZ, CW, -HD); wall(-CW, CZ, CW, CZ); // the back room
+  quad(floorM, O, [-CW, 0, CZ], [CW, 0, CZ], [CW, 0, -HD], [-CW, 0, -HD], [0, 0, CW / 100, (-HD - CZ) / 200]);
+  quad(ceilM, O, [-CW, CH, -HD], [CW, CH, -HD], [CW, CH, CZ], [-CW, CH, CZ], [0, 0, CW / 200, (-HD - CZ) / 400]);
+  light(O, [0, 430, -HD - 350], '#ffffff', 0.5); light(O, [0, 430, -HD - 850], '#ffffff', 0.5);
   wall(HW, ZF, DW, ZF); wall(-DW, ZF, -HW, ZF);                     // front wall, with the lounge doorway
   wall(-HW, ZF, -HW, -HD);                                          // left wall
   wall(HW, -HD, HW, WZ - WD); wall(HW, WZ + WD, HW, ZF);            // right wall, with the East Wing doorway
@@ -132,7 +132,19 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = [], opts = {})
   const OUT = [[150, 0], [150, 205], [205, 225], [205, 238], [125, 262], [95, 400], [150, 405], [150, 470], [20, 470], [0, 445]];
   const PARTS = [[[0, 0], [150, 0], [150, 205], [0, 205]], [[0, 205], [150, 205], [205, 225], [205, 238], [125, 262], [0, 262]], [[0, 262], [125, 262], [95, 400], [0, 400]], [[0, 400], [95, 400], [150, 405], [150, 470], [20, 470], [0, 445]]];
   const coinT = imgTex('assets/cabs/versus-coin.jpg', 256, 256);
+  // A machine that is a 3D model (config.js `model`): a plain stand-in box until assets/models/<model>.glb loads. [width, height, depth]
+  const MCAB = { hoops: [190, 420, 300], punch: [150, 400, 160], whack: [240, 330, 210], cockpit: [230, 330, 330], moto: [170, 300, 330], roller: [180, 330, 300] };
+  function modelCab(g, T, soon) {
+    const [w, h, d] = MCAB[g.model] || [220, 380, 220];
+    box(fb(g.model, '#16161c', 0, 0.5), T, -w / 2, w / 2, 0, h, 0, d); box(fb(g.model, g.color, 1, 0), T, -w / 2 + 12, w / 2 - 12, h * 0.55, h * 0.9, d, d + 3);
+    MODELS.push([g.model, [[T, { at: [0, 0, 2], size: g.fit === 'h' ? [null, h, null] : [w, null, null], back: true, ry: g.ry || 0 }]]]);
+    quad(neon(g.title.toUpperCase(), g.color, 1024, 128), T, [-150, 552, 5], [150, 552, 5], [150, 496, 5], [-150, 496, 5]); glow(g.color, T, 0, 520, 12, 460, 150);
+    if (soon) quad(neon('COMING SOON', '#ffffff', 512, 128), T, [-80, 492, 5], [80, 492, 5], [80, 456, 5], [-80, 456, 5]);
+    light(T, [0, 290, d + 120], g.color, 1.0);
+    add(g.id, (soon ? 'COMING SOON: ' : 'PLAY ') + g.title.toUpperCase(), T, w, d, h, () => soon ? handlers.soon(g) : handlers.game(g));
+  }
   function cabinet(g, T, soon) {
+    if (g.model) return modelCab(g, T, soon);
     if (g.style && CUSTOM[g.style]) return CUSTOM[g.style](g, T); // custom shapes live in cabs.js
     const c = g.cab, trimC = g.trim || g.color;
     const scr = imgTex(c ? c + '-screen.jpg' : g.art, 512, 512);
@@ -167,7 +179,8 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = [], opts = {})
     light(T, [0, 290, 270], g.color, 1.15);
     add(g.id, 'PLAY ' + g.title.toUpperCase(), T, 250, 205, 470, () => handlers.game(g));
   }
-  const hallPosition = i => ({ x: i % 2 ? CW - 2 : 2 - CW, z: -HD - (i < 2 ? 230 : 560), th: i % 2 ? -Math.PI / 2 : Math.PI / 2 });
+  // Back room slots: 0-5 on the side walls (three a side, front to back), 6 and 7 on the end wall either side of the vault.
+  const hallPosition = i => i > 5 ? { x: i % 2 ? 440 : -440, z: CZ + 2, th: 0 } : { x: i % 2 ? CW - 2 : 2 - CW, z: -HD - [300, 650, 1000][i >> 1], th: i % 2 ? -Math.PI / 2 : Math.PI / 2 };
   // Cabinet slots: six on the back wall (filled from the centre out), then eight in the East Wing.
   // `style` in config.js swaps the upright cabinet for a custom shape from cabs.js.
   // A game with `room: 'east'` in config.js goes straight to the wing; `hallSlot` still pins one to the hallway.
@@ -181,10 +194,11 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = [], opts = {})
   };
   const place = g => g.hallSlot != null ? hallPosition(g.hallSlot) : (g.room !== 'east' && BACK.shift()) || takeWing(g) || hallPosition(0);
   GAMES.forEach(g => cabinet(g, place(g)));
-  SOON.forEach((g, i) => cabinet(g, g.room === 'east' ? place(g) : hallPosition(g.hallSlot ?? i), true));
+  SOON.forEach((g, i) => cabinet(g, g.room === 'east' ? place(g) : (g.floor && BACK.shift()) || hallPosition(g.hallSlot ?? i), true));
   // hallway banner + vault door
   { const B = { x: 0, z: -HD, th: 0 }, bn = neon('BLANKMAN  ←  NOW PLAYING', '#ffcf24', 1024, 128);
     quad(bn, B, [-DW, 545, 2], [DW, 545, 2], [DW, 470, 2], [-DW, 470, 2]); glow('#ff4fd8', B, 0, 508, 8, 420, 170);
+    box(dark, B, -DW, DW, 464, 552, -6, 1); quad(neon('MAIN FLOOR  ↑', '#ffcf24', 1024, 128), { x: 0, z: -HD - 2, th: Math.PI }, [-DW, 545, 5], [DW, 545, 5], [DW, 470, 5], [-DW, 470, 5]);   // a header over the door, so the banner isn't seen mirrored from the back room
     const V = { x: 0, z: CZ + 2, th: 0 };
     const vt = tex(512, 512, (x, w) => { x.clearRect(0, 0, w, w); const g2 = x.createRadialGradient(256, 256, 30, 256, 256, 250); g2.addColorStop(0, '#dfe6f2'); g2.addColorStop(.6, '#8d97ab'); g2.addColorStop(1, '#3d4456'); x.fillStyle = '#20242f'; x.beginPath(); x.arc(256, 256, 254, 0, 7); x.fill(); x.fillStyle = g2; x.beginPath(); x.arc(256, 256, 226, 0, 7); x.fill();
       x.strokeStyle = '#2a2f3c'; x.lineWidth = 10; x.beginPath(); x.arc(256, 256, 170, 0, 7); x.stroke(); for (let k = 0; k < 12; k++) { const a = k / 12 * Math.PI * 2; x.fillStyle = '#20242f'; x.beginPath(); x.arc(256 + Math.cos(a) * 198, 256 + Math.sin(a) * 198, 13, 0, 7); x.fill(); }

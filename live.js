@@ -257,7 +257,7 @@ export function createLive(ctx) {
 
 
   // ---------- who is here: radar + list ----------
-  const area = p => p.g ? 'PLAYING ' + String(ctx.gameTitle(p.g) || 'A GAME').toUpperCase() : p.away ? 'AWAY' : p.x < -770 && p.z > 900 ? 'THE ARENA' : p.x > 770 && p.z > 900 ? 'THE CLUB' : p.x > 1090 ? 'EAST WING' : p.z > 790 ? 'THE LOUNGE' : p.z < -780 ? 'BACK HALLWAY' : 'MAIN FLOOR';
+  const area = p => p.g ? 'PLAYING ' + String(ctx.gameTitle(p.g) || 'A GAME').toUpperCase() : p.away ? 'AWAY' : p.x < -770 && p.z > 900 ? 'THE ARENA' : p.x > 770 && p.z > 900 ? 'THE CLUB' : p.x > 1090 ? 'EAST WING' : p.z > 790 ? 'THE LOUNGE' : p.z < -780 ? 'THE BACK ROOM' : 'MAIN FLOOR';
   const radar = document.createElement('canvas'); radar.id = 'radar'; radar.width = radar.height = 192; radar.title = 'Who is here'; document.body.appendChild(radar);
   const rc = radar.getContext('2d');
   function paintRadar() {

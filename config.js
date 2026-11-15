@@ -47,7 +47,14 @@ export const GAMES = [
 // Coming-soon games in the hallway. "file" = the song that plays when a player walks up
 // (an MP3 address); "art" = the song artwork used as the cover for now.
 export const SOON = [
-  { hallSlot: 1, id: 'bslam', title: 'Basketball Slam', color: '#ffd23e', song: 'Slam', file: 'assets/audio/slam.mp3', art: 'assets/slam-cover.jpg' },
+  { hallSlot: 1, model: 'hoops', fit: 'h', id: 'bslam', title: 'Basketball Slam', color: '#ffd23e', song: 'Slam', file: 'assets/audio/slam.mp3', art: 'assets/slam-cover.jpg' },
+  // Machines that are 3D models (assets/models/<model>.glb). hallSlot 0-5 = back room side walls, 6-7 = either side of the vault;
+  // floor: true = a free spot on the main floor's back wall. fit: 'h' sizes the model by height instead of width.
+  { hallSlot: 4, model: 'punch', fit: 'h', id: 'punch', title: 'Knockout Punch', color: '#ff2a3c', song: '', file: '', art: '' },
+  { hallSlot: 5, model: 'whack', id: 'whack', title: 'Bot Bopper', color: '#35e06f', song: '', file: '', art: '' },
+  { hallSlot: 6, model: 'cockpit', id: 'starpilot', title: 'Star Pilot', color: '#3ea8ff', song: '', file: '', art: '' },
+  { hallSlot: 7, model: 'moto', id: 'moto', title: 'Moto Rush', color: '#ff7a1a', song: '', file: '', art: '' },
+  { floor: true, model: 'roller', id: 'roller', title: 'Big Bang Roll', color: '#ffc93a', song: '', file: '', art: '' },
   { hallSlot: 3, id: 'toptier', title: 'Top Tier Wrestling', color: '#ff2a3c', song: 'Everything Top Tier, Everything Critical', file: '', art: '' },
   // East Wing machines. "style" picks the cabinet shape (see cabs.js): racer, golf, dance, pinball, claw.
   // The titles are working names: change them here and every sign updates.
