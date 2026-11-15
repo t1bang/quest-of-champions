@@ -133,7 +133,7 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = [], opts = {})
   const PARTS = [[[0, 0], [150, 0], [150, 205], [0, 205]], [[0, 205], [150, 205], [205, 225], [205, 238], [125, 262], [0, 262]], [[0, 262], [125, 262], [95, 400], [0, 400]], [[0, 400], [95, 400], [150, 405], [150, 470], [20, 470], [0, 445]]];
   const coinT = imgTex('assets/cabs/versus-coin.jpg', 256, 256);
   // A machine that is a 3D model (config.js `model`): a plain stand-in box until assets/models/<model>.glb loads. [width, height, depth]
-  const MCAB = { hoops: [190, 420, 300], punch: [150, 400, 160], whack: [240, 330, 210], cockpit: [230, 330, 330], moto: [170, 300, 330], roller: [180, 330, 300] };
+  const MCAB = { hoops: [190, 420, 300], punch: [147, 400, 235], whack: [240, 307, 239], cockpit: [290, 290, 275], moto: [170, 326, 333], roller: [150, 240, 334] };
   function modelCab(g, T, soon) {
     const [w, h, d] = MCAB[g.model] || [220, 380, 220];
     box(fb(g.model, '#16161c', 0, 0.5), T, -w / 2, w / 2, 0, h, 0, d); box(fb(g.model, g.color, 1, 0), T, -w / 2 + 12, w / 2 - 12, h * 0.55, h * 0.9, d, d + 3);
@@ -180,7 +180,7 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = [], opts = {})
     add(g.id, 'PLAY ' + g.title.toUpperCase(), T, 250, 205, 470, () => handlers.game(g));
   }
   // Back room slots: 0-5 on the side walls (three a side, front to back), 6 and 7 on the end wall either side of the vault.
-  const hallPosition = i => i > 5 ? { x: i % 2 ? 440 : -440, z: CZ + 2, th: 0 } : { x: i % 2 ? CW - 2 : 2 - CW, z: -HD - [300, 650, 1000][i >> 1], th: i % 2 ? -Math.PI / 2 : Math.PI / 2 };
+  const hallPosition = i => i > 5 ? { x: i % 2 ? 420 : -420, z: CZ + 2, th: 0 } : { x: i % 2 ? CW - 2 : 2 - CW, z: -HD - [300, 650, 1000][i >> 1], th: i % 2 ? -Math.PI / 2 : Math.PI / 2 };
   // Cabinet slots: six on the back wall (filled from the centre out), then eight in the East Wing.
   // `style` in config.js swaps the upright cabinet for a custom shape from cabs.js.
   // A game with `room: 'east'` in config.js goes straight to the wing; `hallSlot` still pins one to the hallway.
