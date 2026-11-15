@@ -11,7 +11,7 @@ import { scoreAt, drawBoard, RINGS } from './darts-rules.js';
 
 const CAB = { cy: 0.333, r: 0.226 };            // on the cabinet model: how high the middle of its board is, and the board's radius (model units)
 const DART_LEN = 1.12, FOV = 36, V = (x, y, z) => new THREE.Vector3(x, y, z);
-const MODELS = [];                               // which finished models are in assets/darts/ (none yet: the stand-ins below are used)
+const MODELS = ['dart', 'cabinet', 'lamp', 'trophy', 'stool'];   // the finished models in assets/darts/ (made in Tripo on the Pro plan); take a name out to fall back to its stand-in
 let models = null;                               // loaded once, kept for the next game
 function loadModels() {
   if (!models) {

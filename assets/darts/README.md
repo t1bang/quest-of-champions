@@ -23,5 +23,6 @@ folder **and** its name is listed in `MODELS` at the top of `darts3d.js`:
 
 ## Licence check before adding a model
 
-Models made on Tripo's **Free** plan are public and for **non-commercial use only**. The arcade sells token packs,
-so only models generated on a paid Tripo plan (or other art we own) belong in this folder.
+The five models here were generated on 14 Nov 2026 with the account on Tripo's **Pro** plan (paid plans carry
+commercial rights). Models made on Tripo's Free plan are public and for non-commercial use only, so do not add
+those: the arcade sells token packs.
