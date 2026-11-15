@@ -23,7 +23,7 @@ const persp = (fov, asp, n, f) => { const t = 1 / Math.tan(fov / 2); return new 
 // Floor plan, shared with app.js (movement and routes): main room half-width, back wall, front wall, Big Box,
 // then the East Wing doorway half-width + centre, far wall, back wall and front wall.
 // The Arena sits west of the lounge: AX = its far (west) wall, AZ0/AZ1 = north and south walls, ADZ/ADW = doorway centre and half-width in the lounge's west wall.
-export const DIMS = { HW: 1200, HD: 1100, ZF: 900, BZ: -100, WD: 200, WZ: -100, WX: 2800, WZ0: -900, WZ1: 700, AX: -2100, AZ0: 920, AZ1: 1880, ADZ: 1100, ADW: 150 };
+export const DIMS = { HW: 1200, HD: 1100, ZF: 900, BZ: -100, WD: 200, WZ: -100, WX: 2800, WZ0: -900, WZ1: 700, AX: -2100, AZ0: 920, AZ1: 1880, ADZ: 1100, ADW: 150, CX: 2000, CZ0: 920, CZ1: 1880, CDZ: 1100, CDW: 150 };   // C* = the Club, east of the lounge (mirror of the Arena)
 
 export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = [], opts = {}) {
   const gl = canvas.getContext('webgl', { antialias: true, alpha: !!opts.wallVideo, powerPreference: 'high-performance' });
@@ -101,6 +101,7 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = [], opts = {})
   quad(floorM, O, [-HW, 0, -HD], [HW, 0, -HD], [HW, 0, ZF], [-HW, 0, ZF], [0, 0, HW / 100, (ZF + HD) / 200]);
   quad(ceilM, O, [-HW, CH, ZF], [HW, CH, ZF], [HW, CH, -HD], [-HW, CH, -HD], [0, 0, HW / 200, (ZF + HD) / 400]);
   const DW = 150, CW = 350, CZ = -HD - 800; // doorway half-width, hallway half-width, hallway end
+  const arenaFloor = () => tex(512, 512, (x, w) => { x.fillStyle = '#100818'; x.fillRect(0, 0, w, w); x.strokeStyle = '#241033'; x.lineWidth = 4; for (let k = 0; k <= 8; k++) { x.beginPath(); x.moveTo(k * 64, 0); x.lineTo(k * 64, w); x.moveTo(0, k * 64); x.lineTo(w, k * 64); x.stroke(); } }, true);
   const wall = (x0, z0, x1, z1) => quad(wallM, O, [x0, CH, z0], [x1, CH, z1], [x1, 0, z1], [x0, 0, z0], [0, 0, Math.hypot(x1 - x0, z1 - z0) / 400, 1]);
   wall(-HW, -HD, -DW, -HD); wall(DW, -HD, HW, -HD);                 // back wall, with the hallway doorway
   wall(-CW, -HD, -CW, CZ); wall(CW, CZ, CW, -HD); wall(-CW, CZ, CW, CZ); // hallway
@@ -188,8 +189,8 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = [], opts = {})
     const vt = tex(512, 512, (x, w) => { x.clearRect(0, 0, w, w); const g2 = x.createRadialGradient(256, 256, 30, 256, 256, 250); g2.addColorStop(0, '#dfe6f2'); g2.addColorStop(.6, '#8d97ab'); g2.addColorStop(1, '#3d4456'); x.fillStyle = '#20242f'; x.beginPath(); x.arc(256, 256, 254, 0, 7); x.fill(); x.fillStyle = g2; x.beginPath(); x.arc(256, 256, 226, 0, 7); x.fill();
       x.strokeStyle = '#2a2f3c'; x.lineWidth = 10; x.beginPath(); x.arc(256, 256, 170, 0, 7); x.stroke(); for (let k = 0; k < 12; k++) { const a = k / 12 * Math.PI * 2; x.fillStyle = '#20242f'; x.beginPath(); x.arc(256 + Math.cos(a) * 198, 256 + Math.sin(a) * 198, 13, 0, 7); x.fill(); }
       x.lineWidth = 18; x.strokeStyle = '#20242f'; for (let k = 0; k < 4; k++) { const a = k / 4 * Math.PI + .4; x.beginPath(); x.moveTo(256 - Math.cos(a) * 120, 256 - Math.sin(a) * 120); x.lineTo(256 + Math.cos(a) * 120, 256 + Math.sin(a) * 120); x.stroke(); } x.beginPath(); x.arc(256, 256, 120, 0, 7); x.stroke(); x.fillStyle = '#ffc93a'; x.beginPath(); x.arc(256, 256, 34, 0, 7); x.fill(); text(x, 'BB', 256, 258, `30px ${BIG}`, '#20242f'); });
-    quad(mat(vt, { spec: 1, emis: 0.25, blend: true }), V, [-215, 445, 6], [215, 445, 6], [215, 15, 6], [-215, 15, 6]);
-    box(solid('#20242f', 0, 0.9), V, -240, 240, 0, 470, 0, 4);
+    quad(Object.assign(mat(vt, { spec: 1, emis: 0.25, blend: true }), { fb: 'vault' }), V, [-215, 445, 6], [215, 445, 6], [215, 15, 6], [-215, 15, 6]);
+    box(fb('vault', '#20242f', 0, 0.9), V, -240, 240, 0, 470, 0, 4); MODELS.push(['vault', [[V, { at: [0, 4, 2], size: [470, 470, null], back: true }]]]);
     quad(neon('BIG BANG VAULT', '#3ea8ff', 1024, 128), V, [-250, 550, 4], [250, 550, 4], [250, 480, 4], [-250, 480, 4]); glow('#3ea8ff', V, 0, 512, 10, 620, 190);
     light(V, [0, 300, 240], '#3ea8ff', 1.1); add('vault', 'OPEN THE BIG BANG VAULT', V, 430, 20, 470, handlers.vault); }
 
@@ -216,9 +217,10 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = [], opts = {})
   const emoji = (x, s, cx, cy, size) => text(x, s, cx, cy, `${size}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`, '#fff');
   const L = z => ({ x: 2 - HW, z, th: Math.PI / 2 }), R = z => ({ x: HW - 2, z, th: -Math.PI / 2 }), F = x => ({ x, z: ZF - 2, th: Math.PI });
 
-  let T = L(-620);
-  box(solid('#1a0a1c', 0, 0.6), T, -125, 125, 0, 400, 0, 110, { front: panel(250, 400, '#ff4fd8', (x, W) => { x.fillStyle = '#ff4fd8'; x.beginPath(); x.arc(W / 2, 190, 150, Math.PI, 0); x.fill(); x.fillStyle = '#0c0c14'; x.beginPath(); x.arc(W / 2, 190, 118, Math.PI, 0); x.fill(); emoji(x, '🎵', W / 2, 140, 96); text(x, 'JUKEBOX', W / 2, 270, `66px ${BIG}`, '#ff4fd8'); for (let i = 0; i < 8; i++) { x.fillStyle = i % 2 ? '#ffc93a' : '#3ea8ff'; x.fillRect(70 + i * 48, 330, 36, 90); } text(x, 'BIG BANG MUSIC', W / 2, 462, `16px ${PIX}`, '#fff'); }) });
-  for (const sx of [-131, 131]) box(solid('#ff4fd8', 1, 0), T, sx - 6, sx + 6, 0, 400, 100, 116);
+  let T = L(-620), jukeP;
+  box(fb('jukebox', '#1a0a1c', 0, 0.6), T, -125, 125, 0, 400, 0, 110, { front: jukeP = panel(250, 400, '#ff4fd8', (x, W) => { x.fillStyle = '#ff4fd8'; x.beginPath(); x.arc(W / 2, 190, 150, Math.PI, 0); x.fill(); x.fillStyle = '#0c0c14'; x.beginPath(); x.arc(W / 2, 190, 118, Math.PI, 0); x.fill(); emoji(x, '🎵', W / 2, 140, 96); text(x, 'JUKEBOX', W / 2, 270, `66px ${BIG}`, '#ff4fd8'); for (let i = 0; i < 8; i++) { x.fillStyle = i % 2 ? '#ffc93a' : '#3ea8ff'; x.fillRect(70 + i * 48, 330, 36, 90); } text(x, 'BIG BANG MUSIC', W / 2, 462, `16px ${PIX}`, '#fff'); }) });
+  jukeP.fb = 'jukebox'; for (const sx of [-131, 131]) box(fb('jukebox', '#ff4fd8', 1, 0), T, sx - 6, sx + 6, 0, 400, 100, 116);
+  MODELS.push(['jukebox', [[T, { at: [0, 0, 4], size: [null, 400, null], back: true }]]]);
   glow('#ff4fd8', T, 0, 220, 130, 480, 520); light(T, [0, 260, 240], '#ff4fd8'); add('jukebox', 'OPEN THE JUKEBOX', T, 260, 110, 400, handlers.jukebox);
 
   T = L(480);
@@ -277,7 +279,7 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = [], opts = {})
     quad(woodF, O, [-LW, 0, ZF], [LW, 0, ZF], [LW, 0, LE], [-LW, 0, LE], [0, 0, 8, 5]);
     quad(ceilM, O, [-LW, CH, LE], [LW, CH, LE], [LW, CH, ZF], [-LW, CH, ZF], [0, 0, 4, 2.5]);
     wall(-LW, LE, -LW, DIMS.ADZ + DIMS.ADW); wall(-LW, DIMS.ADZ - DIMS.ADW, -LW, ZF);       // west wall, with the Arena doorway
-    quad(wallM, O, [LW, CH, ZF], [LW, CH, LE], [LW, 0, LE], [LW, 0, ZF], [0, 0, 2.5, 1]);
+    wall(LW, ZF, LW, DIMS.CDZ - DIMS.CDW); wall(LW, DIMS.CDZ + DIMS.CDW, LW, LE);             // east wall, with the Club doorway
     quad(wallM, O, [LW, CH, LE], [-LW, CH, LE], [-LW, 0, LE], [LW, 0, LE], [0, 0, 4, 1]);
     const D2 = { x: 0, z: ZF, th: Math.PI }; quad(neon('LOUNGE + BAR', '#ffb400', 1024, 128), D2, [-DW, 430, 3], [DW, 430, 3], [DW, 372, 3], [-DW, 372, 3]);
     light(O, [0, 480, 1350], '#ffe2b0', 0.8);
@@ -351,12 +353,44 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = [], opts = {})
     const D4 = { x: 2 - LW, z: ADZ, th: Math.PI / 2 }; quad(neon('←  THE ARENA', RED, 1024, 128), D4, [-ADW, 520, 3], [ADW, 520, 3], [ADW, 442, 3], [-ADW, 442, 3]); glow(RED, D4, 0, 480, 10, 460, 190);
     const W4 = { x: AX + 2, z: cz, th: Math.PI / 2 };
     quad(neon('THE ARENA', RED, 1024, 128), W4, [-360, 530, 4], [360, 530, 4], [360, 430, 4], [-360, 430, 4]); glow(RED, W4, 0, 480, 10, 900, 240);
-    box(solid('#140c22', 0, 0.5), W4, -250, 250, 90, 400, 0, 16, { front: panel(500, 310, RED, (x, W) => { emoji(x, '👾', W / 2, 110, 120); text(x, 'BOSS FIGHTS', W / 2, 250, `66px ${BIG}`, RED); text(x, 'LOOT DROPS', W / 2, 326, `66px ${BIG}`, GOLD); text(x, 'COMMON · UNCOMMON · RARE · LEGENDARY · EXOTIC', W / 2, 420, `11px ${PIX}`, '#fff'); }) });
     // glowing corner pylons and a loot chest on a plinth
     for (const [px, pz, c] of [[AX + 90, AZ0 + 90, RED], [AX0 - 90, AZ1 - 90, RED], [AX + 90, AZ1 - 90, GOLD], [AX0 - 240, AZ0 + 90, GOLD]]) { box(dark, O, px - 26, px + 26, 0, 30, pz - 26, pz + 26); box(solid(c, 1, 0), O, px - 12, px + 12, 30, 430, pz - 12, pz + 12); }
-    box(dark, O, cx - 60, cx + 60, 0, 40, AZ1 - 150, AZ1 - 60); box(solid(GOLD, 0.7, 1), O, cx - 46, cx + 46, 40, 96, AZ1 - 138, AZ1 - 72); box(solid('#8a5a1e', 0.2, 0.6), O, cx - 50, cx + 50, 96, 106, AZ1 - 142, AZ1 - 68); box(solid(RED, 1, 0), O, cx - 8, cx + 8, 60, 82, AZ1 - 142, AZ1 - 136);
+    box(dark, O, cx - 60, cx + 60, 0, 40, AZ1 - 150, AZ1 - 60); box(fb('chest', GOLD, 0.7, 1), O, cx - 46, cx + 46, 40, 96, AZ1 - 138, AZ1 - 72); box(fb('chest', '#8a5a1e', 0.2, 0.6), O, cx - 50, cx + 50, 96, 106, AZ1 - 142, AZ1 - 68); box(fb('chest', RED, 1, 0), O, cx - 8, cx + 8, 60, 82, AZ1 - 142, AZ1 - 136);
+    MODELS.push(['chest', [[O, { at: [cx, 40, AZ1 - 105], size: [124, null, null], ry: Math.PI }]]]);
     light(O, [cx, 480, cz], '#ffffff', 0.7); light(O, [AX + 260, 380, cz], RED, 1); light(O, [AX0 - 260, 380, ADZ], RED, 0.7); light(O, [cx, 300, AZ1 - 200], GOLD, 0.7);
     add('arena', 'ENTER THE ARENA', D4, 300, 10, 530, handlers.arena);
+  }
+
+  // ---------- the Club (through the doorway in the lounge's east wall, across from the Arena): dance floor and DJ booth ----------
+  {
+    const { CX, CZ0, CZ1, CDZ, CDW } = DIMS, PINK = '#ff4fd8', CYAN = '#31d7ff', cx = (LW + CX) / 2, cz = (CZ0 + CZ1) / 2;
+    const tileT = tex(512, 512, (x, w) => { const cols = ['#ff2a7a', '#31d7ff', '#ffc93a', '#b06cff', '#35e06f', '#ff7a1a']; x.fillStyle = '#0a0612'; x.fillRect(0, 0, w, w); for (let r = 0; r < 8; r++) for (let k = 0; k < 8; k++) { x.fillStyle = cols[(r * 5 + k * 3 + ((r * k) % 3)) % cols.length]; x.globalAlpha = 0.5 + ((r * 7 + k * 11) % 5) / 10; x.fillRect(k * 64 + 4, r * 64 + 4, 56, 56); } x.globalAlpha = 1; }, true);
+    quad(mat(arenaFloor(), { floor: true, spec: 0.6 }), O, [LW, 0, CZ0], [CX, 0, CZ0], [CX, 0, CZ1], [LW, 0, CZ1], [0, 0, (CX - LW) / 260, (CZ1 - CZ0) / 260]);
+    quad(mat(tileT, { emis: 0.85, spec: 0.6, blend: true }), O, [cx - 330, 1.5, cz - 330], [cx + 330, 1.5, cz - 330], [cx + 330, 1.5, cz + 330], [cx - 330, 1.5, cz + 330]);   // the lit dance floor
+    quad(ceilM, O, [LW, CH, CZ1], [CX, CH, CZ1], [CX, CH, CZ0], [LW, CH, CZ0], [0, 0, (CX - LW) / 400, (CZ1 - CZ0) / 400]);
+    wall(LW, CZ0, CX, CZ0); wall(CX, CZ1, LW, CZ1); wall(CX, CZ0, CX, CZ1);
+    // signs: over the doorway on the lounge side, and across the far wall behind the booth
+    const D5 = { x: LW - 2, z: CDZ, th: -Math.PI / 2 }; quad(neon('THE CLUB  →', PINK, 1024, 128), D5, [-CDW, 520, 3], [CDW, 520, 3], [CDW, 442, 3], [-CDW, 442, 3]); glow(PINK, D5, 0, 480, 10, 460, 190);
+    const W5 = { x: CX - 2, z: cz, th: -Math.PI / 2 };
+    quad(neon('THE CLUB', PINK, 1024, 128), W5, [-360, 530, 4], [360, 530, 4], [360, 430, 4], [-360, 430, 4]); glow(PINK, W5, 0, 480, 10, 900, 240);
+    quad(neon('DJ BOOTH', CYAN), W5, [-150, 410, 4], [150, 410, 4], [150, 345, 4], [-150, 345, 4]);
+    // the booth on a low stage, speakers either side, a mirror ball over the floor (stand-ins until the models load)
+    box(dark, W5, -330, 330, 0, 22, 0, 300); for (const [a, b] of [[-330, -322], [322, 330]]) box(solid(PINK, 1, 0), W5, a, b, 0, 24, 0, 300); box(solid(CYAN, 1, 0), W5, -330, 330, 0, 24, 296, 302);
+    box(fb('djbooth', '#16161c', 0, 0.5), W5, -150, 150, 22, 150, 110, 210); box(fb('djbooth', '#0c0c14', 0.1, 0.9), W5, -120, 120, 150, 160, 130, 195); box(fb('djbooth', CYAN, 1, 0), W5, -40, 40, 160, 163, 150, 180);
+    for (const sx of [-250, 250]) { box(fb('speaker', '#101016', 0, 0.5), W5, sx - 45, sx + 45, 22, 250, 40, 120); box(fb('speaker', PINK, 1, 0), W5, sx - 36, sx + 36, 40, 240, 120, 123); }
+    sphere(fb('disco', '#c8ccd8', 0.5, 1), O, cx, 440, cz, 60);
+    for (const [tx, tz] of [[LW + 190, CZ1 - 190], [LW + 430, CZ1 - 150], [LW + 190, CZ0 + 560]]) { box(fb('hightop', '#16161c', 0, 0.6), O, tx - 6, tx + 6, 0, 104, tz - 6, tz + 6); box(fb('hightop', '#5a3a20', 0.1, 0.5), O, tx - 36, tx + 36, 104, 112, tz - 36, tz + 36); }
+    light(O, [cx, 470, cz], '#ffffff', 0.55); light(O, [cx - 220, 330, cz - 220], PINK, 1.1); light(O, [cx + 220, 330, cz + 220], CYAN, 1.1); light(W5, [0, 300, 330], '#b06cff', 1); light(O, [LW + 220, 380, CDZ], PINK, 0.7);
+    add('club', 'ENTER THE CLUB', D5, 300, 10, 530, handlers.club);
+    add('dj', 'STEP UP TO THE DJ BOOTH', { x: CX - 2 - 215, z: cz, th: -Math.PI / 2 }, 330, 10, 300, handlers.dj); stations.dj.zone = 'club';
+    MODELS.push(
+      ['djbooth', [[W5, { at: [0, 22, 165], size: [310, null, null] }]]],
+      ['speaker', [[W5, { at: [-255, 22, 85], size: [null, 240, null] }], [W5, { at: [255, 22, 85], size: [null, 240, null] }], [O, { at: [LW + 110, 0, CZ1 - 110], size: [null, 240, null], ry: Math.PI * 0.75 }], [O, { at: [LW + 110, 0, CZ0 + 600], size: [null, 240, null], ry: Math.PI * 0.5 }]]],
+      ['disco', [[O, { at: [cx, 372, cz], size: [null, 186, null] }]]],
+      ['hightop', [[LW + 190, CZ1 - 190], [LW + 430, CZ1 - 150], [LW + 190, CZ0 + 560]].map(([tx, tz]) => [O, { at: [tx, 0, tz], size: [null, 114, null] }])],
+      ['palm', [[O, { at: [LW - 60, 0, CDZ - CDW - 60], size: [null, 220, null] }], [O, { at: [LW + 70, 0, CDZ + CDW + 70], size: [null, 220, null] }], [O, { at: [-230, 0, ZF - 55], size: [null, 220, null] }], [O, { at: [230, 0, ZF - 55], size: [null, 220, null] }], [O, { at: [CX - 90, 0, CZ0 + 90], size: [null, 220, null] }]]],
+      ['rack', [[O, { at: [556, 0, 1330], size: [null, null, 150], long: 'z' }]]],
+    );
   }
 
   // ---------- the East Wing (through the doorway in the right wall) ----------
@@ -434,7 +468,7 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = [], opts = {})
     for (const [T, o] of places) {
       let ry = o.ry || 0, dx = g.hi[0] - g.lo[0], dy = g.hi[1] - g.lo[1], dz = g.hi[2] - g.lo[2];
       if (o.long && (o.long === 'z') !== (dz > dx)) ry += Math.PI / 2;
-      const c = Math.cos(ry), s = Math.sin(ry), ex = Math.abs(c) * dx + Math.abs(s) * dz, ez = Math.abs(s) * dx + Math.abs(c) * dz, sz_ = o.size || [], want = [sz_[0] ? sz_[0] / ex : 0, sz_[1] ? sz_[1] / dy : 0, sz_[2] ? sz_[2] / ez : 0], first = want.find(k => k) || 1, S = want.map(k => k || first), at = o.at || [0, 0, 0];
+      const c = Math.cos(ry), s = Math.sin(ry), ex = Math.abs(c) * dx + Math.abs(s) * dz, ez = Math.abs(s) * dx + Math.abs(c) * dz, sz_ = o.size || [], want = [sz_[0] ? sz_[0] / ex : 0, sz_[1] ? sz_[1] / dy : 0, sz_[2] ? sz_[2] / ez : 0], first = want.find(k => k) || 1, S = want.map(k => k || first), at = (o.at || [0, 0, 0]).slice(); if (o.back) at[2] += ez * S[2] / 2;   // back: at[2] is where its back goes (things that stand against a wall)
       const T0 = { x: 0, z: 0, th: T.th || 0 }, base = tf(T, at); sumX += base[0]; sumZ += base[2];
       for (let i = 0; i < g.v.length; i += 8) {
         const x = g.v[i] - cx, y = g.v[i + 1] - g.lo[1], z = g.v[i + 2] - cz, p = tf(T, [at[0] + (x * c + z * s) * S[0], at[1] + y * S[1], at[2] + (-x * s + z * c) * S[2]]);
