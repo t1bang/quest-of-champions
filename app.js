@@ -9,6 +9,7 @@ import { createVersus } from './versus.js';
 import { drawAvatar as artAvatar, paintIcons, iconTag } from './avatar.js';
 import { COVERS, playTrailer } from './art.js';
 import { buildRoom, DIMS } from './room.js';
+import { createX2 } from './x2.js';
 import { supabase, authHeaders, playerCall, enabledProviders, escapeHtml, createActivityTracker } from './player-services.js';
 import { GAME_SERVICES, saveFor, createSiteTracker } from './game-services.js';
 
@@ -104,7 +105,7 @@ const soonCard = g => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 
 SOON.forEach(g => { g.art = g.art || svgUrl(soonCard(g)); });
 const cover = g => `<img src="${g.art}" alt="${g.title} cover art">`;
 await Promise.race([Promise.all([document.fonts.load('40px Bungee'), document.fonts.load('16px "Press Start 2P"')]).catch(() => {}), new Promise(r => setTimeout(r, 1800))]);
-const handlers = { game: g => openGame(g), bigbox: () => openBigBox(), jukebox: () => openJukebox(), closet: () => openCloset(), prizes: () => openPrizes(), scores: () => openBoard('all'), donate: () => openDonate(), credits: () => openCredits(), soon: g => openSoon(g), vault: () => openVault(), bar: () => openBar(), sit: id => sitDown(id), mini: k => openMini(k), eastwing: () => toast('EAST WING: NEW GAMES LAND HERE SOON'), arena: () => enterArena(), club: () => enterClub(), dj: () => openDj() };
+const handlers = { game: g => openGame(g), bigbox: () => openBigBox(), jukebox: () => openJukebox(), closet: () => openCloset(), prizes: () => openPrizes(), scores: () => openBoard('all'), donate: () => openDonate(), credits: () => openCredits(), soon: g => openSoon(g), vault: () => openVault(), bar: () => openBar(), sit: id => sitDown(id), mini: k => openMini(k), eastwing: () => toast('EAST WING: NEW GAMES LAND HERE SOON'), arena: () => enterArena(), club: () => enterClub(), dj: () => openDj(), book: i => x2 && x2.book(i), x2: what => x2 && x2.act(what) };
 const wallId = ((WALL_VIDEO || '').match(/(?:v=|youtu\.be\/|shorts\/|embed\/)([\w-]{11})/) || [])[1] || '';
 const room = buildRoom(view, GAMES, PRIZES, handlers, SOON, { wallVideo: !!wallId });
 // The wall board in the lobby shows the real arcade standings and refreshes while the room is open.
@@ -120,19 +121,21 @@ if (!room) { $('#hint').textContent = 'YOUR BROWSER CANNOT SHOW THE 3D ROOM. USE
 // ---------------- movement + controls ----------------
 const P = { x: 0, z: 780, yaw: 0, pitch: 0, eye: 300 }, keys = {}, joy = { x: 0, y: 0 };
 let goal = null, near = null, walkT = 0;
+let x2 = null;   // the expansion rooms (x2.js): set once the room and the moves exist
 const { HW, HD, ZF, BZ, WD, WZ, WX, WZ0, WZ1, AX, AZ0, AZ1, ADZ, ADW, BW, BD, CX, CZ0, CZ1, CDZ, CDW } = DIMS; // floor plan from room.js
 const BR = 215, ZMIN = 320 - HD, ZMAX = ZF - 110, XMAX = HW - 110; // Big Box half-size + walkable main floor
 const angDiff = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b));
 const LANE = 120, HEND = -HD - BD + 400, HZA = -HD - 110, HXB = BW - 270, inHall = p => p.z < ZMIN; // the back room behind the cabinets: a doorway lane, then a room (HZA = just inside it)
 const LZ0 = 960, LZ1 = 1850, inLounge = p => p.z > ZMAX;      // the lounge past the front doorway
 const SOLID = [[-490, 1090, -290, 1390], [290, 1090, 490, 1390], [-350, 1680, 350, 1900], [600, 1240, 780, 1900], [-800, 1590, -695, 1890], [-740, 1795, -400, 1900]]; // lounge furniture
-const WLANE = WD - 50, WXA = HW + 110, WXB = WX - 110, WZA = WZ0 + 320, WZB = WZ1 - 320, inWing = p => p.x > XMAX && p.z <= ZMAX; // the East Wing past the right-wall doorway
+const WLANE = WD - 50, WXA = HW + 110, WXB = WX - 110, WZA = WZ0 + 320, WZB = WZ1 - 320, inWing = p => p.x > XMAX && p.z <= ZMAX && p.z >= ZMIN; // the East Wing past the right-wall doorway
 // The Arena, west of the lounge: walkable box, and the doorway lane that joins it to the lounge
 const AXA = AX + 110, AXB = -800 - 110, AZA = AZ0 + 110, AZB = AZ1 - 110, ADLANE = ADW - 50, inArena = p => p.x < -730 && p.z > ZMAX;
 // The Club, east of the lounge (the Arena's mirror image). The stage with the DJ booth fills its far end.
 const CXA = 800 + 110, CXB = CX - 340, CZA = CZ0 + 110, CZB = CZ1 - 110, CDLANE = CDW - 50, inClub = p => p.x > 730 && p.z > ZMAX;
 let sitting = false;
-function collide() {
+function collide() { if (x2) x2.collide(); else collideOld(); }
+function collideOld() {
   if (inWing(P)) {
     if (P.x < WXA) { if (Math.abs(P.z - WZ) > WLANE) { if (P.x < XMAX + 60) P.x = XMAX; else if (P.x > WXA - 60) P.x = WXA; else P.z = WZ + Math.sign(P.z - WZ) * WLANE; } }
     else { P.x = Math.min(WXB, P.x); P.z = Math.max(WZA, Math.min(WZB, P.z)); }
@@ -188,6 +191,7 @@ function goTo(id) {
   const s = stations[id]; if (!s) return;
   closePanel(); $('#hint').style.opacity = 0; sitting = false;
   if (!room) return s.open();
+  if (x2 && x2.goTo(id)) return;      // something in one of the new rooms
   const d = (s.depth || 0) + Math.max(190, Math.min(410, Math.max((s.w / 2) / Math.tan(room.hfov() / 2) * 1.15, (s.max[1] / 2) / Math.tan(room.vfov() / 2))));
   let to = { x: s.x + Math.sin(s.T.th) * d, z: s.z + Math.cos(s.T.th) * d };
   // The Arena and the Club are side rooms off the lounge: each has a doorway (in = just inside, out = just outside in the lounge).
@@ -243,16 +247,17 @@ function frame(now, xf) {
   P.eye = P.eyeBase + Math.sin(walkT) * (moving ? 5 : 0);
   if (xr) xrDraw(xf, now / 1000, dt);
   else if (room && !window.__skip && !lobbyPaused) {
-    const t = now / 1000, spr = peerSprites(dt), mv = moves ? moves.update(dt, spr) : null; if (live) live.update(dt, spr);      // moves add blasts, sparks and the sparring bot, and lift or shake the view
+    const t = now / 1000, spr = peerSprites(dt), mv = moves ? moves.update(dt, spr) : null; if (live) live.update(dt, spr); const xo = x2 ? x2.update(dt, spr) : null;      // moves add blasts, sparks and the sparring bot, and lift or shake the view
     const V = mv && (mv.lift || mv.shakeX || mv.shakeY || mv.spin) ? { ...P, eye: P.eye + mv.lift + mv.shakeY, yaw: P.yaw + mv.shakeX + mv.spin } : P;
-    room.render(drunk ? { ...V, yaw: V.yaw + Math.sin(t * 1.3) * 0.03 * drunk, pitch: V.pitch + Math.sin(t * 0.9) * 0.018 * drunk } : V, t, spr); placeWall();
+    room.render(drunk ? { ...V, yaw: V.yaw + Math.sin(t * 1.3) * 0.03 * drunk, pitch: V.pitch + Math.sin(t * 0.9) * 0.018 * drunk } : V, t, spr, xo && xo.beams); placeWall();
   }
   let best = null, bd = 1e9;
   if (room) for (const s of Object.values(stations)) {
     const d = Math.hypot(s.x - P.x, s.z - P.z), a = Math.atan2(s.x - P.x, -(s.z - P.z));
     if (d < 620 && d < bd && Math.abs(angDiff(a, look)) < 0.6) { best = s; bd = d; }
   }
-  if (best !== near) { near = best; const b = $('#act'); b.hidden = !near || !panel.hidden; if (near) b.textContent = '▶ ' + near.label; }
+  const ov = x2 && !xr ? x2.override() : null; if (ov) best = ov;      // holding a ball, a ball at your feet, a laser round: the button does that instead
+  if (ov ? !near || near.label !== ov.label : best !== near) { near = best; const b = $('#act'); b.hidden = !near || !panel.hidden; if (near) b.textContent = (ov ? '' : '▶ ') + near.label; }
   if (xr) xr.session.requestAnimationFrame(frame); else raf0 = requestAnimationFrame(frame);
 }
 let raf0 = requestAnimationFrame(frame);
@@ -359,7 +364,7 @@ function stickPush(m, x, y) {
   joy.x = ux * v * 0.85; joy.y = uy * v; knob.style.transform = `translate(${ux * lim * R * 0.58}px,${uy * lim * R * 0.58}px)`;
   if (v) { goal = null; hintOff(); }
 }
-const tapAt = e => { if (room) { const s = room.pick(e.clientX, e.clientY, P); if (s) goTo(s.id); } };
+const tapAt = e => { if (room) { const ov = x2 && x2.override(); if (ov) return ov.open(); const s = room.pick(e.clientX, e.clientY, P); if (s) goTo(s.id); } };
 view.addEventListener('pointerdown', e => {
   const touch = e.pointerType !== 'mouse';
   try { view.setPointerCapture(e.pointerId); } catch {}
@@ -615,7 +620,7 @@ function openCredits() {
 }
 function openMap() {
   siteActivity.event('map_open');
-  show(`<h2>ARCADE MAP</h2><p>Tap a spot and you'll walk there.</p><div class="grid">${Object.values(stations).map(s => `<button class="btn" data-go="${s.id}" style="margin:0">${s.label.replace(/^(PLAY|OPEN|SEE|SHOP) (THE |MY )?/, '')}</button>`).join('')}</div>`);
+  show(`<h2>ARCADE MAP</h2><p>Tap a spot and you'll walk there.</p><div class="grid">${Object.values(stations).filter(s => !s.hidden).map(s => `<button class="btn" data-go="${s.id}" style="margin:0">${s.label.replace(/^(PLAY|OPEN|SEE|SHOP) (THE |MY )?/, '')}</button>`).join('')}</div>`);
   pbody.onclick = e => { const b = e.target.closest('[data-go]'); if (b) goTo(b.dataset.go); };
   cleanup = () => { pbody.onclick = null; };
 }
@@ -763,7 +768,13 @@ let live = null; // who's here, daily quests and the lobby bosses (live.js)
 // Moves and animation for avatars (moves.js). Actions are shared on the same live channel as positions.
 const moves = room ? createMoves({ room, P, peers, sid, closet: () => (me && me.closet) || [], skin: () => AV.skin[myAv.skin] || '#c68642', drawMine: (c, W, H, pose, tint) => drawAvatar(c, W, H, myAv, me ? me.name : '', myFit, null, pose, tint),
   blocked: () => !$('#gf').hidden || !panel.hidden || !$('#gate').hidden || !!xr, stand: () => { sitting = false; }, collide, toast, hub, event: (type, n) => { if (live) live.event(type, n); }, send: payload => { try { window.__bbaAct && window.__bbaAct(payload); } catch {} }, name: () => (me ? me.name : 'Player') }) : null;
-window.__bbaMoves = moves; window.__P = P; window.__bbaSid = sid; window.__bbaOpen = (id, arg) => handlers[id] && handlers[id](arg);
+// The expansion rooms: doors, mirrors, books, basketballs, laser tag (x2.js)
+let mirrorTex = null, mirrorKey = '';
+if (room) x2 = createX2({ P, room, stations, peers, store, toast, show, closePanel, legacyCollide: collideOld, setGoal: g => { goal = g; }, sprite: SPRITE, hub, openGame: g => openGame(g),
+  emote: m => { try { if (moves) moves.doMove(m); } catch {} },
+  swordArt: svgUrl('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400"><defs><radialGradient id="g" cx=".5" cy=".4" r=".7"><stop offset="0" stop-color="#6a2ad0"/><stop offset="1" stop-color="#0c0418"/></radialGradient></defs><rect width="400" height="400" fill="url(#g)"/><path d="M200 50l14 30v170h-28V80z" fill="#e6ecff"/><rect x="150" y="250" width="100" height="16" rx="6" fill="#ffc93a"/><rect x="190" y="266" width="20" height="56" fill="#5a3282"/><circle cx="200" cy="330" r="14" fill="#ffc93a"/><path d="M110 400l30-90 50-24 60 10 40 60 10 44z" fill="#46425a"/></svg>'),
+  selfTex: () => { const key = JSON.stringify(myAv) + JSON.stringify(myFit) + (me ? me.name : ''); if (key !== mirrorKey) { if (mirrorTex) room.freeTex(mirrorTex); mirrorKey = key; mirrorTex = room.tex(256, 256, (c2, W, H) => drawAvatar(c2, W, H, myAv, me ? me.name : '', myFit)); } return mirrorTex; } });
+window.__bbaMoves = moves; window.__P = P; window.__x2 = x2; window.__bbaSid = sid; window.__bbaOpen = (id, arg) => handlers[id] && handlers[id](arg);
 const alerts = createAlerts({ toast, hub, call: async (action, body) => { const { data, error } = await supabase.rpc('bba_push', { p_action: action, p_body: { ...auth, ...body } }); if (error) throw new Error(error.message); return data; } });
 live = createLive({ room, P, peers, moves, toast, hub, collide, show, closePanel, pbody, onClose: fn => { cleanup = fn; }, alertsHtml: () => alerts.html(), alerts: want => alerts.toggle(want), alertsOn: () => alerts.on || !alerts.can,
   call: async (action, body) => { const { data, error } = await supabase.rpc('bba_daily', { p_action: action, p_body: { ...auth, ...body } }); if (error) throw new Error(error.message); return data; },
@@ -794,7 +805,7 @@ function peerSeen(d) {
   if (!d || typeof d.id !== 'string' || d.id === sid || (peers.size >= 40 && !peers.has(d.id))) return;
   const name = String(d.n || 'Player').replace(/[^A-Za-z0-9 _-]/g, '').slice(0, 16), av = cleanAv(d.av), fit = d.fit ? cleanFit(d.fit) : null, look = { goggles: !!d.d, curvy: drunk > 0 };
   const g = typeof d.g === 'string' && /^[a-z0-9-]{2,24}$/.test(d.g) ? d.g : '', away = !!d.h && !g, tag = name + (g ? ' ▶' : away ? ' …' : ''), key = tag + JSON.stringify(av) + JSON.stringify(fit) + JSON.stringify(look);
-  const x = Math.max(AXA, Math.min(WXB, +d.x || 0)), z = Math.max(HEND, Math.min(LZ1, +d.z || 0)); // anywhere you can walk: main floor, hallway, lounge, East Wing
+  const x = Math.max(-3400, Math.min(WXB, +d.x || 0)), z = Math.max(-4600, Math.min(LZ1, +d.z || 0)); // anywhere you can walk: main floor, hallway, lounge, East Wing
   let p = peers.get(d.id); if (!p) { p = { x, z }; peers.set(d.id, p); if (live) live.joined(name); }
   p.name = name; p.g = g; p.away = away; p.v = !!d.v;
   if (p.key !== key && room) { if (moves) moves.freePeer(p); p.draw = (c, W, H, pose, tint) => drawAvatar(c, W, H, av, tag, fit, look, pose, tint); p.key = key; }

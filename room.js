@@ -2,6 +2,7 @@
 // Lit 3D cabinets, coloured point lights, glossy reflective floor, neon glow.
 import { customCabinets } from './cabs.js';
 import { drawBoard } from './darts-rules.js';
+import { buildExtra, PLAN, BOOKS } from './rooms2.js';
 
 const VS = `attribute vec3 aP;attribute vec3 aN;attribute vec2 aU;uniform mat4 uVP;uniform mat4 uM;varying vec3 vP;varying vec3 vN;varying vec2 vU;
 void main(){vec4 w=uM*vec4(aP,1.);vP=w.xyz;vN=mat3(uM)*aN;vU=aU;gl_Position=uVP*w;}`;
@@ -23,7 +24,7 @@ const persp = (fov, asp, n, f) => { const t = 1 / Math.tan(fov / 2); return new 
 // Floor plan, shared with app.js (movement and routes): main room half-width, back wall, front wall, Big Box,
 // then the East Wing doorway half-width + centre, far wall, back wall and front wall.
 // The Arena sits west of the lounge: AX = its far (west) wall, AZ0/AZ1 = north and south walls, ADZ/ADW = doorway centre and half-width in the lounge's west wall.
-export const DIMS = { HW: 1200, HD: 1100, ZF: 900, BZ: -100, WD: 200, WZ: -100, WX: 2800, WZ0: -900, WZ1: 700, AX: -2100, AZ0: 920, AZ1: 1880, ADZ: 1100, ADW: 150, BW: 800, BD: 1250, CX: 2000, CZ0: 920, CZ1: 1880, CDZ: 1100, CDW: 150 };   // C* = the Club, east of the lounge (mirror of the Arena)
+export const DIMS = { HW: 1200, HD: 1100, ZF: 900, BZ: -100, WD: 200, WZ: -100, WX: 2800, WZ0: -900, WZ1: 700, AX: -2100, AZ0: 920, AZ1: 1880, ADZ: 1100, ADW: 150, BW: 1500, BD: 2100, CX: 2000, CZ0: 920, CZ1: 1880, CDZ: 1100, CDW: 150 };   // C* = the Club, east of the lounge (mirror of the Arena)
 
 export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = [], opts = {}) {
   const gl = canvas.getContext('webgl', { antialias: true, alpha: !!opts.wallVideo, powerPreference: 'high-performance' });
@@ -63,7 +64,9 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = [], opts = {})
   const withImg = (src, w, h, draw, repeat) => { const e = img(src), t = tex(w, h, (x, W, H) => draw(x, W, H, e), repeat); img(src, t.redraw); return t; };
 
   // ---------- geometry ----------
-  const tf = (T, p) => { const c = Math.cos(T.th || 0), s = Math.sin(T.th || 0); return [T.x + p[0] * c + p[2] * s, p[1], T.z - p[0] * s + p[2] * c]; };
+  // mirX: while set, everything is built as its mirror image in the plane x = mirX (the closet's looking-glass copy)
+  let mirX = null;
+  const tf = (T, p) => { const c = Math.cos(T.th || 0), s = Math.sin(T.th || 0), X = T.x + p[0] * c + p[2] * s; return [mirX == null ? X : 2 * mirX - X, p[1], T.z - p[0] * s + p[2] * c]; };
   function quad(m, T, a, b, c, d, uv = [0, 0, 1, 1]) { // a=top-left b=top-right c=bottom-right d=bottom-left
     const [A_, B_, C_, D_] = [a, b, c, d].map(p => tf(T, p));
     const e1 = [B_[0] - A_[0], B_[1] - A_[1], B_[2] - A_[2]], e2 = [D_[0] - A_[0], D_[1] - A_[1], D_[2] - A_[2]];
@@ -80,7 +83,7 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = [], opts = {})
     quad(f.top || m, T, [x0, y1, z0], [x1, y1, z0], [x1, y1, z1], [x0, y1, z1]);
   }
   const glow = (c, T, cx, cy, z, w, h) => quad(glowM(c), T, [cx - w / 2, cy + h / 2, z], [cx + w / 2, cy + h / 2, z], [cx + w / 2, cy - h / 2, z], [cx - w / 2, cy - h / 2, z]);
-  const lights = []; const light = (T, p, c, k = 1) => { lights.push({ p: tf(T, p), c: rgb(c).map(v => v * k), d: 0 }); };
+  const lights = []; const light = (T, p, c, k = 1) => { if (mirX != null) return; lights.push({ p: tf(T, p), c: rgb(c).map(v => v * k), d: 0 }); };
 
   // ---------- room shell ----------
   const O = { x: 0, z: 0 }, { HW, HD, ZF, BZ, WD, WZ, WX, WZ0, WZ1 } = DIMS, CH = 560, LW = 800; // LW = lounge half-width
@@ -103,13 +106,23 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = [], opts = {})
   const DW = 150, CW = DIMS.BW, CZ = -HD - DIMS.BD; // doorway half-width, back room half-width, back room end
   const arenaFloor = () => tex(512, 512, (x, w) => { x.fillStyle = '#180507'; x.fillRect(0, 0, w, w); x.strokeStyle = '#330a10'; x.lineWidth = 4; for (let k = 0; k <= 8; k++) { x.beginPath(); x.moveTo(k * 64, 0); x.lineTo(k * 64, w); x.moveTo(0, k * 64); x.lineTo(w, k * 64); x.stroke(); } }, true);
   const wall = (x0, z0, x1, z1) => quad(wallM, O, [x0, CH, z0], [x1, CH, z1], [x1, 0, z1], [x0, 0, z0], [0, 0, Math.hypot(x1 - x0, z1 - z0) / 400, 1]);
+  // a wall along x or z with doorways cut in it: gaps = [[centre along the wall, half-width]], a header over each
+  const DH = 350;
+  function wallG(m, x0, z0, x1, z1, gaps = [], h = CH) {
+    const alongX = z0 === z1, a0 = alongX ? x0 : z0, a1 = alongX ? x1 : z1, dir = Math.sign(a1 - a0) || 1, Pt = a => alongX ? [a, z0] : [x0, a];
+    const seg = (a, b, y0, y1) => { if (Math.abs(b - a) < 1) return; const p = Pt(a), q = Pt(b); quad(m, O, [p[0], y1, p[1]], [q[0], y1, q[1]], [q[0], y0, q[1]], [p[0], y0, p[1]], [0, 1 - y1 / CH, Math.abs(b - a) / 400, 1 - y0 / CH]); };
+    let at = a0;
+    for (const [c, hw] of gaps.slice().sort((p, q) => dir * (p[0] - q[0]))) { seg(at, c - dir * hw, 0, h); seg(c - dir * hw, c + dir * hw, DH, h); at = c + dir * hw; }
+    seg(at, a1, 0, h);
+  }
   wall(-HW, -HD, -DW, -HD); wall(DW, -HD, HW, -HD);                 // back wall, with the hallway doorway
-  wall(-CW, -HD, -CW, CZ); wall(CW, CZ, CW, -HD); wall(-CW, CZ, CW, CZ); // the back room
+  wall(-CW, -HD, -HW, -HD); wall(HW, -HD, CW, -HD);                 // the game room is wider than the main floor: the rest of its front wall
+  wallG(wallM, -CW, -HD, -CW, CZ, [[-2700, 130]]); wallG(wallM, CW, CZ, CW, -HD, [[-2700, 130]]); wallG(wallM, -CW, CZ, CW, CZ, [[1000, 150]]); // the game room: doors to laser tag, the kid zone and outside
   quad(floorM, O, [-CW, 0, CZ], [CW, 0, CZ], [CW, 0, -HD], [-CW, 0, -HD], [0, 0, CW / 100, (-HD - CZ) / 200]);
   quad(ceilM, O, [-CW, CH, -HD], [CW, CH, -HD], [CW, CH, CZ], [-CW, CH, CZ], [0, 0, CW / 200, (-HD - CZ) / 400]);
-  light(O, [0, 430, -HD - 350], '#ffffff', 0.5); light(O, [0, 430, -HD - 850], '#ffffff', 0.5);
+  for (const lz of [350, 1050, 1750]) for (const lx of [-750, 0, 750]) light(O, [lx, 470, -HD - lz], '#ffffff', lx ? 0.4 : 0.5);
   wall(HW, ZF, DW, ZF); wall(-DW, ZF, -HW, ZF);                     // front wall, with the lounge doorway
-  wall(-HW, ZF, -HW, -HD);                                          // left wall
+  wallG(wallM, -HW, ZF, -HW, -HD, [[-70, 150], [480, 110]]);       // left wall, with the theater and closet doorways
   wall(HW, -HD, HW, WZ - WD); wall(HW, WZ + WD, HW, ZF);            // right wall, with the East Wing doorway
   light(O, [0, 500, 520], '#ffffff', 0.55); light(O, [-650, 500, -420], '#ffffff', 0.45); light(O, [650, 500, -420], '#ffffff', 0.45);
 
@@ -133,7 +146,7 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = [], opts = {})
   const PARTS = [[[0, 0], [150, 0], [150, 205], [0, 205]], [[0, 205], [150, 205], [205, 225], [205, 238], [125, 262], [0, 262]], [[0, 262], [125, 262], [95, 400], [0, 400]], [[0, 400], [95, 400], [150, 405], [150, 470], [20, 470], [0, 445]]];
   const coinT = imgTex('assets/cabs/versus-coin.jpg', 256, 256);
   // A machine that is a 3D model (config.js `model`): a plain stand-in box until assets/models/<model>.glb loads. [width, height, depth]
-  const MCAB = { hoops: [201, 420, 350], punch: [147, 400, 235], whack: [240, 307, 239], cockpit: [290, 290, 275], moto: [170, 326, 333], roller: [150, 240, 334] };
+  const MCAB = { slamcab: [212, 470, 251], hoops: [201, 420, 350], punch: [147, 400, 235], whack: [240, 307, 239], cockpit: [290, 290, 275], moto: [170, 326, 333], roller: [150, 240, 334] };
   function modelCab(g, T, soon) {
     const [w, h, d] = MCAB[g.model] || [220, 380, 220];
     box(fb(g.model, '#16161c', 0, 0.5), T, -w / 2, w / 2, 0, h, 0, d); box(fb(g.model, g.color, 1, 0), T, -w / 2 + 12, w / 2 - 12, h * 0.55, h * 0.9, d, d + 3);
@@ -180,7 +193,8 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = [], opts = {})
     add(g.id, 'PLAY ' + g.title.toUpperCase(), T, 250, 205, 470, () => handlers.game(g));
   }
   // Back room slots: 0-5 on the side walls (three a side, front to back), 6 and 7 on the end wall either side of the vault.
-  const hallPosition = i => i > 5 ? { x: i % 2 ? 420 : -420, z: CZ + 2, th: 0 } : { x: i % 2 ? CW - 2 : 2 - CW, z: -HD - [300, 650, 1000][i >> 1], th: i % 2 ? -Math.PI / 2 : Math.PI / 2 };
+  const hallPosition = i => i > 5 ? { x: i % 2 ? 520 : -520, z: CZ + 2, th: 0 } : { x: i % 2 ? CW - 2 : 2 - CW, z: -HD - [350, 800, 1250][i >> 1], th: i % 2 ? -Math.PI / 2 : Math.PI / 2 };
+  const ISLAND = { x: -200, z: -2305, th: 0 };   // free-standing, beside the Shoot'em hoop in the middle of the game room
   // Cabinet slots: six on the back wall (filled from the centre out), then eight in the East Wing.
   // `style` in config.js swaps the upright cabinet for a custom shape from cabs.js.
   // A game with `room: 'east'` in config.js goes straight to the wing; `hallSlot` still pins one to the hallway.
@@ -194,7 +208,7 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = [], opts = {})
   };
   const place = g => g.hallSlot != null ? hallPosition(g.hallSlot) : (g.room !== 'east' && BACK.shift()) || takeWing(g) || hallPosition(0);
   GAMES.forEach(g => cabinet(g, place(g)));
-  SOON.forEach((g, i) => cabinet(g, g.room === 'east' ? place(g) : (g.floor && BACK.shift()) || hallPosition(g.hallSlot ?? i), true));
+  SOON.forEach((g, i) => cabinet(g, g.spot === 'island' ? ISLAND : g.room === 'east' ? place(g) : (g.floor && BACK.shift()) || hallPosition(g.hallSlot ?? i), true));
   // hallway banner + vault door
   { const B = { x: 0, z: -HD, th: 0 }, bn = neon('BLANKMAN  ←  NOW PLAYING', '#ffcf24', 1024, 128);
     quad(bn, B, [-DW, 545, 2], [DW, 545, 2], [DW, 470, 2], [-DW, 470, 2]); glow('#ff4fd8', B, 0, 508, 8, 420, 170);
@@ -237,9 +251,7 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = [], opts = {})
   MODELS.push(['jukebox', [[T, { at: [0, 0, 4], size: [null, 400, null], back: true }]]]);
   glow('#ff4fd8', T, 0, 220, 130, 480, 520); light(T, [0, 260, 240], '#ff4fd8'); add('jukebox', 'OPEN THE JUKEBOX', T, 260, 110, 400, handlers.jukebox);
 
-  T = L(480);
-  box(solid('#0e1a2c', 0, 0.5), T, -135, 135, 0, 440, 0, 30, { front: panel(270, 440, '#3ea8ff', (x, W) => { x.fillStyle = '#16304f'; x.fillRect(60, 60, 392, 392); x.fillStyle = '#0c0c14'; x.fillRect(250, 60, 6, 392); emoji(x, '👕', 160, 200, 90); emoji(x, '🧢', 350, 200, 90); text(x, 'MY CLOSET', W / 2, 330, `58px ${BIG}`, '#3ea8ff'); text(x, 'YOUR PRIZES LIVE HERE', W / 2, 400, `14px ${PIX}`, '#fff'); x.fillStyle = '#ffc93a'; x.beginPath(); x.arc(232, 256, 9, 0, 7); x.arc(274, 256, 9, 0, 7); x.fill(); }) });
-  glow('#3ea8ff', T, 0, 230, 50, 460, 540); light(T, [0, 260, 220], '#3ea8ff', 0.8); add('closet', 'OPEN MY CLOSET', T, 270, 60, 440, handlers.closet);
+  // (the closet is now a room of its own through the doorway here: see rooms2.js)
 
   T = R(-640);
   box(solid('#1c1608', 0, 0.4), T, -290, 290, 50, 480, 0, 18);
@@ -273,15 +285,12 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = [], opts = {})
   // The video wall: a big screen on the left wall. The page plays the video BEHIND this canvas and the
   // screen is drawn as a see-through window, so cabinets and players in front of it still cover it.
   let holeM = null, holeQuad = null, lastVP = null;
-  if (opts.wallVideo) {
-    const V = { x: 2 - HW, z: -70, th: Math.PI / 2 }, hw = 300, y0 = 118, y1 = y0 + hw * 2 * 0.5625;
-    box(solid('#ff2a3c', 1, 0), V, -hw - 10, hw + 10, y0 - 10, y1 + 10, 0, 6); quad(solid('#000000', 1, 0), V, [-hw, y1, 8], [hw, y1, 8], [hw, y0, 8], [-hw, y0, 8]);
-    glow('#ff2a3c', V, 0, (y0 + y1) / 2, 4, hw * 2 + 220, y1 - y0 + 200); light(V, [0, 300, 300], '#ffffff', 0.5);
+  const setHole = (V, hw, y0, y1) => {     // the theater screen (rooms2.js) is the window the page's video shows through
     holeM = mat(white, {}); holeM.sprite = true; quad(holeM, V, [-hw, y1, 10], [hw, y1, 10], [hw, y0, 10], [-hw, y0, 10]);
     holeQuad = [[-hw, y1, 10], [hw, y1, 10], [hw, y0, 10], [-hw, y0, 10]].map(p => tf(V, p));
-  }
+  };
   GAMES.filter(g => g.poster && !opts.wallVideo).forEach((g, i) => {
-    const P = { x: 2 - HW, z: -150 + i * 275, th: Math.PI / 2 }, pm = mat(withImg(g.poster, 1024, 512, (x, w, h, e) => { x.fillStyle = '#000'; x.fillRect(0, 0, w, h); drawFit(x, e, 0, 0, w, h, true); }), { emis: 0.8, spec: 0.3 });
+    const P = { x: 2 - HW, z: -820 + i * 260, th: Math.PI / 2 }, pm = mat(withImg(g.poster, 1024, 512, (x, w, h, e) => { x.fillStyle = '#000'; x.fillRect(0, 0, w, h); drawFit(x, e, 0, 0, w, h, true); }), { emis: 0.8, spec: 0.3 });
     const hw = 105, y0 = 190, hh = hw * 0.5625;
     box(solid(g.color, 1, 0), P, -hw - 6, hw + 6, y0 - 6, y0 + hh * 2 + 6, 0, 6); quad(pm, P, [-hw, y0 + hh * 2, 8], [hw, y0 + hh * 2, 8], [hw, y0, 8], [-hw, y0, 8]);
   });
@@ -429,6 +438,10 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = [], opts = {})
     }
   }
 
+  // ---------- the expansion: theater, closet, library, laser tag, kid zone, daycare, outside (rooms2.js) ----------
+  const { ballM } = buildExtra({ box, quad, tri, sphere, tex, mat, solid, fb, neon, glow, light, add, text, fitText, emoji, panel, BIG, PIX, handlers, MODELS, stations, ceilM, wallM, floorM, CH, O, DIMS, opts, white, glowT, wallG, DH,
+    setMirror: v => { mirX = v; }, setHole, BOOKS, RY: { shootem: 0, swordcab: 0 } });
+
   const sprM = mat(white, { emis: 0.75, spec: 0 }); sprM.sprite = true; quad(sprM, O, [-0.5, 1, 0], [0.5, 1, 0], [0.5, 0, 0], [-0.5, 0, 0]);
   // ---------- upload ----------
   const buf = gl.createBuffer(); let total = 0; for (const m of mats) { m.start = total; m.n = m.v.length / 8; total += m.n; }
@@ -522,7 +535,7 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = [], opts = {})
       gl.drawArrays(gl.TRIANGLES, m.start, m.n); if (m.ext) useBuf(buf);
     }
   };
-  let sprites = [], beams = [], eyeXZ = [0, 0];
+  let sprites = [], beams = [], balls = [], eyeXZ = [0, 0];
   // One eye: `view`/`proj` are column-major matrices, `eye` the world-space eye, `byaw` the yaw sprites turn to face.
   function drawScene(view, proj, eye, byaw, time, mirrorFloor) {
     const flip = ident(); flip[5] = -1;
@@ -533,6 +546,10 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = [], opts = {})
       if (sprites.length) { // other players' avatars and VR labels, always turned to face the camera
         const c = Math.cos(byaw), s = Math.sin(byaw); gl.uniform3fv(U.uTint, sprM.tint); gl.uniform1f(U.uEmis, sprM.emis); gl.uniform1f(U.uSpec, 0);
         for (const sp of sprites) { const m = ident(); m[0] = c * sp.w; m[2] = s * sp.w; m[5] = sp.h; m[8] = -s; m[10] = c; m[12] = sp.x; m[13] = sp.y || 0; m[14] = sp.z; gl.uniformMatrix4fv(U.uM, false, m); gl.bindTexture(gl.TEXTURE_2D, sp.tex); gl.drawArrays(gl.TRIANGLES, sprM.start, 6); }
+      }
+      if (balls.length) { // loose basketballs
+        gl.bindTexture(gl.TEXTURE_2D, ballM.t); gl.uniform3fv(U.uTint, ballM.tint); gl.uniform1f(U.uEmis, 0.22); gl.uniform1f(U.uSpec, 0.25);
+        for (const b of balls) { const sc = ident(); sc[0] = sc[5] = sc[10] = b.r; gl.uniformMatrix4fv(U.uM, false, mul(trans(b.x, b.y, b.z), mul(rotY(b.a || 0), mul(rotX((b.a || 0) * 1.3), sc)))); gl.drawArrays(gl.TRIANGLES, ballM.start, ballM.n); }
       }
       if (beams.length && !mirror) { // VR pointer rays: a thin strip from the controller, turned toward the eye
         gl.bindTexture(gl.TEXTURE_2D, white); gl.uniform1f(U.uEmis, 1); gl.uniform1f(U.uSpec, 0);
@@ -563,8 +580,8 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = [], opts = {})
       out.push([((m[0] * p[0] + m[4] * p[1] + m[8] * p[2] + m[12]) / w * 0.5 + 0.5) * innerWidth, (0.5 - (m[1] * p[0] + m[5] * p[1] + m[9] * p[2] + m[13]) / w * 0.5) * innerHeight]); }
     return out;
   }
-  function render(P, time, spr) {
-    sprites = spr || []; beams = [];
+  function render(P, time, spr, rays) {
+    sprites = spr || []; beams = rays || [];
     gl.bindFramebuffer(gl.FRAMEBUFFER, null); resize();
     const view = mul(mul(rotX(-P.pitch), rotY(P.yaw)), trans(-P.x, -P.eye, -P.z)), proj = persp(fov, asp, 8, 8000);
     setLights(P); gl.colorMask(true, true, true, true); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
@@ -625,5 +642,6 @@ export function buildRoom(canvas, GAMES, PRIZES, handlers, SOON = [], opts = {})
   }
   const hfov = () => 2 * Math.atan(Math.tan(fov / 2) * asp);
   resize();
-  return { modelsReady, videoQuad, stations, render, pick, pickRay, xrBegin, xrRay, renderXR, hfov, vfov: () => fov, tex, freeTex: t => gl.deleteTexture(t), setScores: rows => { scoreRows = Array.isArray(rows) ? rows.slice(0, 4) : []; if (scoreWall && scoreWall.t && scoreWall.t.redraw) scoreWall.t.redraw(); } };
+  const hideFb = (name, hide) => { for (const m of mats) if (m.fb === name && !m.gone) m.hide = !!hide; };
+  return { modelsReady, videoQuad, stations, setBalls: list => { balls = list || []; }, hideFb, render, pick, pickRay, xrBegin, xrRay, renderXR, hfov, vfov: () => fov, tex, freeTex: t => gl.deleteTexture(t), setScores: rows => { scoreRows = Array.isArray(rows) ? rows.slice(0, 4) : []; if (scoreWall && scoreWall.t && scoreWall.t.redraw) scoreWall.t.redraw(); } };
 }

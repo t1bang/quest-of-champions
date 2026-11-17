@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>The Blade With No Name</title>
+<style>html,body{margin:0;height:100%;background:#07030f;overflow:hidden;touch-action:none;font-family:Impact,'Arial Black',sans-serif}canvas{display:block;width:100vw;height:100vh}</style></head>
+<body><canvas id="c"></canvas>
+<script type="module">
+// The Blade With No Name — a one-screen sword game for the Big Bang Arcade.
+// Shades come at you from both sides. Cut the side they come from, on time. Left / Right arrows (or A / D), or tap that side.
+import { connectArcade } from '../../sdk/arcade-game.js';
+const cv = document.getElementById('c'), x = cv.getContext('2d');
+let W = 0, H = 0; const fit = () => { const d = Math.min(devicePixelRatio || 1, 2); W = cv.width = innerWidth * d; H = cv.height = innerHeight * d; }; fit(); addEventListener('resize', fit);
+const S = { playing: false, over: false, score: 0, best: +(localStorage.getItem('nameless-best') || 0), hp: 5, t: 0, combo: 0, foes: [], cuts: [], next: 1, swing: 0, side: 1, shake: 0, sparks: [] };
+let ac = null; const beep = (f, l = .1, type = 'triangle', v = .08) => { try { ac = ac || new (window.AudioContext || window.webkitAudioContext)(); const o = ac.createOscillator(), g = ac.createGain(); o.type = type; o.frequency.value = f; g.gain.setValueAtTime(v, ac.currentTime); g.gain.exponentialRampToValueAtTime(.0001, ac.currentTime + l); o.connect(g).connect(ac.destination); o.start(); o.stop(ac.currentTime + l); } catch {} };
+function start() { Object.assign(S, { playing: true, over: false, score: 0, hp: 5, t: 0, combo: 0, foes: [], cuts: [], next: 1, sparks: [] }); beep(440, .2); }
+function cut(side) {
+  if (!S.playing) { if (!S.over || S.t > .8) start(); return; }
+  S.swing = .18; S.side = side; const reach = W * .2;
+  let hit = null; for (const f of S.foes) if (f.side === side && !f.dead && Math.abs(f.x - W / 2) < reach + f.r && (!hit || Math.abs(f.x - W / 2) < Math.abs(hit.x - W / 2))) hit = f;
+  if (hit) { hit.hp--; S.shake = .12; for (let i = 0; i < 9; i++) S.sparks.push({ x: hit.x, y: H * .62, vx: (Math.random() - .5) * W * .5, vy: -Math.random() * H * .5, t: .4 });
+    if (hit.hp <= 0) { hit.dead = .25; S.combo++; S.score += 10 * hit.kind + Math.min(50, S.combo * 2); beep(520 + Math.min(S.combo, 20) * 22, .09); } else beep(300, .07, 'square'); }
+  else { S.combo = 0; beep(160, .06, 'sawtooth', .04); }
+}
+addEventListener('keydown', e => { const k = e.key.toLowerCase(); if (k === 'arrowleft' || k === 'a') cut(-1); else if (k === 'arrowright' || k === 'd') cut(1); else if (k === ' ' || k === 'enter') { if (!S.playing) cut(1); } });
+cv.addEventListener('pointerdown', e => cut(e.clientX < innerWidth / 2 ? -1 : 1));
+function spawn() { const lvl = 1 + S.t / 14, kind = Math.random() < Math.min(.35, lvl * .05) ? 2 : 1, side = Math.random() < .5 ? -1 : 1; S.foes.push({ side, x: side < 0 ? -W * .05 : W * 1.05, v: W * (.16 + Math.min(.3, lvl * .025)) * (kind === 2 ? .7 : 1), r: W * (kind === 2 ? .034 : .024), hp: kind, kind, dead: 0, ph: Math.random() * 6 }); S.next = Math.max(.32, 1.25 - lvl * .08) * (.6 + Math.random() * .8); }
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(.05, (now - last) / 1000); last = now; S.t += dt; S.swing = Math.max(0, S.swing - dt); S.shake = Math.max(0, S.shake - dt);
+  if (S.playing) {
+    if ((S.next -= dt) <= 0) spawn();
+    for (const f of S.foes) { if (f.dead) { f.dead -= dt; if (f.dead <= 0) f.gone = true; continue; } f.x -= f.side * f.v * dt; if (Math.abs(f.x - W / 2) < W * .035) { f.gone = true; S.hp--; S.combo = 0; S.shake = .3; beep(90, .25, 'square', .1); if (S.hp <= 0) { S.playing = false; S.over = true; S.t = 0; if (S.score > S.best) { S.best = S.score; localStorage.setItem('nameless-best', S.best); } } } }
+    S.foes = S.foes.filter(f => !f.gone);
+  }
+  for (const p of S.sparks) { p.x += p.vx * dt; p.y += p.vy * dt; p.vy += H * 1.6 * dt; p.t -= dt; } S.sparks = S.sparks.filter(p => p.t > 0);
+  // ---- draw ----
+  const sx = S.shake ? (Math.random() - .5) * W * .012 : 0; x.setTransform(1, 0, 0, 1, sx, 0);
+  const g = x.createRadialGradient(W / 2, H * .45, 0, W / 2, H * .45, W * .7); g.addColorStop(0, '#3a1670'); g.addColorStop(1, '#07030f'); x.fillStyle = g; x.fillRect(-20, 0, W + 40, H);
+  x.fillStyle = '#fff'; for (let i = 0; i < 70; i++) { const tw = .4 + .6 * Math.abs(Math.sin(now / 900 + i)); x.globalAlpha = tw * .8; x.fillRect((i * 173) % W, (i * 97) % (H * .55), 2, 2); } x.globalAlpha = 1;
+  x.fillStyle = '#120a22'; for (let i = 0; i < 9; i++) { x.beginPath(); x.moveTo(i * W / 8 - W * .1, H * .72); x.lineTo(i * W / 8, H * (.5 - (i * 37 % 9) * .012)); x.lineTo(i * W / 8 + W * .1, H * .72); x.fill(); }
+  x.fillStyle = '#1b1230'; x.fillRect(-20, H * .7, W + 40, H * .3); x.fillStyle = '#2a1c48'; x.fillRect(-20, H * .7, W + 40, 4);
+  // shades
+  for (const f of S.foes) { const y = H * .62 + Math.sin(now / 200 + f.ph) * H * .012, a = f.dead ? f.dead / .25 : 1; x.globalAlpha = a; x.fillStyle = f.kind === 2 ? '#3a0f4f' : '#1a0a2a'; x.beginPath(); x.ellipse(f.x, y, f.r, f.r * 1.9, 0, 0, 7); x.fill(); x.fillStyle = f.kind === 2 ? '#ff4fd8' : '#b06cff'; x.beginPath(); x.arc(f.x - f.side * f.r * .25, y - f.r * .7, f.r * .16, 0, 7); x.arc(f.x - f.side * f.r * .65, y - f.r * .7, f.r * .16, 0, 7); x.fill(); x.globalAlpha = 1; }
+  // the hero and the blade
+  const hx = W / 2, hy = H * .7, u = Math.min(W, H) * .1; x.fillStyle = '#0c0616'; x.beginPath(); x.ellipse(hx, hy - u * .9, u * .34, u * .9, 0, 0, 7); x.fill(); x.beginPath(); x.arc(hx, hy - u * 2, u * .3, 0, 7); x.fill();
+  x.fillStyle = '#ffc93a'; x.fillRect(hx - u * .36 + (S.side > 0 ? u * .5 : -u * .14), hy - u * 1.25, u * .22, u * .16);                                  // the gloves
+  const sw = S.swing / .18, ang = (S.side > 0 ? 1 : -1) * (-.5 + (1 - sw) * 2.1) - Math.PI / 2; x.save(); x.translate(hx + S.side * u * .3, hy - u * 1.2); x.rotate(ang + (S.side > 0 ? 0 : 0)); x.shadowColor = '#b9a4ff'; x.shadowBlur = u * .5; x.fillStyle = '#e6ecff'; x.fillRect(u * .2, -u * .06, u * 1.9, u * .12); x.fillStyle = '#ffc93a'; x.fillRect(u * .1, -u * .2, u * .1, u * .4); x.restore();
+  if (S.swing > 0) { x.strokeStyle = `rgba(200,180,255,${sw * .8})`; x.lineWidth = u * .16; x.beginPath(); x.arc(hx, hy - u * 1.2, u * 2.2, S.side > 0 ? -1.2 : Math.PI - .9, S.side > 0 ? .9 : Math.PI + 1.2); x.stroke(); }
+  x.fillStyle = '#ffe9a8'; for (const p of S.sparks) x.fillRect(p.x, p.y, 4, 4);
+  // words
+  x.setTransform(1, 0, 0, 1, 0, 0); x.textAlign = 'left'; x.fillStyle = '#fff'; x.font = `${Math.round(H * .05)}px Impact,sans-serif`; x.fillText(String(S.score).padStart(5, '0'), W * .04, H * .09);
+  x.textAlign = 'right'; x.fillStyle = '#ff4f7a'; x.fillText('♥'.repeat(Math.max(0, S.hp)), W * .96, H * .09); if (S.combo > 2) { x.textAlign = 'center'; x.fillStyle = '#ffc93a'; x.fillText(S.combo + ' IN A ROW', W / 2, H * .16); }
+  if (!S.playing) { x.textAlign = 'center'; x.fillStyle = '#fff'; x.font = `${Math.round(H * .085)}px Impact,sans-serif`; x.fillText(S.over ? 'THE DARK TAKES YOU' : '? ? ?', W / 2, H * .3); x.font = `${Math.round(H * .04)}px Impact,sans-serif`; x.fillStyle = '#d9c8ff';
+    x.fillText(S.over ? `SCORE ${S.score}   BEST ${S.best}` : 'CUT THE SIDE THEY COME FROM', W / 2, H * .39); x.fillText('← →  OR TAP A SIDE TO ' + (S.over ? 'GO AGAIN' : 'BEGIN'), W / 2, H * .46); }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+connectArcade({ game: 'nameless', build: '1', state: () => ({ playing: S.playing, score: S.score }) });
+</script></body></html>

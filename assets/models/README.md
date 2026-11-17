@@ -9,3 +9,14 @@ lobby-ready: colour picture only, a few thousand triangles, plain float data (th
 read Draco or Meshopt compression).
 
 Places and sizes are listed in `room.js` next to the furniture they replace (`MODELS.push(...)`).
+
+## Many-part models (Nov 16 2026)
+
+`shootem.glb`, `slamcab.glb` and `swordcab.glb` were built from many separate parts and materials, which the lobby's
+loader cannot read. `tools/lobby_model.py` bakes such a model into one mesh with one atlas picture:
+
+    python3 tools/lobby_model.py in.glb assets/models/name.glb [--tile 256] [--drop part-name] [--flipv part-name] [--swap N=picture.png]
+
+- `shootem`: the scoreboard and marquee labels were upside down in the source (`--flipv marquee --flipv score`).
+- `swordcab`: the three pictures inside the source were replaced with original art (`--swap`) and the gold crest
+  parts left out (`--drop Gold_crest`), so the cabinet carries no other game's marks.

@@ -54,6 +54,8 @@ export const SOON = [
   { hallSlot: 5, model: 'whack', id: 'whack', title: 'Bot Bopper', color: '#35e06f', song: '', file: '', art: '' },
   { hallSlot: 6, model: 'cockpit', id: 'starpilot', title: 'Star Pilot', color: '#3ea8ff', song: '', file: '', art: '' },
   { hallSlot: 7, model: 'moto', id: 'moto', title: 'Moto Rush', color: '#ff7a1a', song: '', file: '', art: '' },
+  // spot: 'island' = free-standing in the middle of the game room, beside the Shoot'em hoop
+  { spot: 'island', model: 'slamcab', fit: 'h', id: 'slamjam', title: 'SLAM', color: '#ff5a1a', song: '', file: '', art: '' },
   { floor: true, model: 'roller', id: 'roller', title: 'Big Bang Roll', color: '#ffc93a', song: '', file: '', art: '' },
   { hallSlot: 3, id: 'toptier', title: 'Top Tier Wrestling', color: '#ff2a3c', song: 'Everything Top Tier, Everything Critical', file: '', art: '' },
   // East Wing machines. "style" picks the cabinet shape (see cabs.js): racer, golf, dance, pinball, claw.
