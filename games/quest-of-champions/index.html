@@ -263,6 +263,7 @@ const CHARS={
   tone:{name:'TONE DA BOSS',tag:'The Voice of Champions',o:TONE},
   silence:{name:'SILENCE',tag:'Playable',o:{sprite:'silence',skin:'#e8c4a8',hair:{type:'short',color:'#4a3220'},hat:{type:'cap',color:'#111'},top:'#444',sleeve:'#e8c4a8',tattoo:true,pants:'#1c1c1c',wide:true,boots:'#111',gloves:'#1a1a1a',mic:true,fireFoot:true,face:{beard:true},size:3}},
   dachaman:{name:'DACHAMAN',tag:'Playable',o:DACHAMAN},
+  chuck:{name:'CHUCK',tag:'MPC Beatmaker',o:{sprite:'chuckSheet',skin:'#a97552',hair:{type:'afro'},top:'#b3202a',sleeve:'#b3202a',pants:'#151515',boots:'#111',size:3,mic:false}},
   nikki:{name:'NIKKI KATZ',tag:'Playable',o:NIKKI},
   jlimm:{name:'J-LIMM',tag:'Assist & playable',o:{sprite:'jlimm',skin:'#8d5a3b',hair:{type:'short'},top:'#3d7bf5',sleeve:'#3d7bf5',topAccent:'#fff',pants:'#111',wide:true,boots:'#fff',gloves:'#1a1a1a',mic:true,fireFoot:true,face:{goatee:true,shades:true},size:3}},
   tevin:{name:'TEVIN JONES',tag:'Playable',o:{sprite:'tevin',skin:'#5a3a22',hair:{type:'short'},top:'#f2c94c',sleeve:'#f2c94c',topAccent:'#111',chain:true,pants:'#1c1c1c',wide:true,boots:'#b8803a',gloves:'#1a1a1a',mic:true,fireFoot:true,face:{beard:true},size:3}},
@@ -1038,7 +1039,7 @@ function drawCurryPartner(e){
 // Custom seven-pose sprite sheets for P. MyHomey (Level 2) and Tevin Jones.
 // Assets are served relative to this game's index.html.
 const customSheets={};
-for(const [key,url] of [['mahomesSheet','tevin-sprites.png'],['tevin','mahomes-sprites.png']]){
+for(const [key,url] of [['mahomesSheet','tevin-sprites.png'],['tevin','mahomes-sprites.png'],['dachamanSheet','d59ad498-e240-4588-8412-c8201865034a.png'],['chuckSheet','b982e7a0-00e3-4388-a461-48cfe5e01589.png']]){
  const img=new Image();img.src=url;
  img.onerror=()=>console.error('Character sprite failed to load:',url);
  customSheets[key]={img,frames:{}};
@@ -1072,7 +1073,7 @@ function drawCustomCharacter(e){
  const name=e.hurt>0?'hit':e.kick>0?'kick':e.attack>0?'punch':
    e.air?'jump':Math.abs(e.walk||0)>0.1?(Math.floor(e.walk*1.6)%2?'walk2':'walk1'):'idle';
  const im=customFrame(key,name);if(!im)return false;
- const height=key==='mahomesSheet'?180:155;
+ const height=key==='mahomesSheet'?180:key==='dachamanSheet'?165:155;
  const scale=height/(customSheets[key].img.height*.385)*(e.scale||1);
  const w=im.width*scale,h=im.height*scale;
  ctx.save();ctx.translate(Math.round(e.x-camX),Math.round(e.y));
@@ -1081,7 +1082,10 @@ function drawCustomCharacter(e){
  ctx.drawImage(im,-w*.5,-h,w,h);ctx.restore();return true;
 }
 function drawEntity(e){
-  if(e.o&&(e.o.sprite==='mahomesSheet'||e.o.sprite==='tevin')){if(drawCustomCharacter(e))return;ctx.save();ctx.fillStyle='#ffd23f';ctx.font='bold 13px sans-serif';ctx.fillText('SPRITE LOADING',e.x-camX-60,e.y-90);ctx.restore();return;}
+  if(e.o&&(e.o.sprite==='mahomesSheet'||e.o.sprite==='tevin'||e.o.sprite==='chuckSheet'||e.o.sprite==='dc')){
+    if(e.o.sprite==='dc'){const original=e.o.sprite;e.o.sprite='dachamanSheet';const painted=drawCustomCharacter(e);e.o.sprite=original;if(painted)return;}
+    else if(drawCustomCharacter(e))return;
+    if(e.o.sprite==='dc'&&drawSprite(e))return;if(drawCustomCharacter(e))return;ctx.save();ctx.fillStyle='#ffd23f';ctx.font='bold 13px sans-serif';ctx.fillText('SPRITE LOADING',e.x-camX-60,e.y-90);ctx.restore();return;}
   if(e.o&&e.o.sprite==='currySheet'){if(drawCurryPartner(e))return;ctx.save();ctx.fillStyle='#ffd23f';ctx.font='bold 14px sans-serif';ctx.fillText('CURRY SPRITE LOADING',e.x-camX-70,e.y-95);ctx.restore();return;}
   if(e.o&&e.o.sprite&&drawSprite(e))return;
   if(e.scale&&e.scale!==1){const x=e.x-camX,y=e.y;ctx.save();ctx.translate(x,y);ctx.scale(e.scale,e.scale);ctx.translate(-x,-y);const sc=e.scale;e.scale=1;drawEntity(e);e.scale=sc;ctx.restore();return;}
